@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
+import { sendEmailViaResend } from "../_shared/resendClient.ts";
 import { issueResumeLink } from "../_shared/resumeLink.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -8,7 +9,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const FROM_EMAIL = "PawTenant <hello@pawtenant.com>";
 const SITE_URL = Deno.env.get("SITE_URL") ?? "https://www.pawtenant.com";
-const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
+const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const COMPANY_DOMAIN = "pawtenant.com";
 
@@ -180,9 +181,11 @@ function buildRecoveryEmail(
     ? `Exclusive discount inside — your assessment answers are saved`
     : `Your assessment answers have been saved — pick up where you left off`;
 
-  const resumeUrl = hasDiscount
-    ? `${resumeLink}&promo=${encodeURIComponent(discountCode!.trim())}`
-    : resumeLink;
+  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001: the customer link is a bare
+  // stable /checkout/<slug> URL. A promo is NEVER appended to it. When a
+  // discount applies the code is shown in the banner for the customer to enter,
+  // or it is already saved server-side on the order.
+  const resumeUrl = resumeLink;
 
   const body = `
     <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Hi <strong>${name}</strong>,</p>
@@ -333,15 +336,23 @@ serve(async (req) => {
     }
 
     const hasDiscount = !!(discountCode && discountCode.length > 0);
+    const assessmentPath = isPsd ? "psd-assessment" : "assessment";
+
     // ── ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001 ───────────────
     // Recovery links used to carry `?resume=<confirmationId>`. A confirmation id
     // is a DISPLAY REFERENCE that also lands in analytics, referrers, support
     // threads and mail logs — it must never act as a credential.
     //
-    // Built through the ONE canonical builder in _shared/resumeLink.ts, which
-    // fails CLOSED: if the order is no longer resumable the link carries no token
-    // AND no order reference, so the customer reaches the safe request-new-link
-    // screen rather than a link that leaks an order number.
+    // We now mint an expiring, single-use, order-bound resume token and put THAT
+    // in the link. The raw token is used once, here, to build the URL: it is not
+    // logged, not persisted by this function, and not echoed in the response.
+    //
+    // Fail-closed: if issuance fails (order completed / cancelled / refunded /
+    // already paid), we fall back to the bare assessment path with NO
+    // confirmation id, so the customer gets the safe "request a new link"
+    // screen rather than a link that leaks an order reference.
+    // Built through the ONE canonical builder in _shared/resumeLink.ts so this
+    // producer cannot drift from the others.
     const issuedLink = await issueResumeLink({
       supabaseUrl: SUPABASE_URL,
       serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
@@ -356,10 +367,10 @@ serve(async (req) => {
       console.info(`[send-checkout-recovery] no resume token issued — sending generic link`);
     }
     const resumeLink = issuedLink.url;
-    // The fallback link has no query string, so a bare `&promo=` would be malformed.
-    const resumeWithPromo = hasDiscount
-      ? `${resumeLink}${resumeLink.includes("?") ? "&" : "?"}promo=${encodeURIComponent(discountCode!.trim())}`
-      : resumeLink;
+    // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001: no promo is ever appended
+    // to a customer link. The stable /checkout/<slug> URL carries no query
+    // string at all. Name kept so downstream template slots stay unchanged.
+    const resumeWithPromo = resumeLink;
     const orderTotal = price != null ? `$${Number(price).toFixed(2)}` : "Varies by plan";
     const letterLabel = isPsd ? "PSD Letter" : "ESA Letter";
 
@@ -367,7 +378,10 @@ serve(async (req) => {
       ? (discountPercent > 0 ? `${discountPercent}%` : discountFixed > 0 ? `$${discountFixed}` : "")
       : "";
 
-    // DB-first template lookup
+    // ── Template Hub is the primary source of truth ──────────────────────
+    // Subject + body come from the DB row. Hardcoded buildRecoveryEmail() below
+    // is ONLY used when the DB row is missing (empty TEST projects, accidental
+    // template deletion, etc.) — never as a silent override.
     const dbSlug = hasDiscount ? "checkout_recovery_discount" : "checkout_recovery";
     const dbTemplate = await loadTemplate(supabase, dbSlug);
     const masterLayout = await loadMasterLayout(supabase);
@@ -387,6 +401,9 @@ serve(async (req) => {
         letter_type: letterLabel,
         resume_url: resumeLink,
         resume_url_with_promo: resumeWithPromo,
+        // Forward-compat alias: admin templates may use {checkout_link}
+        // interchangeably with {resume_url_with_promo} / {resume_url}.
+        checkout_link: resumeWithPromo,
         order_id: confirmationId,
         order_total: orderTotal,
         discount_code: discountCode ?? "",
@@ -421,16 +438,25 @@ serve(async (req) => {
       );
     }
 
-    const emailRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: FROM_EMAIL, to: [email], subject, html }),
-    });
+    const sendResult = await sendEmailViaResend(
+      {
+        from: FROM_EMAIL,
+        to: [email],
+        subject,
+        html,
+        tags: [
+          { name: "email_type", value: "checkout_recovery" },
+          { name: "slug", value: dbSlug },
+          { name: "confirmation_id", value: confirmationId },
+        ],
+      },
+      RESEND_API_KEY,
+    );
 
-    const emailResult = await emailRes.json() as { id?: string; error?: string };
-    if (!emailRes.ok || emailResult.error) {
-      throw new Error(emailResult.error ?? `Resend error ${emailRes.status}`);
+    if (!sendResult.ok) {
+      throw new Error(sendResult.error || `Resend error ${sendResult.status}`);
     }
+    const emailResult = { id: sendResult.messageId ?? undefined };
 
     const existingLog = (order.email_log as unknown[]) ?? [];
     const newEntry = {

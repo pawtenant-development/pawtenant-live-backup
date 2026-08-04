@@ -194,7 +194,7 @@ Deno.serve(async (req: Request) => {
       authoritativeResumeVars.resume_url = issued.url;
       const promo = (body.vars?.discount_code ?? "").trim();
       authoritativeResumeVars.resume_url_with_promo = promo
-        ? `${issued.url}${issued.url.includes("?") ? "&" : "?"}promo=${encodeURIComponent(promo)}`
+        ? issued.url  // no promo appended — ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001
         : issued.url;
     }
 

@@ -52,6 +52,7 @@ export const EXACT_PATHS: readonly string[] = [
   "/california-esa-letter-for-apartments",
   "/can-a-landlord-deny-a-psd-letter",
   "/can-landlord-reject-esa-letter",
+  "/checkout",
   "/college-pet-policy",
   "/company",
   "/consultation-request",

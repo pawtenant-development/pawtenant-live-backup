@@ -143,7 +143,9 @@ Deno.serve(async (req: Request) => {
         ? `admin:${(profile as { role?: string } | null)?.role ?? "admin"}`
         : "customer:self-serve",
       bridgeStage: body.bridgeStage ?? null,
-      extraParams: body.promo ? { promo: body.promo } : {},
+      // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001: promo is never placed in
+      // a customer link. Kept out of extraParams entirely so it cannot be honoured.
+      extraParams: {},
     });
 
     if (!issued.tokenized) {

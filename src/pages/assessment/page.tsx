@@ -553,9 +553,16 @@ export default function AssessmentPage() {
   // this session — prevents duplicate audit rows when Step 2 is revisited.
   const stateAckAuditRef = useRef<string | null>(null);
 
+  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001 — stable /checkout/<slug>
+  // handoff, memory only (never storage, never analytics).
+  const checkoutResume =
+    typeof window !== "undefined"
+      ? (window as unknown as { __ptCheckoutResume?: Record<string, unknown> }).__ptCheckoutResume
+      : undefined;
+
   // ── Resume flow: if ?resume=CONFIRMATION_ID, pre-fill and jump to step 3 ──
   useEffect(() => {
-    if (!resumeConfirmationId && !resumeToken) return;
+    if (!resumeConfirmationId && !resumeToken && !checkoutResume) return;
 
     const fetchLead = async () => {
       setResumeLoading(true);
@@ -567,10 +574,27 @@ export default function AssessmentPage() {
         // A confirmation id appears in emails, SMS, URLs, analytics and support
         // threads, so it must never act as a credential.
         // (ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001)
-        if (!resumeToken) {
+        if (!resumeToken && !checkoutResume) {
           setResumeNeedsSecureLink(true);
           setResumeLoading(false);
           return;
+        }
+
+        let stableOrder: (Record<string, unknown> & { already_paid?: boolean }) | null = null;
+        let stableOtpVerified = false;
+        if (checkoutResume) {
+          try {
+            delete (window as unknown as { __ptCheckoutResume?: unknown }).__ptCheckoutResume;
+          } catch { /* non-fatal */ }
+          const cr = checkoutResume as Record<string, unknown>;
+          stableOrder = {
+            confirmation_id: cr.confirmationId, first_name: cr.firstName,
+            last_name: cr.lastName, email: cr.email, phone: cr.phone, state: cr.state,
+            delivery_speed: cr.deliverySpeed, price: cr.price, plan_type: cr.planType,
+            letter_type: cr.letterType, package_key: cr.packageKey,
+            billing_plan: cr.billingPlan, assessment_answers: {}, already_paid: false,
+          };
+          stableOtpVerified = cr.otpVerified === true;
         }
 
         // ── Secure path: SCRUB the raw token from the URL first, then POST it.
@@ -585,7 +609,7 @@ export default function AssessmentPage() {
           }
         } catch { /* non-fatal */ }
 
-        const res = await fetch(`${supabaseUrl}/functions/v1/exchange-resume-token`, {
+        const res = stableOrder ? null : await fetch(`${supabaseUrl}/functions/v1/exchange-resume-token`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -595,14 +619,16 @@ export default function AssessmentPage() {
           body: JSON.stringify({ token: rawToken, purpose: "resume_assessment" }),
         });
 
-        const exchanged = await res.json() as {
+        const exchanged = (res ? await res.json() : { ok: false }) as {
           ok?: boolean;
           resume?: Record<string, unknown> & { alreadyPaid?: boolean; assessmentAnswers?: unknown };
         };
 
         // Map the token response onto the shape the prefill code below already
         // understands, so that logic stays untouched.
-        const result = exchanged.ok && exchanged.resume
+        const result = stableOrder
+          ? { ok: true, order: stableOrder }
+          : exchanged.ok && exchanged.resume
           ? {
               ok: true,
               order: {
@@ -779,7 +805,11 @@ export default function AssessmentPage() {
           const { data: sess } = await supabase.auth.getUser();
           sessionEmail = (sess?.user?.email ?? "").trim().toLowerCase();
         } catch { /* ignore — treat as unauthenticated */ }
-        const alreadyAuthed = !!orderEmail && sessionEmail === orderEmail;
+        // Stable-slug arrival on an order that already completed OTP counts as
+        // authenticated — the slug is the credential and the order is bound to a
+        // verified auth user, so re-prompting is pure friction.
+        const alreadyAuthed =
+          (!!orderEmail && sessionEmail === orderEmail) || stableOtpVerified;
 
         if (resumeEditPet) {
           // Repeat-customer new-pet review: land on Step 1; the normal Step 2 → OTP

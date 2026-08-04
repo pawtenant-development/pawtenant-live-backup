@@ -111,6 +111,11 @@ export default function PSDAssessmentPage() {
   // Read via the helper: the pre-boot inline script has already scrubbed the
   // address bar, so the raw value now arrives in memory rather than in the URL.
   const resumeToken = readResumeToken(searchParams);
+  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001 — memory-only stable handoff.
+  const checkoutResume =
+    typeof window !== "undefined"
+      ? (window as unknown as { __ptCheckoutResume?: Record<string, unknown> }).__ptCheckoutResume
+      : undefined;
   // POST-OTP-DIRECT-CHECKOUT-001: verified customers land on checkout directly.
   const directCheckout = isDirectCheckout();
 
@@ -193,14 +198,14 @@ export default function PSDAssessmentPage() {
   // expiring, single-use, order-bound token. A confirmation id in a URL is a
   // display reference and never unlocks any of it.
   useEffect(() => {
-    if (!resumeConfirmationId && !resumeToken) return;
+    if (!resumeConfirmationId && !resumeToken && !checkoutResume) return;
 
     const fetchLead = async () => {
       setResumeLoading(true);
       try {
         // ── Legacy ?resume=<confirmationId>: NO order data, ever. ───────────
         // Falls through to the safe "request a new link" screen below.
-        if (!resumeToken) {
+        if (!resumeToken && !checkoutResume) {
           setResumeNotFound(true);
           setResumeLoading(false);
           return;
@@ -209,6 +214,23 @@ export default function PSDAssessmentPage() {
         // ── Secure path: SCRUB the raw token from the URL FIRST, then POST it.
         // Scrubbing before the await keeps it out of history, referrers and any
         // third-party script that reads location.search later in the page life.
+        let stableOrder: (Record<string, unknown> & { already_paid?: boolean }) | null = null;
+        let stableOtpVerified = false;
+        if (checkoutResume) {
+          try {
+            delete (window as unknown as { __ptCheckoutResume?: unknown }).__ptCheckoutResume;
+          } catch { /* non-fatal */ }
+          const cr = checkoutResume as Record<string, unknown>;
+          stableOrder = {
+            confirmation_id: cr.confirmationId, first_name: cr.firstName,
+            last_name: cr.lastName, email: cr.email, phone: cr.phone, state: cr.state,
+            delivery_speed: cr.deliverySpeed, price: cr.price, plan_type: cr.planType,
+            letter_type: cr.letterType, package_key: cr.packageKey,
+            billing_plan: cr.billingPlan, assessment_answers: {}, already_paid: false,
+          };
+          stableOtpVerified = cr.otpVerified === true;
+        }
+
         const rawToken = resumeToken;
         try {
           const u = new URL(window.location.href);
@@ -218,7 +240,7 @@ export default function PSDAssessmentPage() {
           }
         } catch { /* non-fatal */ }
 
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/exchange-resume-token`, {
+        const res = stableOrder ? null : await fetch(`${SUPABASE_URL}/functions/v1/exchange-resume-token`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -228,14 +250,16 @@ export default function PSDAssessmentPage() {
           body: JSON.stringify({ token: rawToken, purpose: "resume_assessment" }),
         });
 
-        const exchanged = await res.json() as {
+        const exchanged = (res ? await res.json() : { ok: false }) as {
           ok?: boolean;
           resume?: Record<string, unknown> & { alreadyPaid?: boolean; assessmentAnswers?: unknown };
         };
 
         // Map onto the shape the prefill code below already understands, so that
         // logic stays untouched.
-        const result = exchanged.ok && exchanged.resume
+        const result = stableOrder
+          ? { ok: true, order: stableOrder }
+          : exchanged.ok && exchanged.resume
           ? {
               ok: true,
               order: {
@@ -359,7 +383,8 @@ export default function PSDAssessmentPage() {
           const { data: sess } = await supabase.auth.getUser();
           sessionEmail = (sess?.user?.email ?? "").trim().toLowerCase();
         } catch { /* ignore — treat as unauthenticated */ }
-        const alreadyAuthed = !!orderEmail && sessionEmail === orderEmail;
+        const alreadyAuthed =
+          (!!orderEmail && sessionEmail === orderEmail) || stableOtpVerified;
 
         if (alreadyAuthed) {
           setOtpVerified(true);

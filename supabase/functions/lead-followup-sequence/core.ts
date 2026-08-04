@@ -20,34 +20,29 @@ import { issueResumeLink } from "../_shared/resumeLink.ts";
 type SupabaseClient = ReturnType<typeof createClient>;
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
-// Service-role key used to invoke PawTenant's existing Comms SMS transport
-// (the ghl-send-sms Edge Function used by Order Details -> Comms) for the
-// 5-minute recovery SMS. LIVE sends SMS via GHL, not Twilio.
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+// Twilio (same secrets the send-sms function already uses). If any are missing
+// the SMS step degrades gracefully (logs a failed comms row, never throws).
+const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
+const TWILIO_AUTH_TOKEN  = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+const TWILIO_FROM_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER") ?? "";
 
 const FROM_EMAIL = "PawTenant <hello@pawtenant.com>";
-// Env-driven. A resume token is environment-bound, so a link built for the wrong
-// origin/environment fails closed — the origin must follow the deployment.
-const SITE_URL = Deno.env.get("SITE_URL") ?? "https://pawtenant.com";
-const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
+// Env-driven. Was hardcoded to the LIVE origin, which in TEST produced recovery
+// links pointing at production — and a TEST-minted token can never satisfy a
+// LIVE exchange (environment binding), so those links would fail closed.
+const SITE_URL = Deno.env.get("SITE_URL") ?? "https://www.pawtenant.com";
+const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const COMPANY_DOMAIN = "pawtenant.com";
 const DISCOUNT_CODE = "20PAW";
 // SMS recovery discount code (task spec). Must exist as a Stripe coupon/promotion
-// code for the $20 off to apply at checkout. Admin-overridable via
-// comms_settings key `recovery_sms_promo_code`.
+// code for the $20 off to apply at checkout.
 const SMS_DISCOUNT_CODE = "PAW20";
 // Safe fallback when an order has no pet name in assessment data.
 const PET_FALLBACK = "your pet";
-// Default 5-minute recovery SMS template. Admin-overridable via comms_settings
-// key `recovery_sms_5min_template`. Merge tags: {name}/{first_name}, {petname}
-// (falls back to "your pet"), {promo_code} (defaults to PAW20), {resume_url}
-// (the substituted link already carries &promo=<code> so the discount applies).
-// MUST stay byte-identical to RECOVERY_TEXT_DEFAULTS.recovery_sms_5min_template
-// in CommunicationsTemplatesPanel.tsx so the admin "reset to default" matches.
-const DEFAULT_SMS_TEMPLATE =
-  "Hi {first_name}, we saved your PawTenant checkout for {petname}. Use code {promo_code} for $20 off and complete it securely here: {resume_url}. Reply STOP to opt out.";
 
 const HEADER_BG = "#4a9e8a";
 const HEADER_BADGE_BG = "rgba(255,255,255,0.22)";
@@ -75,10 +70,10 @@ export interface SequenceResults {
   dedup_skipped: number;
   /**
    * LEAD-FOLLOWUP-SEQUENCE-SECURE-RESUME-REGRESSION-RECOVERY-001.
-   * A lead whose secure resume link could not be minted (nothing claimed,
-   * nothing sent), and a lead whose SMS was claimed but rejected by GHL (claim
-   * released for retry). Surfaced in the heartbeat so a silent partial failure
-   * can never look like a clean run again.
+   * A lead whose secure resume link could not be minted (so nothing was claimed
+   * and nothing was sent), and a lead whose SMS was claimed but rejected by the
+   * sender (claim released for retry). Surfaced in the heartbeat so a silent
+   * partial failure can never look like a clean run again.
    */
   sms_link_failed: number;
   sms_send_failed: number;
@@ -145,84 +140,75 @@ export function resolvePetName(assessment: unknown): string {
   }
 }
 
-// Admin-configurable SMS recovery config, read from comms_settings. Defaults
-// preserve the current LIVE behavior (SMS enabled, default template, PAW20).
-// Any read failure degrades to defaults so the sequence never breaks.
-interface RecoverySmsConfig { enabled: boolean; template: string; promoCode: string; }
-
-async function loadRecoverySmsConfig(supabase: SupabaseClient): Promise<RecoverySmsConfig> {
-  const defaults: RecoverySmsConfig = { enabled: true, template: DEFAULT_SMS_TEMPLATE, promoCode: SMS_DISCOUNT_CODE };
-  try {
-    const { data, error } = await supabase
-      .from("comms_settings")
-      .select("key, value")
-      .in("key", ["recovery_sms_enabled", "recovery_sms_5min_template", "recovery_sms_promo_code"]);
-    if (error || !data) return defaults;
-    const map = new Map<string, string | null>((data as Array<{ key: string; value: string | null }>).map((r) => [r.key, r.value]));
-    // enabled: default TRUE unless an explicit falsey value is stored.
-    let enabled = true;
-    if (map.has("recovery_sms_enabled")) {
-      const v = (map.get("recovery_sms_enabled") ?? "").trim().toLowerCase();
-      enabled = v === "true" || v === "1" || v === "yes" || v === "on";
-    }
-    const template = (map.get("recovery_sms_5min_template") ?? "").trim() || DEFAULT_SMS_TEMPLATE;
-    const promoCode = (map.get("recovery_sms_promo_code") ?? "").trim() || SMS_DISCOUNT_CODE;
-    return { enabled, template, promoCode };
-  } catch {
-    return defaults;
-  }
+// Render the 5-minute recovery SMS. Short, safe, no diagnosis / ESA / PSD /
+// disability / "doctor" wording. Pet name falls back to "your pet". The resume
+// link carries the promo so the discount auto-applies at checkout.
+function buildRecoverySms(firstName: string, petName: string, resumeUrl: string): string {
+  const name = (firstName || "").trim() || "there";
+  const pet = (petName || "").trim() || PET_FALLBACK;
+  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001: never append a promo to a
+  // customer link. The stable /checkout/<slug> URL carries no query string.
+  const url = resumeUrl;
+  return `Hi ${name}, we saved your PawTenant checkout for ${pet}. Use code ${SMS_DISCOUNT_CODE} for $20 off and complete it securely here: ${url}. Reply STOP to opt out.`;
 }
 
-// Render the 5-minute recovery SMS from the (admin-editable) template. Short,
-// safe, no diagnosis / ESA / PSD / disability / "doctor" wording. {petname}
-// falls back to "your pet"; {promo_code} defaults to PAW20; {resume_url} is
-// substituted WITH &promo=<code> appended so the discount auto-applies at
-// checkout. {name} and {first_name} both map to the lead's first name.
-function renderRecoverySms(
-  template: string,
-  vars: { firstName: string; petName: string; resumeUrl: string; promoCode: string },
-): string {
-  const name = (vars.firstName || "").trim() || "there";
-  const pet = (vars.petName || "").trim() || PET_FALLBACK;
-  const promo = (vars.promoCode || "").trim() || SMS_DISCOUNT_CODE;
-  const urlWithPromo = `${vars.resumeUrl}${vars.resumeUrl.includes("?") ? "&" : "?"}promo=${encodeURIComponent(promo)}`;
-  return (template && template.trim() ? template : DEFAULT_SMS_TEMPLATE)
-    .replace(/\{first_name\}/g, name)
-    .replace(/\{name\}/g, name)
-    .replace(/\{petname\}/g, pet)
-    .replace(/\{promo_code\}/g, promo)
-    .replace(/\{resume_url\}/g, urlWithPromo);
-}
+// Inline Twilio SMS send + communications log (mirrors the send-sms function so
+// the cron stays self-contained — no inter-function HTTP/auth roundtrip).
+// Never throws.
+async function sendSms(
+  supabase: SupabaseClient,
+  opts: { orderId: string; confirmationId: string; toPhone: string; message: string; sentBy?: string },
+): Promise<{ sent: boolean; sid?: string; error?: string }> {
+  let phone = (opts.toPhone || "").replace(/\D/g, "");
+  if (phone.length === 10) phone = "1" + phone;
+  if (phone && !phone.startsWith("+")) phone = "+" + phone;
 
-// Send the recovery SMS through PawTenant's EXISTING Comms SMS transport —
-// the same ghl-send-sms Edge Function used by Order Details -> Comms. That
-// function performs the GHL send AND writes the `communications` row (status,
-// sent_by, twilio_sid=ghl:<id>), so we do NOT log here (avoids double logging).
-// Called with the service-role key as bearer. Never throws.
-async function sendRecoverySmsViaComms(
-  opts: { orderId: string; confirmationId: string; toPhone: string; message: string; sentBy: string },
-): Promise<{ sent: boolean; error?: string }> {
-  try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/ghl-send-sms`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
-        "apikey": SERVICE_ROLE_KEY,
-      },
-      body: JSON.stringify({
-        orderId: opts.orderId,
-        confirmationId: opts.confirmationId,
-        toPhone: opts.toPhone,
-        message: opts.message,
-        sentBy: opts.sentBy,
-      }),
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER || !phone) {
+    await supabase.from("communications").insert({
+      order_id: opts.orderId ?? null,
+      confirmation_id: opts.confirmationId ?? null,
+      type: "sms_outbound",
+      direction: "outbound",
+      body: opts.message,
+      phone_from: TWILIO_FROM_NUMBER || null,
+      phone_to: phone || null,
+      status: "failed",
+      sent_by: opts.sentBy ?? "auto_sequence:sms_5min",
     });
-    const data = await res.json().catch(() => ({ ok: false, error: "invalid response" })) as { ok?: boolean; error?: string };
-    return { sent: !!data.ok, error: data.ok ? undefined : (data.error ?? `ghl-send-sms HTTP ${res.status}`) };
-  } catch (err) {
-    return { sent: false, error: err instanceof Error ? err.message : String(err) };
+    return { sent: false, error: "Twilio not configured or phone missing" };
   }
+
+  const credentials = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+  const reqBody = new URLSearchParams({ To: phone, From: TWILIO_FROM_NUMBER, Body: opts.message });
+
+  let twilioData: { sid?: string; status?: string; error_message?: string } = {};
+  let ok = false;
+  try {
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
+      { method: "POST", headers: { Authorization: `Basic ${credentials}`, "Content-Type": "application/x-www-form-urlencoded" }, body: reqBody.toString() },
+    );
+    twilioData = await res.json() as { sid?: string; status?: string; error_message?: string };
+    ok = res.ok;
+  } catch (err) {
+    twilioData = { error_message: err instanceof Error ? err.message : String(err) };
+    ok = false;
+  }
+
+  await supabase.from("communications").insert({
+    order_id: opts.orderId ?? null,
+    confirmation_id: opts.confirmationId ?? null,
+    type: "sms_outbound",
+    direction: "outbound",
+    body: opts.message,
+    phone_from: TWILIO_FROM_NUMBER,
+    phone_to: phone,
+    status: ok ? (twilioData.status ?? "sent") : "failed",
+    twilio_sid: twilioData.sid ?? null,
+    sent_by: opts.sentBy ?? "auto_sequence:sms_5min",
+  });
+
+  return { sent: ok, sid: twilioData.sid, error: ok ? undefined : (twilioData.error_message ?? "Twilio error") };
 }
 
 export async function writeAuditLog(
@@ -275,6 +261,44 @@ async function loadSeqTemplate(
   supabase: SupabaseClient,
   slug: string,
 ): Promise<{ subject: string; body: string; ctaLabel: string; ctaUrl: string } | null> {
+  // COMMS-TEMPLATE-HUB-ACTIVE-POINTER 2026-05-23 — Option A (default-safe).
+  // The admin Hub now writes the Active template id for each automation
+  // slot into comms_settings under key='seq_template_<slug>'. If that row
+  // exists AND it points to a non-archived, channel='email' template, we
+  // load by id and use that template's body / subject / CTA. If the row
+  // is missing, the pointer references a missing or archived template,
+  // or the read fails for any other reason, we fall back to the original
+  // slug-based lookup so recovery automation NEVER stops sending because
+  // of a misconfigured pointer.
+  const pointerKey = `seq_template_${slug}`;
+  try {
+    const { data: ptr } = await supabase
+      .from("comms_settings")
+      .select("value")
+      .eq("key", pointerKey)
+      .maybeSingle();
+    const activeId = (ptr?.value as string | null | undefined) ?? null;
+    if (activeId && activeId.trim()) {
+      const { data: row } = await supabase
+        .from("email_templates")
+        .select("subject, body, cta_label, cta_url, archived, channel")
+        .eq("id", activeId.trim())
+        .maybeSingle();
+      if (row && !row.archived && row.channel === "email") {
+        return {
+          subject:  row.subject  as string,
+          body:     row.body     as string,
+          ctaLabel: row.cta_label as string,
+          ctaUrl:   row.cta_url   as string,
+        };
+      }
+      // Pointer present but template missing / archived / wrong channel.
+      // Fall through to the slug fallback below — do not abort the send.
+    }
+  } catch {
+    // Network / RLS / schema cache hiccup. Fall through to slug fallback.
+  }
+
   const { data, error } = await supabase
     .from("email_templates")
     .select("subject, body, cta_label, cta_url")
@@ -317,7 +341,9 @@ function buildEmailFromTemplate(
      .replace(/\{letter_type\}/g, vars.letter_type)
      .replace(/\{resume_url\}/g, vars.resume_url)
      .replace(/\{discount_code\}/g, vars.discount_code ?? DISCOUNT_CODE)
-     .replace(/\{resume_url_with_promo\}/g, `${vars.resume_url}&promo=${encodeURIComponent(vars.discount_code ?? DISCOUNT_CODE)}`);
+     // {resume_url_with_promo} now resolves to the SAME bare stable link as
+     // {resume_url}. Retained so existing templates keep rendering.
+     .replace(/\{resume_url_with_promo\}/g, vars.resume_url);
   const processedBody = sub(tmpl.body);
   const paragraphs = processedBody
     .split("\n\n")
@@ -372,7 +398,8 @@ function build24hEmail(firstName: string, resumeLink: string, letterType: string
 function build3DayEmail(firstName: string, resumeLink: string, letterType: string, orderId: string): string {
   const name = escapeHtml(firstName || "there");
   const label = letterType === "psd" ? "PSD Letter" : "ESA Letter";
-  const resumeWithPromo = `${resumeLink}${resumeLink.includes("?") ? "&" : "?"}promo=${encodeURIComponent(DISCOUNT_CODE)}`;
+  // No promo in customer links — see ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001.
+  const resumeWithPromo = resumeLink;
   const body = `
     <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Hi <strong>${name}</strong>,</p>
     <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.7;">We want to make it easy for you to get your <strong>${label}</strong>. Here&rsquo;s an exclusive <strong>$20 off</strong> just for you &mdash; limited time only.</p>
@@ -552,9 +579,6 @@ export async function runLeadFollowupSequence(
 
     const results = emptyResults();
     const masterLayout = await loadMasterLayout(supabase);
-    // Admin-configurable 5-minute SMS recovery (enable toggle + template + promo).
-    // Read once per run. Email stages are UNAFFECTED by this config.
-    const smsConfig = await loadRecoverySmsConfig(supabase);
 
     for (const lead of (leads ?? [])) {
       if (lead.payment_intent_id || lead.paid_at || lead.status === "completed") { results.skipped++; continue; }
@@ -584,13 +608,7 @@ export async function runLeadFollowupSequence(
         if (_resumeLink === null) {
           const issued = await issueResumeLink({
             supabaseUrl: SUPABASE_URL,
-            // LEAD-FOLLOWUP-SEQUENCE-SECURE-RESUME-REGRESSION-RECOVERY-001.
-            // This read `SUPABASE_SERVICE_ROLE_KEY` — an identifier that does
-            // not exist in this file. The secure-token rollout copied the call
-            // site from TEST, where the const IS named that, without adapting
-            // it to LIVE's `SERVICE_ROLE_KEY`. Every run threw a ReferenceError
-            // from 2026-08-01 22:30 UTC onward and the whole sequence stalled.
-            serviceRoleKey: SERVICE_ROLE_KEY,
+            serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
             siteUrl: SITE_URL,
             confirmationId: lead.confirmation_id as string,
             isPsd: letterType === "psd",
@@ -610,32 +628,29 @@ export async function runLeadFollowupSequence(
       const confirmationId = lead.confirmation_id as string;
 
       // ── 5-minute SMS recovery (independent of the email stage) ───────────────
-      // Strict trigger: SMS recovery enabled (admin toggle), unpaid (already
-      // filtered above), age >= 5 min, has phone, not SMS-opted-out, and not
-      // already sent. Idempotency uses an ATOMIC claim (flip sms_5min_sent_at
-      // null -> now) so concurrent/repeated cron runs send at most one 5-minute
-      // SMS per lead. When the toggle is OFF we skip entirely (no claim, no
-      // send) — email stages below are unaffected, and manual Order->Comms SMS
-      // is a separate path that this never touches.
+      // Strict trigger: unpaid (already filtered above), age >= 5 min, has phone,
+      // not SMS-opted-out, and not already sent. Idempotency uses an ATOMIC claim
+      // (flip sms_5min_sent_at null -> now) so concurrent/repeated cron runs send
+      // at most one 5-minute SMS per lead.
       //
       // LEAD-FOLLOWUP-SEQUENCE-SECURE-RESUME-REGRESSION-RECOVERY-001 — ORDERING.
       // The claim used to happen FIRST and the secure resume link was minted
-      // afterwards. When the link call threw (the undeclared identifier fixed
-      // above), the claim survived and the SMS never went out: seven leads were
+      // afterwards. On LIVE the link call threw (an undeclared identifier), so
+      // the claim survived and the SMS never went out: seven leads were
       // permanently stamped "sent" having received nothing, and because the
       // throw escaped the per-lead scope it aborted the whole run and stalled
       // every email stage too.
       //
       // Now: mint the link and render the message BEFORE claiming, so a link
-      // failure costs nothing and is retried next tick; and if GHL rejects the
-      // message, RELEASE the claim so the lead is retried rather than silently
-      // written off. `sms_5min_sent_at` is left populated only when the SMS was
-      // actually accepted as sent.
-      if (smsConfig.enabled && ageMin >= 5 && !lead.sms_5min_sent_at && !lead.sms_opted_out && phone) {
+      // failure costs nothing and is retried next tick; and if the sender
+      // rejects the message, RELEASE the claim so the lead is retried rather
+      // than silently written off. `sms_5min_sent_at` is left populated only
+      // when the SMS was actually accepted.
+      if (ageMin >= 5 && !lead.sms_5min_sent_at && !lead.sms_opted_out && phone) {
         // 1. Build the message first. Nothing is claimed if this fails.
         let smsMsg: string | null = null;
         try {
-          smsMsg = renderRecoverySms(smsConfig.template, { firstName, petName, resumeUrl: await getResumeLink(), promoCode: smsConfig.promoCode });
+          smsMsg = buildRecoverySms(firstName, petName, await getResumeLink());
         } catch (linkErr) {
           results.sms_link_failed++;
           await writeAuditLog(supabase, {
@@ -657,8 +672,8 @@ export async function runLeadFollowupSequence(
             .is("sms_5min_sent_at", null)
             .select("id");
           if (!claimErr && claimed && claimed.length > 0) {
-            // 3. Send through GHL.
-            const smsRes = await sendRecoverySmsViaComms({
+            // 3. Send.
+            const smsRes = await sendSms(supabase, {
               orderId, confirmationId, toPhone: phone, message: smsMsg, sentBy: "auto_sequence:sms_5min",
             });
             await writeAuditLog(supabase, {

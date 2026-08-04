@@ -68,6 +68,8 @@ const LpEsaHousingPage = lazy(() => import("../pages/lp-esa-housing/page"));
 const MetaEsaLetterPage = lazy(() => import("../pages/meta-esa-letter/page"));
 // Recovery click bridge — /r/:stage?o=<confirmationId>&dc=<discountCode>
 const RecoveryClickBridge = lazy(() => import("../pages/r/page"));
+// ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001 — stable /checkout/<slug> entry.
+const CheckoutLinkPage = lazy(() => import("../pages/checkout-link/page"));
 // Consultation Slot Recovery Funnel — unpaid lead recovery V1
 const ConsultationRequestPage = lazy(() => import("../pages/consultation-request/page"));
 // ESA laws / compliance content pages (informational, indexable).
@@ -231,6 +233,9 @@ const routes: RouteObject[] = [
   { path: "/apply-page", element: <Navigate to="/assessment" replace /> },
   // Recovery click bridge — fires recovery_click then redirects to /assessment.
   { path: "/r/:stage", element: <P C={RecoveryClickBridge} /> },
+  // Stable, non-expiring, reusable customer recovery link.
+  { path: "/checkout/:slug", element: <P C={CheckoutLinkPage} /> },
+  { path: "/checkout", element: <P C={CheckoutLinkPage} /> },
   { path: "/assessment", element: <P C={AssessmentPage} /> },
   { path: "/assessment/thank-you", element: <P C={AssessmentThankYouPage} /> },
   { path: "/customer-login", element: <P C={CustomerLoginPage} /> },

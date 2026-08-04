@@ -1650,7 +1650,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
                               <p className="text-xs text-emerald-700 mt-0.5 leading-relaxed">
                                 Each lead will receive their own unique resume link:{" "}
                                 <span className="font-mono text-[10px] bg-emerald-100 px-1.5 py-0.5 rounded">
-                                  pawtenant.com/assessment?resume=ORDER_ID
+                                  pawtenant.com/checkout/AB7K92QD
                                 </span>
                                 {" "}— clicking it takes them directly to their saved checkout, not the first step.
                               </p>
