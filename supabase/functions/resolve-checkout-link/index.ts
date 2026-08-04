@@ -116,6 +116,9 @@ serve(async (req) => {
           couponCode: r.coupon_code ?? null,
           couponDiscount: r.coupon_discount ?? null,
           otpVerified: r.otp_verified === true,
+          // COUNT only — drives multi-pet pricing (1 -> $129, 2-3 -> $149).
+          // Without it checkout defaults to one pet and undercharges by $20.
+          petCount: Number(r.pet_count ?? 1) || 1,
         },
       }),
       { status: 200, headers: { ...CORS, ...SECURITY, "Content-Type": "application/json" } },

@@ -226,7 +226,15 @@ export default function PSDAssessmentPage() {
             last_name: cr.lastName, email: cr.email, phone: cr.phone, state: cr.state,
             delivery_speed: cr.deliverySpeed, price: cr.price, plan_type: cr.planType,
             letter_type: cr.letterType, package_key: cr.packageKey,
-            billing_plan: cr.billingPlan, assessment_answers: {}, already_paid: false,
+            billing_plan: cr.billingPlan,
+            // Only the pet COUNT is restored — enough for multi-pet pricing,
+            // no intake detail. Blank entries are never rendered because
+            // checkout resume does not show the assessment.
+            assessment_answers: {
+              pets: Array.from({ length: Math.max(Number(cr.petCount ?? 1) || 1, 1) },
+                () => ({ name: "", age: "", breed: "", type: "", weight: "" })),
+            },
+            already_paid: false,
           };
           stableOtpVerified = cr.otpVerified === true;
         }
