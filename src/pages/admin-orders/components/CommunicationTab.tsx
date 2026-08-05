@@ -383,6 +383,16 @@ export default function CommunicationTab({
     return () => window.removeEventListener("pt:ra-contact-customer", handler);
   }, []);
 
+  // LEAD-FOLLOWUP-GHL-DELIVERY-AND-ADMIN-RESUME-CHECKOUT-EMAIL-002: an action
+  // mounted inside the frozen OrderDetailModal (Send Resume Checkout Email)
+  // has just written a communications row. Reload so the admin sees the row
+  // they created instead of an unchanged timeline they have to guess about.
+  useEffect(() => {
+    const handler = () => { void loadCommLogs(); };
+    window.addEventListener("pt:comms-refresh", handler);
+    return () => window.removeEventListener("pt:comms-refresh", handler);
+  }, [loadCommLogs]);
+
   // ── Build unified timeline sorted oldest → newest (for chat layout) ────
   // communications is primary; email_log entries are kept ONLY if not already
   // represented in communications (same type + same minute).

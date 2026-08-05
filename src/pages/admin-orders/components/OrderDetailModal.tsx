@@ -36,6 +36,7 @@ import RefundModal from "./RefundModal";
 import OrderRaOverviewStatus from "./OrderRaOverviewStatus";
 import OrderAdditionalPetPanel from "./OrderAdditionalPetPanel";
 import OrderAdditionalPetMenuAction from "./OrderAdditionalPetMenuAction";
+import OrderResumeCheckoutEmailAction from "./OrderResumeCheckoutEmailAction";
 import OrderRaDocPanel from "./OrderRaDocPanel";
 import OrderDocumentVersionsPanel from "./OrderDocumentVersionsPanel";
 import OrderDocumentReviewPanel from "./OrderDocumentReviewPanel";
@@ -3318,6 +3319,18 @@ export default function OrderDetailModal({
                         only the mount. The child fails closed and renders a DISABLED
                         item for completed / clinically locked orders. */}
                     <OrderAdditionalPetMenuAction
+                      orderId={order.id}
+                      confirmationId={order.confirmation_id}
+                      onCloseMenu={() => setShowHeaderMore(false)}
+                    />
+                    {/* LEAD-FOLLOWUP-GHL-DELIVERY-AND-ADMIN-RESUME-CHECKOUT-EMAIL-002:
+                        isolated component mount. Server-ruled eligibility,
+                        confirmation dialog, idempotency, cooldown and comms
+                        refresh all live in the child; this frozen file gets
+                        only the mount. The child fails closed and renders a
+                        DISABLED item with a reason for paid / completed /
+                        cancelled / refunded / archived / no-email orders. */}
+                    <OrderResumeCheckoutEmailAction
                       orderId={order.id}
                       confirmationId={order.confirmation_id}
                       onCloseMenu={() => setShowHeaderMore(false)}

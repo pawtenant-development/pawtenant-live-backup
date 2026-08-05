@@ -1,6 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveAuditActor, maskPhone } from "../_shared/auditActor.ts";
 import { issueResumeLink } from "../_shared/resumeLink.ts";
+// The TEST tester-number containment guard now lives inside sendGhlSms, so it
+// applies to EVERY caller of the canonical path — including the automated
+// recovery sequence — rather than only to the endpoint that remembered to
+// import it. On LIVE it is inert (it stands down outside the TEST project).
+import { sendGhlSms } from "../_shared/ghlSms.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -18,10 +23,9 @@ const CORS_HEADERS = {
 //   GHL_API_KEY        → your GHL Private Integration / API key
 //   GHL_LOCATION_ID   → your GHL sub-account Location ID
 //   GHL_PHONE_NUMBER  → the GHL-owned number (e.g. +14099655885)
-const GHL_API_KEY      = Deno.env.get("GHL_API_KEY") ?? "";
-const GHL_LOCATION_ID  = Deno.env.get("GHL_LOCATION_ID") ?? "";
+// GHL_API_KEY / GHL_LOCATION_ID are read inside `_shared/ghlSms.ts`; only the
+// sending number is needed here, for the communications row.
 const GHL_FROM_NUMBER  = Deno.env.get("GHL_PHONE_NUMBER") ?? "";
-const GHL_API_BASE     = "https://services.leadconnectorhq.com";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -102,108 +106,57 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  if (!GHL_API_KEY || !GHL_LOCATION_ID) {
-    return new Response(
-      JSON.stringify({ ok: false, error: "GHL_API_KEY and GHL_LOCATION_ID secrets not configured" }),
-      { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
-    );
-  }
-
-  // Normalize phone to E.164
-  let phone = toPhone.replace(/\D/g, "");
-  if (phone.length === 10) phone = "1" + phone;
-  if (!phone.startsWith("+")) phone = "+" + phone;
-
-  // ── Step 1: Look up or create GHL contact for this phone number ──────────
-  let ghlContactId: string | null = null;
-
-  try {
-    // Search contact by phone
-    const searchRes = await fetch(
-      `${GHL_API_BASE}/contacts/?locationId=${GHL_LOCATION_ID}&query=${encodeURIComponent(phone)}`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${GHL_API_KEY}`,
-          Version: "2021-07-28",
-        },
-      }
-    );
-
-    if (searchRes.ok) {
-      const searchData = await searchRes.json() as { contacts?: Array<{ id: string }> };
-      if (searchData.contacts && searchData.contacts.length > 0) {
-        ghlContactId = searchData.contacts[0].id;
-        console.log(`[GHL-SEND-SMS] Found existing GHL contact: ${ghlContactId}`);
-      }
-    }
-
-    // If not found, create a new contact
-    if (!ghlContactId) {
-      const createRes = await fetch(`${GHL_API_BASE}/contacts/`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${GHL_API_KEY}`,
-          Version: "2021-07-28",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          locationId: GHL_LOCATION_ID,
-          phone,
-          source: "Admin Portal",
-        }),
-      });
-
-      if (createRes.ok) {
-        const createData = await createRes.json() as { contact?: { id: string } };
-        ghlContactId = createData.contact?.id ?? null;
-        console.log(`[GHL-SEND-SMS] Created GHL contact: ${ghlContactId}`);
-      } else {
-        const errText = await createRes.text();
-        console.warn(`[GHL-SEND-SMS] Could not create contact: ${errText}`);
-      }
-    }
-  } catch (err) {
-    console.warn("[GHL-SEND-SMS] Contact lookup/create error:", String(err));
-  }
-
-  // ── Step 2: Send SMS via GHL Conversations API ───────────────────────────
-  if (!ghlContactId) {
-    return new Response(
-      JSON.stringify({ ok: false, error: "Could not find or create GHL contact for this phone number" }),
-      { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
-    );
-  }
-
-  let ghlMessageId: string | null = null;
-
-  const sendRes = await fetch(`${GHL_API_BASE}/conversations/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${GHL_API_KEY}`,
-      Version: "2021-07-28",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      type: "SMS",
-      contactId: ghlContactId,
-      locationId: GHL_LOCATION_ID,
-      fromNumber: GHL_FROM_NUMBER || undefined,
-      message: outboundMessage,
-    }),
+  // ── Provider call ─────────────────────────────────────────────────────────
+  // LEAD-FOLLOWUP-GHL-DELIVERY-AND-ADMIN-RESUME-CHECKOUT-EMAIL-002.
+  //
+  // Phone normalisation, contact resolve/create and the Conversations send used
+  // to be written out inline here. They now live in `_shared/ghlSms.ts`, because
+  // the automated recovery sequence was moved onto this same provider and two
+  // hand-maintained copies of the GHL protocol is exactly how the two paths
+  // drifted apart in the first place. One implementation, one classification
+  // table, two callers.
+  //
+  // `checkDnd: false` is deliberate and preserves this endpoint's existing
+  // behaviour: this is an interactive one-off send an admin is watching, and
+  // adding a provider-side DND round trip here would change a working LIVE
+  // admin workflow. The AUTOMATED sequence sets `checkDnd: true`, where an
+  // unnoticed STOP would otherwise be re-messaged on a schedule.
+  const smsRes = await sendGhlSms({
+    toPhone,
+    message: outboundMessage,
+    checkDnd: false,
+    contactSource: "Admin Portal",
   });
 
-  const sendData = await sendRes.json() as {
-    messageId?: string;
-    id?: string;
-    message?: string;
-    msg?: string;
-    error?: string;
-  };
+  const phone = smsRes.phone || toPhone;
+  const ghlContactId = smsRes.contactId;
+  const ghlMessageId = smsRes.messageId;
 
-  if (!sendRes.ok) {
-    const errMsg = sendData.message ?? sendData.msg ?? sendData.error ?? `GHL HTTP ${sendRes.status}`;
-    console.error("[GHL-SEND-SMS] ❌ GHL send failed:", errMsg, sendData);
+  // Refusals that never reached the provider keep their original contract: an
+  // explicit status, and NO communications row — there was no attempt to log.
+  if (smsRes.failureCode === "test_guard_blocked") {
+    console.warn("[GHL-SEND-SMS] TEST tester guard refused send to non-approved number");
+    return new Response(
+      JSON.stringify({ ok: false, blocked_by: "test_tester_guard", error: smsRes.failureReason }),
+      { status: 403, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+    );
+  }
+  if (smsRes.failureCode === "provider_not_configured") {
+    return new Response(
+      JSON.stringify({ ok: false, error: "GHL_API_KEY and GHL_LOCATION_ID secrets not configured" }),
+      { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+    );
+  }
+  if (smsRes.failureCode === "contact_unavailable") {
+    return new Response(
+      JSON.stringify({ ok: false, error: "Could not find or create GHL contact for this phone number" }),
+      { status: 500, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+    );
+  }
+
+  if (!smsRes.ok) {
+    const errMsg = smsRes.failureReason ?? "GHL send failed";
+    console.error("[GHL-SEND-SMS] ❌ GHL send failed:", smsRes.failureCode, errMsg);
 
     // Log failed attempt to communications
     const { data: failedComm } = await supabase.from("communications").insert({
@@ -217,6 +170,8 @@ Deno.serve(async (req: Request) => {
       status: "failed",
       sent_by: sentBy,
       twilio_sid: ghlContactId ? `ghl:${ghlContactId}` : null,
+      failure_code: smsRes.failureCode,
+      failure_reason: smsRes.failureReason,
     }).select("id").maybeSingle();
 
     const failedCommId = (failedComm as { id?: string } | null)?.id ?? null;
@@ -242,7 +197,6 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  ghlMessageId = sendData.messageId ?? sendData.id ?? null;
   console.log(`[GHL-SEND-SMS] ✅ Sent via GHL — messageId: ${ghlMessageId}, to: ${phone}`);
 
   // ── Step 3: Log success to communications table ───────────────────────────

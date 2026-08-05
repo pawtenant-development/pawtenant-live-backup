@@ -16,6 +16,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 import { issueResumeLink } from "../_shared/resumeLink.ts";
+import { sendGhlSms, normalizeE164, type GhlSmsOutcome } from "../_shared/ghlSms.ts";
 
 type SupabaseClient = ReturnType<typeof createClient>;
 
@@ -23,11 +24,15 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 
-// Twilio (same secrets the send-sms function already uses). If any are missing
-// the SMS step degrades gracefully (logs a failed comms row, never throws).
-const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
-const TWILIO_AUTH_TOKEN  = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
-const TWILIO_FROM_NUMBER = Deno.env.get("TWILIO_PHONE_NUMBER") ?? "";
+// LEAD-FOLLOWUP-GHL-DELIVERY-AND-ADMIN-RESUME-CHECKOUT-EMAIL-002
+//
+// The direct Twilio dependency is GONE. This sequence used to call the Twilio
+// REST API itself while every other PawTenant SMS producer went through GHL —
+// and Twilio is not configured on LIVE, so 642 consecutive automated recovery
+// SMS short-circuited with "Twilio not configured or phone missing" before any
+// HTTP call was made. Owner decision: GHL is the one canonical SMS path.
+// Do not reintroduce TWILIO_* secrets here.
+const GHL_FROM_NUMBER = Deno.env.get("GHL_PHONE_NUMBER") ?? "";
 
 const FROM_EMAIL = "PawTenant <hello@pawtenant.com>";
 // Env-driven. Was hardcoded to the LIVE origin, which in TEST produced recovery
@@ -38,9 +43,11 @@ const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const COMPANY_DOMAIN = "pawtenant.com";
 const DISCOUNT_CODE = "20PAW";
-// SMS recovery discount code (task spec). Must exist as a Stripe coupon/promotion
-// code for the $20 off to apply at checkout.
-const SMS_DISCOUNT_CODE = "PAW20";
+// The SMS recovery discount constant that used to live here is DELETED, not
+// merely unreferenced. Leaving a dead `SMS_DISCOUNT_CODE = "PAW20"` in the file
+// is how the previous removal only half-worked: the URL parameter went, the
+// constant stayed, and the next edit put it back into the message body.
+// Automated recovery copy carries no discount. Ever.
 // Safe fallback when an order has no pet name in assessment data.
 const PET_FALLBACK = "your pet";
 
@@ -79,11 +86,22 @@ export interface SequenceResults {
   sms_send_failed: number;
 }
 
+/** One stage a dry run determined WOULD fire. Never contains PII. */
+export interface SequencePlanEntry {
+  confirmation_id: string;
+  order_id: string;
+  stage: string;
+  channel: "sms" | "email";
+}
+
 export interface SequenceRunResult {
   ok: boolean;
   processed: number;
   results: SequenceResults;
   error?: string;
+  /** Present only on a dry run. Empty array means nothing would be sent. */
+  dry_run?: boolean;
+  plan?: SequencePlanEntry[];
 }
 
 function emptyResults(): SequenceResults {
@@ -140,80 +158,174 @@ export function resolvePetName(assessment: unknown): string {
   }
 }
 
-// Render the 5-minute recovery SMS. Short, safe, no diagnosis / ESA / PSD /
-// disability / "doctor" wording. Pet name falls back to "your pet". The resume
-// link carries the promo so the discount auto-applies at checkout.
-function buildRecoverySms(firstName: string, petName: string, resumeUrl: string): string {
+/**
+ * Render the 5-minute recovery SMS.
+ *
+ * This copy is SPECIFIED, not stylistic — LEAD-FOLLOWUP-GHL-DELIVERY-AND-ADMIN-
+ * RESUME-CHECKOUT-EMAIL-002 §"SMS COPY" fixes it verbatim:
+ *
+ *   Hi {first_name}, you can complete your existing PawTenant order here:
+ *   {stable_checkout_url}. Reply STOP to opt out.
+ *
+ * Constraints baked in, each one from a real regression:
+ *   • NO discount code. PAW20 survived one earlier fix because that fix removed
+ *     promo URL PARAMETERS while the code stayed hard-coded in the message
+ *     BODY. Any discount must come from a separate, explicit Admin action.
+ *   • NO assessment language. The customer is already at checkout; telling them
+ *     to "finish your assessment" sends them backwards.
+ *   • NO diagnosis / ESA / PSD / disability / "doctor" wording — this lands in
+ *     a phone's lock screen.
+ *   • The URL is the stable /checkout/<slug> link, which carries no query
+ *     string, so nothing can be smuggled onto it here.
+ *   • "Reply STOP to opt out" is required and must remain the last sentence.
+ */
+function buildRecoverySms(firstName: string, resumeUrl: string): string {
   const name = (firstName || "").trim() || "there";
-  const pet = (petName || "").trim() || PET_FALLBACK;
-  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001: never append a promo to a
-  // customer link. The stable /checkout/<slug> URL carries no query string.
-  const url = resumeUrl;
-  // LEAD-FOLLOWUP-SMS-RETRY-LOOP-001: no automatic discount in ordinary
-  // recovery copy. The earlier fix removed promo URL PARAMETERS; this line
-  // still hard-coded the code in the message BODY, which is how PAW20 kept
-  // reaching customers. A discount may only come from a separate, explicit
-  // Admin-selected action.
-  return `Hi ${name}, we saved your PawTenant checkout for ${pet}. Complete your PawTenant order here: ${url}. Reply STOP to opt out.`;
+  return `Hi ${name}, you can complete your existing PawTenant order here: ${resumeUrl}. Reply STOP to opt out.`;
 }
 
-// Inline Twilio SMS send + communications log (mirrors the send-sms function so
-// the cron stays self-contained — no inter-function HTTP/auth roundtrip).
-// Never throws.
-async function sendSms(
-  supabase: SupabaseClient,
-  opts: { orderId: string; confirmationId: string; toPhone: string; message: string; sentBy?: string },
-): Promise<{ sent: boolean; sid?: string; error?: string }> {
-  let phone = (opts.toPhone || "").replace(/\D/g, "");
-  if (phone.length === 10) phone = "1" + phone;
-  if (phone && !phone.startsWith("+")) phone = "+" + phone;
+/**
+ * The idempotency anchor for ONE provider attempt.
+ *
+ * `sms_sequence_attempts` already holds one row per (order, stage, channel)
+ * with a running `attempt_count`. The Nth attempt on a stage therefore has a
+ * deterministic name, and that name is written to
+ * `communications.dedupe_key`, which carries a UNIQUE partial index. The index
+ * — not application logic — is what makes "one provider attempt = exactly one
+ * communication record" true even across concurrent cron runs and retries.
+ */
+function smsAttemptIdempotencyKey(orderId: string, stage: string, attemptNo: number): string {
+  return `seq:${orderId}:${stage}:sms:${attemptNo}`;
+}
 
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER || !phone) {
-    await supabase.from("communications").insert({
+/** Attempts already recorded for this stage. 0 when never attempted. */
+async function currentAttemptCount(
+  supabase: SupabaseClient, orderId: string, stage: string,
+): Promise<number> {
+  const { data } = await supabase
+    .from("sms_sequence_attempts")
+    .select("attempt_count")
+    .eq("order_id", orderId).eq("stage", stage).eq("channel", "sms")
+    .maybeSingle();
+  return Number((data as { attempt_count?: number } | null)?.attempt_count ?? 0);
+}
+
+interface RecoverySmsResult {
+  sent: boolean;
+  outcome: GhlSmsOutcome;
+  providerMessageId: string | null;
+  failureCode: string | null;
+  failureReason: string | null;
+  idempotencyKey: string;
+  /** True when this exact attempt key was already logged, so nothing was sent. */
+  duplicateSuppressed: boolean;
+}
+
+/**
+ * Send one recovery SMS through the canonical GHL path and log EXACTLY one
+ * communications row for it.
+ *
+ * SEQUENCE — and every step of it is load-bearing:
+ *
+ *   1. Compute this attempt's idempotency key from the durable attempt counter.
+ *   2. CLAIM the key by inserting the communications row with status
+ *      `sending`. The unique index on `dedupe_key` means a second caller
+ *      holding the same key loses the insert and returns without sending.
+ *   3. Call the provider.
+ *   4. UPDATE that same row in place with the real outcome.
+ *
+ * Why claim with `sending` and not `sent`: an earlier incident stamped success
+ * BEFORE the side effect, so an exception in between left seven leads
+ * permanently marked as messaged having received nothing. A crash here leaves a
+ * row reading `sending`, which is the truth — the attempt was started and its
+ * result is unknown — and it is never mistaken for a delivery.
+ *
+ * Never throws.
+ */
+async function sendRecoverySms(
+  supabase: SupabaseClient,
+  opts: { orderId: string; confirmationId: string; stage: string; toPhone: string; message: string },
+): Promise<RecoverySmsResult> {
+  const attemptNo = (await currentAttemptCount(supabase, opts.orderId, opts.stage)) + 1;
+  const idempotencyKey = smsAttemptIdempotencyKey(opts.orderId, opts.stage, attemptNo);
+
+  const { data: claimRow, error: claimErr } = await supabase
+    .from("communications")
+    .insert({
       order_id: opts.orderId ?? null,
       confirmation_id: opts.confirmationId ?? null,
       type: "sms_outbound",
       direction: "outbound",
       body: opts.message,
-      phone_from: TWILIO_FROM_NUMBER || null,
-      phone_to: phone || null,
-      status: "failed",
-      sent_by: opts.sentBy ?? "auto_sequence:sms_5min",
-    });
-    return { sent: false, error: "Twilio not configured or phone missing" };
+      phone_from: GHL_FROM_NUMBER || null,
+      phone_to: opts.toPhone || null,
+      status: "sending",
+      // System actor. This is a cron-initiated send with no human behind it and
+      // it must never be attributable to an employee.
+      sent_by: "PawTenant System",
+      dedupe_key: idempotencyKey,
+      sequence_stage: opts.stage,
+    })
+    .select("id")
+    .maybeSingle();
+
+  const commId = (claimRow as { id?: string } | null)?.id ?? null;
+  if (claimErr || !commId) {
+    // Unique violation on dedupe_key is the expected, healthy path here: this
+    // exact attempt is already owned. Anything else is a genuine logging
+    // failure — either way we refuse to send, because an unlogged send is
+    // exactly the invisible message this incident was made of.
+    return {
+      sent: false,
+      outcome: "retryable",
+      providerMessageId: null,
+      failureCode: "attempt_already_logged",
+      failureReason: `Attempt ${attemptNo} was not claimed (${claimErr?.code ?? "no row"}) — not sent.`,
+      idempotencyKey,
+      duplicateSuppressed: true,
+    };
   }
 
-  const credentials = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
-  const reqBody = new URLSearchParams({ To: phone, From: TWILIO_FROM_NUMBER, Body: opts.message });
-
-  let twilioData: { sid?: string; status?: string; error_message?: string } = {};
-  let ok = false;
-  try {
-    const res = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
-      { method: "POST", headers: { Authorization: `Basic ${credentials}`, "Content-Type": "application/x-www-form-urlencoded" }, body: reqBody.toString() },
-    );
-    twilioData = await res.json() as { sid?: string; status?: string; error_message?: string };
-    ok = res.ok;
-  } catch (err) {
-    twilioData = { error_message: err instanceof Error ? err.message : String(err) };
-    ok = false;
-  }
-
-  await supabase.from("communications").insert({
-    order_id: opts.orderId ?? null,
-    confirmation_id: opts.confirmationId ?? null,
-    type: "sms_outbound",
-    direction: "outbound",
-    body: opts.message,
-    phone_from: TWILIO_FROM_NUMBER,
-    phone_to: phone,
-    status: ok ? (twilioData.status ?? "sent") : "failed",
-    twilio_sid: twilioData.sid ?? null,
-    sent_by: opts.sentBy ?? "auto_sequence:sms_5min",
+  const res = await sendGhlSms({
+    toPhone: opts.toPhone,
+    message: opts.message,
+    // Automated send: a STOP the customer texted to the GHL number is invisible
+    // to orders.sms_opted_out, so DND must be verified provider-side.
+    checkDnd: true,
+    contactSource: "PawTenant Checkout Recovery",
   });
 
-  return { sent: ok, sid: twilioData.sid, error: ok ? undefined : (twilioData.error_message ?? "Twilio error") };
+  await supabase
+    .from("communications")
+    .update({
+      status: res.ok ? "sent" : "failed",
+      phone_to: res.phone || opts.toPhone || null,
+      phone_from: res.fromNumber ?? GHL_FROM_NUMBER ?? null,
+      twilio_sid: res.messageId ? `ghl:${res.messageId}` : null,
+      failure_code: res.failureCode,
+      failure_reason: res.failureReason,
+    })
+    .eq("id", commId);
+
+  // A send that went out WITHOUT provider-side opt-out state being readable is
+  // not an error, but it must not be invisible: it means GHL's own DND
+  // enforcement was the only opt-out protection in play. Logged loudly so a
+  // credential scope regression surfaces here rather than in a complaint.
+  if (res.ok && !res.dndVerified) {
+    console.warn(
+      `[lead-followup-sequence] ${opts.confirmationId} ${opts.stage}: sent with UNVERIFIED opt-out state — ${res.dndDetail}`,
+    );
+  }
+
+  return {
+    sent: res.ok,
+    outcome: res.outcome,
+    providerMessageId: res.messageId,
+    failureCode: res.failureCode,
+    failureReason: res.failureReason,
+    idempotencyKey,
+    duplicateSuppressed: false,
+  };
 }
 
 export async function writeAuditLog(
@@ -553,16 +665,22 @@ async function heartbeat(
  */
 export async function runLeadFollowupSequence(
   supabase: SupabaseClient,
-  opts?: { invocationSource?: "cron" | "manual" | "unknown" },
+  opts?: { invocationSource?: "cron" | "manual" | "unknown"; dryRun?: boolean },
 ): Promise<SequenceRunResult> {
   const invocationSource = opts?.invocationSource ?? "unknown";
+  const dryRun = opts?.dryRun === true;
+  const plan: SequencePlanEntry[] = [];
   const startedAtIso = new Date().toISOString();
 
   // Heartbeat — RUN STARTED. Always fires regardless of outcome.
-  await heartbeat(supabase, {
-    last_run_started_at: startedAtIso,
-    last_invocation_source: invocationSource,
-  });
+  // Suppressed on a dry run: a rehearsal must not move the operational clock
+  // admins read to answer "when did the sequence last actually run?".
+  if (!dryRun) {
+    await heartbeat(supabase, {
+      last_run_started_at: startedAtIso,
+      last_invocation_source: invocationSource,
+    });
+  }
 
   try {
     const now = new Date();
@@ -654,18 +772,60 @@ export async function runLeadFollowupSequence(
       // Durable gate: never attempted, not delivered, not terminal, and past
       // next_retry_at. The cron still ticks every 15 min — that is only how
       // often it LOOKS, never how often a customer is contacted.
+      //
+      // DRY RUN (LEAD-FOLLOWUP-GHL-DELIVERY-...-002). Each stage's trigger is
+      // hoisted into a single named const that BOTH the dry-run branch and the
+      // real branch read. A dry run that re-derived its own predicates would be
+      // free to disagree with the sender it is supposed to be predicting, which
+      // is precisely the assurance we need before re-enabling the cron.
+      const smsStageDue =
+        ageMin >= 5 && !lead.sms_5min_sent_at && !lead.sms_opted_out;
       let smsAttemptEligible = true;
-      if (ageMin >= 5 && !lead.sms_5min_sent_at && !lead.sms_opted_out && phone) {
+      if (smsStageDue) {
         const { data: elig } = await supabase.rpc("sms_attempt_is_eligible", {
           p_order_id: orderId, p_stage: "sms_5min", p_channel: "sms",
         });
         smsAttemptEligible = elig !== false;
       }
-      if (ageMin >= 5 && !lead.sms_5min_sent_at && !lead.sms_opted_out && phone && smsAttemptEligible) {
+
+      // A due stage with no usable destination is TERMINAL, recorded once,
+      // WITHOUT a provider call and WITHOUT a communications row — nothing was
+      // attempted, so there is nothing to log as an attempt. Previously the
+      // phone condition sat in the trigger, so a phoneless lead was silently
+      // re-evaluated on all 96 ticks a day and its state was never written
+      // down anywhere an operator could see it.
+      //
+      // TRADE-OFF, deliberate: this suppresses the stage permanently, so a
+      // phone number added or corrected AFTER this point will not trigger an
+      // automatic recovery SMS. That is the specified behaviour ("missing
+      // phone → terminal"); the Admin manual send remains available.
+      const phoneUsable = normalizeE164(phone) !== "";
+      if (smsStageDue && smsAttemptEligible && !phoneUsable && !dryRun) {
+        await supabase.rpc("sms_attempt_record", {
+          p_order_id: orderId,
+          p_stage: "sms_5min",
+          p_channel: "sms",
+          p_delivered: false,
+          p_permanent: true,
+          p_provider_status: "not_attempted",
+          p_provider_message_id: null,
+          p_failure_code: phone ? "invalid_phone" : "missing_phone",
+          p_failure_reason: phone
+            ? "Phone number on the order is not a dialable E.164 number."
+            : "No phone number on record for this customer.",
+        });
+        results.sms_send_failed++;
+      }
+
+      const smsWouldSend = smsStageDue && smsAttemptEligible && phoneUsable;
+      if (smsWouldSend && dryRun) {
+        plan.push({ confirmation_id: confirmationId, order_id: orderId, stage: "sms_5min", channel: "sms" });
+      }
+      if (smsWouldSend && !dryRun) {
         // 1. Build the message first. Nothing is claimed if this fails.
         let smsMsg: string | null = null;
         try {
-          smsMsg = buildRecoverySms(firstName, petName, await getResumeLink());
+          smsMsg = buildRecoverySms(firstName, await getResumeLink());
         } catch (linkErr) {
           results.sms_link_failed++;
           await writeAuditLog(supabase, {
@@ -687,35 +847,49 @@ export async function runLeadFollowupSequence(
             .is("sms_5min_sent_at", null)
             .select("id");
           if (!claimErr && claimed && claimed.length > 0) {
-            // 3. Send.
-            const smsRes = await sendSms(supabase, {
-              orderId, confirmationId, toPhone: phone, message: smsMsg, sentBy: "auto_sequence:sms_5min",
+            // 3. Send via the ONE canonical GHL path.
+            const smsRes = await sendRecoverySms(supabase, {
+              orderId, confirmationId, stage: "sms_5min", toPhone: phone, message: smsMsg,
             });
             await writeAuditLog(supabase, {
               action: "sms_5min_sent",
               description: `5-min recovery SMS ${smsRes.sent ? "sent" : "failed"} to order ${confirmationId}`,
               object_id: confirmationId,
-              metadata: { order_id: orderId, sms_sent: smsRes.sent, step: "sms_5min", error: smsRes.error ?? null },
+              // The stable slug is NOT recorded here. It is a customer-facing
+              // link that already lives in `communications.body`; duplicating
+              // it into audit metadata spreads it for no operational gain.
+              metadata: {
+                order_id: orderId, sms_sent: smsRes.sent, step: "sms_5min",
+                channel: "sms", provider: "ghl", outcome: smsRes.outcome,
+                failure_code: smsRes.failureCode, error: smsRes.failureReason,
+                idempotency_key: smsRes.idempotencyKey,
+              },
             });
-            // LEAD-FOLLOWUP-SMS-RETRY-LOOP-001: record the attempt DURABLY.
-            // A permanent failure (provider unconfigured, missing/invalid
-            // destination, opt-out) must never be retried; a transient one gets
-            // a bounded backoff. Without this the release below made a
-            // permanently failing send eligible again every 15 minutes.
-            const errText = String(smsRes.error ?? "");
-            const permanent =
-              /not configured|phone missing|invalid|opt.?out|unsubscrib|blacklist|blocked/i.test(errText);
-            await supabase.rpc("sms_attempt_record", {
-              p_order_id: orderId,
-              p_stage: "sms_5min",
-              p_channel: "sms",
-              p_delivered: smsRes.sent === true,
-              p_permanent: !smsRes.sent && permanent,
-              p_provider_status: smsRes.sent ? "sent" : "failed",
-              p_provider_message_id: smsRes.sid ?? null,
-              p_failure_code: smsRes.sent ? null : (permanent ? "permanent" : "retryable"),
-              p_failure_reason: smsRes.sent ? null : errText.slice(0, 300),
-            });
+            // LEAD-FOLLOWUP-SMS-RETRY-LOOP-001 / -002: record the attempt
+            // DURABLY. Classification now comes from the provider layer rather
+            // than a regex over an error string: `permanent` means the identical
+            // call cannot succeed (bad/missing number, DND, revoked credentials,
+            // hard provider rejection) and goes TERMINAL immediately, while
+            // `retryable` (timeout, 429, 5xx, network) gets the bounded
+            // 60-minute → 360-minute → terminal backoff. Without this, the claim
+            // release below makes a permanently failing send look "never
+            // attempted" on the very next 15-minute tick.
+            //
+            // A duplicate-suppressed attempt is NOT recorded: nothing reached
+            // the provider, so it must not consume a retry slot.
+            if (!smsRes.duplicateSuppressed) {
+              await supabase.rpc("sms_attempt_record", {
+                p_order_id: orderId,
+                p_stage: "sms_5min",
+                p_channel: "sms",
+                p_delivered: smsRes.sent === true,
+                p_permanent: !smsRes.sent && smsRes.outcome === "permanent",
+                p_provider_status: smsRes.sent ? "sent" : "failed",
+                p_provider_message_id: smsRes.providerMessageId,
+                p_failure_code: smsRes.sent ? null : smsRes.failureCode,
+                p_failure_reason: smsRes.sent ? null : smsRes.failureReason,
+              });
+            }
 
             if (smsRes.sent) {
               results.sms_5min++;
@@ -737,7 +911,11 @@ export async function runLeadFollowupSequence(
         }
       }
 
-      if (ageMin >= 5 && !lead.seq_30min_sent_at) {
+      const step1Due = ageMin >= 5 && !lead.seq_30min_sent_at;
+      if (step1Due && dryRun) {
+        plan.push({ confirmation_id: confirmationId, order_id: orderId, stage: "seq_30min", channel: "email" });
+      }
+      if (step1Due && !dryRun) {
         const dbTmpl30 = await loadSeqTemplate(supabase, "seq_30min");
         const label = letterType === "psd" ? "PSD Letter" : "ESA Letter";
         const subject = dbTmpl30
@@ -763,7 +941,11 @@ export async function runLeadFollowupSequence(
         continue;
       }
 
-      if (ageHours >= 24 && !lead.seq_24h_sent_at) {
+      const step2Due = ageHours >= 24 && !lead.seq_24h_sent_at;
+      if (step2Due && dryRun) {
+        plan.push({ confirmation_id: confirmationId, order_id: orderId, stage: "seq_24h", channel: "email" });
+      }
+      if (step2Due && !dryRun) {
         const dbTmpl24 = await loadSeqTemplate(supabase, "seq_24h");
         const label24 = letterType === "psd" ? "PSD Letter" : "ESA Letter";
         const subject = dbTmpl24
@@ -789,7 +971,11 @@ export async function runLeadFollowupSequence(
         continue;
       }
 
-      if (ageDays >= 3 && !lead.seq_3day_sent_at) {
+      const step3Due = ageDays >= 3 && !lead.seq_3day_sent_at;
+      if (step3Due && dryRun) {
+        plan.push({ confirmation_id: confirmationId, order_id: orderId, stage: "seq_3day", channel: "email" });
+      }
+      if (step3Due && !dryRun) {
         const dbTmpl3d = await loadSeqTemplate(supabase, "seq_3day");
         const label3d = letterType === "psd" ? "PSD Letter" : "ESA Letter";
         const subject = dbTmpl3d
@@ -815,11 +1001,16 @@ export async function runLeadFollowupSequence(
         continue;
       }
 
-      results.skipped++;
+      // "No stage fired for this lead." On a DRY RUN every real branch is
+      // gated off, so every lead reaches here and this counter would read
+      // `skipped: <all of them>` next to a plan listing work to be done — the
+      // two halves of the response contradicting each other. `plan` is the
+      // dry run's only meaningful output; the send counters are not.
+      if (!dryRun) results.skipped++;
     }
 
     const totalFired = results.step1_30min + results.step2_24h + results.step3_3day + results.sms_5min;
-    if (totalFired > 0 || results.dedup_skipped > 0) {
+    if (!dryRun && (totalFired > 0 || results.dedup_skipped > 0)) {
       await writeAuditLog(supabase, {
         action: "seq_run_complete",
         description: `Sequence run: ${totalFired} sent, ${results.dedup_skipped} dedup-skipped — 5min-email: ${results.step1_30min}, sms-5min: ${results.sms_5min}, 24h: ${results.step2_24h}, 3day: ${results.step3_3day}`,
@@ -837,7 +1028,7 @@ export async function runLeadFollowupSequence(
     // Settings panel can show "Last successful run X minutes ago" even on
     // runs where zero emails actually went out (no eligible leads).
     const finishedAtIso = new Date().toISOString();
-    await heartbeat(supabase, {
+    if (!dryRun) await heartbeat(supabase, {
       last_run_finished_at: finishedAtIso,
       last_success_at: finishedAtIso,
       last_invocation_source: invocationSource,
@@ -848,7 +1039,9 @@ export async function runLeadFollowupSequence(
       last_error_message: null,
     });
 
-    return { ok: true, processed: leads?.length ?? 0, results };
+    return dryRun
+      ? { ok: true, processed: leads?.length ?? 0, results, dry_run: true, plan }
+      : { ok: true, processed: leads?.length ?? 0, results };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(
@@ -858,13 +1051,15 @@ export async function runLeadFollowupSequence(
     // Heartbeat — ERROR path. last_error_at + last_error_message let the
     // admin UI flag a recent failure without anyone hunting through logs.
     const finishedAtIso = new Date().toISOString();
-    await heartbeat(supabase, {
+    if (!dryRun) await heartbeat(supabase, {
       last_run_finished_at: finishedAtIso,
       last_error_at: finishedAtIso,
       last_error_message: msg.slice(0, 1000),
       last_invocation_source: invocationSource,
     });
 
-    return { ok: false, processed: 0, results: emptyResults(), error: msg };
+    return dryRun
+      ? { ok: false, processed: 0, results: emptyResults(), error: msg, dry_run: true, plan }
+      : { ok: false, processed: 0, results: emptyResults(), error: msg };
   }
 }

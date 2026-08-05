@@ -123,8 +123,24 @@ Deno.serve(async (req: Request) => {
         );
       }
 
+      // ── DRY RUN ────────────────────────────────────────────────────────────
+      // LEAD-FOLLOWUP-GHL-DELIVERY-AND-ADMIN-RESUME-CHECKOUT-EMAIL-002.
+      //
+      // POST {"dryRun": true} evaluates exactly what the next real tick WOULD
+      // send and returns it, without sending anything, claiming anything,
+      // stamping anything or moving the heartbeat.
+      //
+      // This exists because the only honest way to re-enable a cron that
+      // messaged one customer 94 times is to see its intent first. It shares
+      // the real run's lead query and the real run's per-stage predicates — a
+      // rehearsal that re-derived its own eligibility could disagree with the
+      // sender it is meant to be predicting, which would make it worse than
+      // useless. It stays behind the same cron-secret gate: the plan names
+      // orders, and that is not public information.
+      const dryRun = body.dryRun === true;
       const result = await runLeadFollowupSequence(supabase, {
         invocationSource: "cron",
+        dryRun,
       });
       return json(result, result.ok ? 200 : 500);
     }
