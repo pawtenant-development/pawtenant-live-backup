@@ -149,7 +149,12 @@ function buildRecoverySms(firstName: string, petName: string, resumeUrl: string)
   // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001: never append a promo to a
   // customer link. The stable /checkout/<slug> URL carries no query string.
   const url = resumeUrl;
-  return `Hi ${name}, we saved your PawTenant checkout for ${pet}. Use code ${SMS_DISCOUNT_CODE} for $20 off and complete it securely here: ${url}. Reply STOP to opt out.`;
+  // LEAD-FOLLOWUP-SMS-RETRY-LOOP-001: no automatic discount in ordinary
+  // recovery copy. The earlier fix removed promo URL PARAMETERS; this line
+  // still hard-coded the code in the message BODY, which is how PAW20 kept
+  // reaching customers. A discount may only come from a separate, explicit
+  // Admin-selected action.
+  return `Hi ${name}, we saved your PawTenant checkout for ${pet}. Complete your PawTenant order here: ${url}. Reply STOP to opt out.`;
 }
 
 // Inline Twilio SMS send + communications log (mirrors the send-sms function so
@@ -646,7 +651,17 @@ export async function runLeadFollowupSequence(
       // rejects the message, RELEASE the claim so the lead is retried rather
       // than silently written off. `sms_5min_sent_at` is left populated only
       // when the SMS was actually accepted.
+      // Durable gate: never attempted, not delivered, not terminal, and past
+      // next_retry_at. The cron still ticks every 15 min — that is only how
+      // often it LOOKS, never how often a customer is contacted.
+      let smsAttemptEligible = true;
       if (ageMin >= 5 && !lead.sms_5min_sent_at && !lead.sms_opted_out && phone) {
+        const { data: elig } = await supabase.rpc("sms_attempt_is_eligible", {
+          p_order_id: orderId, p_stage: "sms_5min", p_channel: "sms",
+        });
+        smsAttemptEligible = elig !== false;
+      }
+      if (ageMin >= 5 && !lead.sms_5min_sent_at && !lead.sms_opted_out && phone && smsAttemptEligible) {
         // 1. Build the message first. Nothing is claimed if this fails.
         let smsMsg: string | null = null;
         try {
@@ -682,12 +697,33 @@ export async function runLeadFollowupSequence(
               object_id: confirmationId,
               metadata: { order_id: orderId, sms_sent: smsRes.sent, step: "sms_5min", error: smsRes.error ?? null },
             });
+            // LEAD-FOLLOWUP-SMS-RETRY-LOOP-001: record the attempt DURABLY.
+            // A permanent failure (provider unconfigured, missing/invalid
+            // destination, opt-out) must never be retried; a transient one gets
+            // a bounded backoff. Without this the release below made a
+            // permanently failing send eligible again every 15 minutes.
+            const errText = String(smsRes.error ?? "");
+            const permanent =
+              /not configured|phone missing|invalid|opt.?out|unsubscrib|blacklist|blocked/i.test(errText);
+            await supabase.rpc("sms_attempt_record", {
+              p_order_id: orderId,
+              p_stage: "sms_5min",
+              p_channel: "sms",
+              p_delivered: smsRes.sent === true,
+              p_permanent: !smsRes.sent && permanent,
+              p_provider_status: smsRes.sent ? "sent" : "failed",
+              p_provider_message_id: smsRes.sid ?? null,
+              p_failure_code: smsRes.sent ? null : (permanent ? "permanent" : "retryable"),
+              p_failure_reason: smsRes.sent ? null : errText.slice(0, 300),
+            });
+
             if (smsRes.sent) {
               results.sms_5min++;
             } else {
               // 4. Release OUR claim only — matched on the exact timestamp we
               //    wrote, so a claim another run legitimately took in the
-              //    meantime can never be cleared by us.
+              //    meantime can never be cleared by us. Safe to keep releasing:
+              //    sms_sequence_attempts now gates re-eligibility.
               results.sms_send_failed++;
               await supabase
                 .from("orders")
