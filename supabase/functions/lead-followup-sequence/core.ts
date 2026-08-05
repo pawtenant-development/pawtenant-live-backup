@@ -43,11 +43,19 @@ const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const COMPANY_DOMAIN = "pawtenant.com";
 const DISCOUNT_CODE = "20PAW";
-// The SMS recovery discount constant that used to live here is DELETED, not
-// merely unreferenced. Leaving a dead `SMS_DISCOUNT_CODE = "PAW20"` in the file
-// is how the previous removal only half-worked: the URL parameter went, the
-// constant stayed, and the next edit put it back into the message body.
-// Automated recovery copy carries no discount. Ever.
+// The hard-coded SMS discount constant that used to live here is DELETED.
+//
+// OWNER CORRECTION 2026-08-05 — read this before "restoring" it. The recovery
+// SMS DOES advertise a promo code again, but the code and the whole message now
+// come from the owner's saved Recovery Sequence configuration
+// (`comms_settings.recovery_sms_promo_code` / `recovery_sms_5min_template`),
+// never from a constant in this file. The distinction is the entire fix: a
+// constant here is a second source of truth that disagrees with what the Admin
+// settings screen shows, which is exactly how the wrong copy reached customers.
+//
+// The discount is TEXT IN THE BODY ONLY. It must never be appended to the
+// checkout URL as a promo/coupon/discount/code parameter, and must never be
+// pre-applied at Stripe — the customer types it in at checkout themselves.
 // Safe fallback when an order has no pet name in assessment data.
 const PET_FALLBACK = "your pet";
 
@@ -159,29 +167,97 @@ export function resolvePetName(assessment: unknown): string {
 }
 
 /**
- * Render the 5-minute recovery SMS.
+ * The saved Recovery Sequence configuration — the ONE source of truth for the
+ * 5-minute recovery SMS.
  *
- * This copy is SPECIFIED, not stylistic — LEAD-FOLLOWUP-GHL-DELIVERY-AND-ADMIN-
- * RESUME-CHECKOUT-EMAIL-002 §"SMS COPY" fixes it verbatim:
+ * OWNER CORRECTION 2026-08-05. This function previously rendered a hard-coded
+ * generic message and ignored the template the owner had already saved in
+ * Recovery Sequence settings, so the Admin preview and the SMS the customer
+ * actually received were generated from two different places and disagreed.
+ * There is now exactly one place: `comms_settings`.
  *
- *   Hi {first_name}, you can complete your existing PawTenant order here:
- *   {stable_checkout_url}. Reply STOP to opt out.
- *
- * Constraints baked in, each one from a real regression:
- *   • NO discount code. PAW20 survived one earlier fix because that fix removed
- *     promo URL PARAMETERS while the code stayed hard-coded in the message
- *     BODY. Any discount must come from a separate, explicit Admin action.
- *   • NO assessment language. The customer is already at checkout; telling them
- *     to "finish your assessment" sends them backwards.
- *   • NO diagnosis / ESA / PSD / disability / "doctor" wording — this lands in
- *     a phone's lock screen.
- *   • The URL is the stable /checkout/<slug> link, which carries no query
- *     string, so nothing can be smuggled onto it here.
- *   • "Reply STOP to opt out" is required and must remain the last sentence.
+ * DO NOT reintroduce a hard-coded SMS body here, not even as a fallback. A
+ * fallback string is a second source of truth that silently wins whenever the
+ * config read hiccups — which is precisely how the wrong copy shipped.
  */
-function buildRecoverySms(firstName: string, resumeUrl: string): string {
-  const name = (firstName || "").trim() || "there";
-  return `Hi ${name}, you can complete your existing PawTenant order here: ${resumeUrl}. Reply STOP to opt out.`;
+interface RecoverySmsConfig {
+  /** Both `recovery_enabled` AND `recovery_sms_enabled` must be true. */
+  enabled: boolean;
+  /** Owner-authored template. Null/blank means DO NOT SEND. */
+  template: string | null;
+  promoCode: string;
+  /** `recovery_stage_1_minutes` — the SMS stage's age threshold. */
+  stage1Minutes: number;
+}
+
+/** Default promo used only when `recovery_sms_promo_code` is unset. */
+const RECOVERY_PROMO_FALLBACK = "PAW20";
+
+async function loadRecoverySmsConfig(supabase: SupabaseClient): Promise<RecoverySmsConfig> {
+  const keys = [
+    "recovery_enabled", "recovery_sms_enabled",
+    "recovery_sms_5min_template", "recovery_sms_promo_code",
+    "recovery_stage_1_minutes",
+  ];
+  const map = new Map<string, string>();
+  try {
+    const { data } = await supabase
+      .from("comms_settings").select("key, value").in("key", keys);
+    for (const row of (data ?? []) as Array<{ key: string; value: string }>) {
+      map.set(row.key, String(row.value ?? ""));
+    }
+  } catch {
+    // Fail CLOSED. An unreadable config must not fall back to inventing copy.
+    return { enabled: false, template: null, promoCode: RECOVERY_PROMO_FALLBACK, stage1Minutes: 5 };
+  }
+  const truthy = (k: string) => String(map.get(k) ?? "").trim().toLowerCase() === "true";
+  const minutes = Number(map.get("recovery_stage_1_minutes") ?? "5");
+  return {
+    enabled: truthy("recovery_enabled") && truthy("recovery_sms_enabled"),
+    template: (map.get("recovery_sms_5min_template") ?? "").trim() || null,
+    promoCode: (map.get("recovery_sms_promo_code") ?? "").trim() || RECOVERY_PROMO_FALLBACK,
+    stage1Minutes: Number.isFinite(minutes) && minutes > 0 ? minutes : 5,
+  };
+}
+
+/**
+ * Render the owner's saved template.
+ *
+ * Merge tags accept BOTH `{tag}` and `{{tag}}`. The stored template uses single
+ * braces (matching the email templates); the spec was written with double. A
+ * renderer that only understood one would ship the other verbatim to a
+ * customer's phone.
+ *
+ * THE DISCOUNT RULE, and it is the whole point of this change:
+ *   • `{promo_code}` renders as PLAIN TEXT in the message body, so the customer
+ *     types it in themselves.
+ *   • `{resume_url}` renders as the bare stable checkout link. It carries NO
+ *     query string, so no promo / coupon / discount / code parameter can ride
+ *     along and nothing is pre-applied at Stripe.
+ * Those two must never be combined. Advertising the code is a marketing
+ * decision; auto-applying it is a pricing decision, and this path is not
+ * allowed to make the second one.
+ *
+ * "Reply STOP to opt out." is NOT appended. GHL emits its own required
+ * unsubscribe disclosure on the first conversation, so adding ours duplicated
+ * it. Suppression itself is untouched: `sms_opted_out` still gates the stage
+ * and provider-side DND is still consulted before every automated send.
+ */
+function renderRecoverySms(
+  template: string,
+  vars: { firstName: string; petName: string; promoCode: string; resumeUrl: string },
+): string {
+  const values: Record<string, string> = {
+    first_name: (vars.firstName || "").trim() || "there",
+    petname: (vars.petName || "").trim() || PET_FALLBACK,
+    pet_name: (vars.petName || "").trim() || PET_FALLBACK,
+    promo_code: vars.promoCode,
+    resume_url: vars.resumeUrl,
+  };
+  return template.replace(
+    /\{\{?\s*(first_name|petname|pet_name|promo_code|resume_url)\s*\}?\}/g,
+    (_m, tag: string) => values[tag] ?? "",
+  );
 }
 
 /**
@@ -702,6 +778,16 @@ export async function runLeadFollowupSequence(
 
     const results = emptyResults();
     const masterLayout = await loadMasterLayout(supabase);
+    // OWNER CORRECTION 2026-08-05: the 5-minute SMS renders from the SAVED
+    // Recovery Sequence configuration. Loaded once per run so every lead in
+    // this run is messaged from the same snapshot of the owner's settings.
+    const smsConfig = await loadRecoverySmsConfig(supabase);
+    if (!smsConfig.enabled || !smsConfig.template) {
+      console.warn(
+        `[lead-followup-sequence] 5-min SMS stage inactive — enabled=${smsConfig.enabled}, ` +
+        `template=${smsConfig.template ? "present" : "MISSING"}. No recovery SMS will be sent this run.`,
+      );
+    }
 
     for (const lead of (leads ?? [])) {
       if (lead.payment_intent_id || lead.paid_at || lead.status === "completed") { results.skipped++; continue; }
@@ -778,8 +864,13 @@ export async function runLeadFollowupSequence(
       // real branch read. A dry run that re-derived its own predicates would be
       // free to disagree with the sender it is supposed to be predicting, which
       // is precisely the assurance we need before re-enabling the cron.
+      // Age threshold, enabled state and template all come from the saved
+      // configuration. A disabled or unconfigured stage is not "due" at all,
+      // so it consumes no attempt and burns no retry slot.
       const smsStageDue =
-        ageMin >= 5 && !lead.sms_5min_sent_at && !lead.sms_opted_out;
+        smsConfig.enabled && !!smsConfig.template &&
+        ageMin >= smsConfig.stage1Minutes &&
+        !lead.sms_5min_sent_at && !lead.sms_opted_out;
       let smsAttemptEligible = true;
       if (smsStageDue) {
         const { data: elig } = await supabase.rpc("sms_attempt_is_eligible", {
@@ -825,7 +916,10 @@ export async function runLeadFollowupSequence(
         // 1. Build the message first. Nothing is claimed if this fails.
         let smsMsg: string | null = null;
         try {
-          smsMsg = buildRecoverySms(firstName, await getResumeLink());
+          smsMsg = renderRecoverySms(smsConfig.template!, {
+            firstName, petName, promoCode: smsConfig.promoCode,
+            resumeUrl: await getResumeLink(),
+          });
         } catch (linkErr) {
           results.sms_link_failed++;
           await writeAuditLog(supabase, {

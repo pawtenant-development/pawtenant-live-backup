@@ -53,7 +53,11 @@ export function declaredConsts(src) {
 /** The 5-minute SMS block, from its trigger to the end of its branch. */
 export function smsBlock(src) {
   const c = stripComments(src);
-  const i = c.indexOf("ageMin >= 5 && !lead.sms_5min_sent_at");
+  // Anchored on the stage-trigger CONST, not on a literal threshold. The
+  // threshold became configurable (`recovery_stage_1_minutes`), so an anchor
+  // containing `>= 5` silently stopped matching and this slice returned "" —
+  // which makes every check below vacuously inspect an empty string.
+  const i = c.indexOf("const smsStageDue =");
   if (i < 0) return "";
   // End anchor is the FIRST EMAIL STAGE's predicate. It moved when the stage
   // triggers were hoisted into named consts for the dry run; left stale, this
@@ -196,43 +200,76 @@ const CHECKS = [
       && !/conversations\/messages/.test(c);
   }],
 
-  // ── 7. no discount may reach automated recovery copy ──────────────────────
-  ["S19", "no discount code appears anywhere in the sequence source", () => {
-    // Comments are stripped but STRING LITERALS ARE NOT — a banned code in a
-    // string is exactly what this must catch. PAW20 survived the previous
-    // removal because that fix took out the URL parameter and left the constant.
+  // ── 7. the SMS body comes from CONFIG; the URL stays clean ────────────────
+  // OWNER CORRECTION 2026-08-05. The rule is no longer "no discount anywhere".
+  // It is: the promo may appear as TEXT IN THE BODY, sourced from the owner's
+  // saved settings, and may NEVER be attached to the checkout URL.
+  ["S19", "the SMS body is rendered from saved config, not a literal in source", () => {
     const c = stripComments(read(CORE));
-    return !/PAW20|SPRING30/.test(c);
+    // The key must be BOTH requested from comms_settings AND read back out.
+    // Checking only that the string appears somewhere passed a mutation that
+    // dropped it from the fetch list while leaving the map.get() behind — the
+    // template then silently resolved to null on every run.
+    if (!/comms_settings/.test(c)) return false;
+    if (!/function renderRecoverySms\(/.test(c)) return false;
+    if (!/renderRecoverySms\(smsConfig\.template!/.test(c)) return false;
+    const keyList = c.match(/const keys = \[([\s\S]*?)\];/);
+    if (!keyList || !/"recovery_sms_5min_template"/.test(keyList[1])) return false;
+    return /map\.get\("recovery_sms_5min_template"\)/.test(c);
   }],
-  ["S20", "the SMS body carries no discount / promo wording", () => {
+  ["S20", "no hard-coded SMS body survives in the function", () => {
     const c = stripComments(read(CORE));
-    const m = c.match(/return `Hi \$\{name\}[^`]*`/);
-    if (!m) return false;
-    return !/discount|promo|coupon|% off|\$\d+ off|claim/i.test(m[0]);
+    // The old generic string and the owner's warm wording must BOTH be absent
+    // as literals — either one present means a second source of truth exists.
+    return !/you can complete your existing PawTenant order here/.test(c)
+      && !/we hope your bond with/i.test(c)
+      && !/function buildRecoverySms/.test(c);
   }],
-  ["S21", "the SMS body is the specified copy, points at checkout, and keeps STOP", () => {
-    const m = stripComments(read(CORE)).match(/return `Hi \$\{name\}[^`]*`/);
-    if (!m) return false;
-    return /you can complete your existing PawTenant order here: \$\{resumeUrl\}/.test(m[0])
-      && /Reply STOP to opt out\.`$/.test(m[0])
-      // "assessment" language sends a customer who is already at checkout
-      // backwards into intake.
-      && !/assessment|diagnos|disabilit|doctor/i.test(m[0]);
+  ["S21", "the promo code comes from config, with PAW20 only as a named fallback", () => {
+    const c = stripComments(read(CORE));
+    if (!/recovery_sms_promo_code/.test(c)) return false;
+    // PAW20 may appear EXACTLY once, as the fallback constant — never inside a
+    // message template or an appended string.
+    const hits = [...c.matchAll(/PAW20/g)];
+    if (hits.length !== 1) return false;
+    return /const RECOVERY_PROMO_FALLBACK = "PAW20";/.test(c);
+  }],
+  ["S22", "the promo NEVER reaches the checkout URL", () => {
+    const c = stripComments(read(CORE));
+    // No promo/coupon/discount/code query parameter may be built anywhere, and
+    // the renderer must substitute the bare link it was handed.
+    if (/[?&](promo|coupon|discount|code|dc)=/i.test(c)) return false;
+    if (/extraParams/.test(c)) return false;
+    return /resume_url: vars\.resumeUrl/.test(c);
+  }],
+  ["S23", "the code never appends its own STOP wording", () => {
+    const c = stripComments(read(CORE));
+    // GHL emits the required unsubscribe disclosure itself; ours duplicated it.
+    return !/Reply STOP/i.test(c);
+  }],
+  ["S24", "opt-out suppression and provider DND are still enforced", () => {
+    const c = stripComments(read(CORE));
+    return /!lead\.sms_opted_out/.test(c) && /checkDnd:\s*true/.test(c);
+  }],
+  ["S25", "a disabled or unconfigured stage sends nothing", () => {
+    const c = stripComments(read(CORE));
+    return /smsConfig\.enabled && !!smsConfig\.template/.test(c)
+      && /ageMin >= smsConfig\.stage1Minutes/.test(c);
   }],
 
   // ── 8. one provider attempt = exactly one communications row ──────────────
-  ["S22", "the SMS sender writes exactly ONE communications insert", () => {
+  ["S26", "the SMS sender writes exactly ONE communications insert", () => {
     const b = recoverySender(read(CORE));
     if (!b) return false;
     return (b.match(/from\("communications"\)\s*\n?\s*\.insert\(/g) ?? []).length === 1;
   }],
-  ["S23", "that row is claimed with a durable idempotency key BEFORE the send", () => {
+  ["S27", "that row is claimed with a durable idempotency key BEFORE the send", () => {
     const b = recoverySender(read(CORE));
     const claim = b.search(/dedupe_key:\s*idempotencyKey/);
     const send = b.search(/await sendGhlSms\(\{/);
     return claim >= 0 && send >= 0 && claim < send;
   }],
-  ["S24", "the claim is never stamped as a delivery", () => {
+  ["S28", "the claim is never stamped as a delivery", () => {
     const b = recoverySender(read(CORE));
     // The 2026-08-01 incident stamped success before the side effect and left
     // seven leads permanently "sent" having received nothing. The pre-send row
@@ -241,7 +278,7 @@ const CHECKS = [
     if (!m) return false;
     return /status:\s*"sending"/.test(m[0]) && !/status:\s*"sent"/.test(m[0]);
   }],
-  ["S25", "a lost idempotency claim suppresses the send instead of double-sending", () => {
+  ["S29", "a lost idempotency claim suppresses the send instead of double-sending", () => {
     const b = recoverySender(read(CORE));
     const m = b.match(/if \(claimErr \|\| !commId\)\s*\{([\s\S]{0,700}?)\n\s{2}\}/);
     if (!m) return false;
@@ -411,17 +448,31 @@ const CONTROLS = [
       'const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";\nconst GHL_FROM_NUMBER = Deno.env.get("GHL_PHONE_NUMBER") ?? "";')],
   ["the sequence bypasses the shared helper with its own fetch", CORE,
     (s) => s.replace(/await sendGhlSms\(\{/, 'await fetch("https://api.twilio.com/x", {')],
-  ["PAW20 returns to the SMS body", CORE,
-    (s) => s.replace(/\. Reply STOP to opt out\.`;/, '. Use code PAW20 for $20 off. Reply STOP to opt out.`;')],
-  // Anchored on the RETURN statement, not the bare phrase — the phrase's first
-  // occurrence is in the doc comment above the function, so mutating that left
-  // the actual copy untouched and the control proved nothing.
-  ["the copy sends an at-checkout customer back to the assessment", CORE,
+  // OWNER CORRECTION 2026-08-05 controls. The contract inverted: the promo is
+  // now REQUIRED as body text from config, and BANNED from the URL.
+  ["a hard-coded SMS body is reintroduced", CORE,
     (s) => s.replace(
-      /return `Hi \$\{name\}, you can complete your existing PawTenant order here:/,
-      'return `Hi ${name}, finish your assessment here:')],
-  ["the STOP opt-out line is dropped", CORE,
-    (s) => s.replace(/\. Reply STOP to opt out\.`;/, '.`;')],
+      /smsMsg = renderRecoverySms\(smsConfig\.template!, \{/,
+      'smsMsg = `Hi ${firstName}, we hope your bond with your pet stays strong.`; if (false) smsMsg = renderRecoverySms(smsConfig.template!, {')],
+  ["the promo code is hard-coded into the message instead of read from config", CORE,
+    (s) => s.replace(/promoCode: smsConfig\.promoCode,/, 'promoCode: "PAW20",')],
+  ["the promo is smuggled onto the checkout URL", CORE,
+    (s) => s.replace(/resume_url: vars\.resumeUrl,/, 'resume_url: vars.resumeUrl + "?promo=" + vars.promoCode,')],
+  ["STOP wording is appended to the body again", CORE,
+    (s) => s.replace(
+      /return template\.replace\(/,
+      'template = template + " Reply STOP to opt out."; return template.replace(')],
+  // Targets the QUOTED key actually requested from comms_settings. An unquoted
+  // anchor renamed the first mention — which lives in a comment — leaving the
+  // real lookup untouched, so the control mutated bytes and proved nothing.
+  ["the saved template is bypassed for a literal", CORE,
+    (s) => s.replace(/"recovery_sms_5min_template"/, '"recovery_sms_5min_template_DISABLED"')],
+  ["a disabled recovery stage sends anyway", CORE,
+    (s) => s.replace(/smsConfig\.enabled && !!smsConfig\.template &&/, "")],
+  ["the configured stage timing is ignored", CORE,
+    (s) => s.replace(/ageMin >= smsConfig\.stage1Minutes/, "ageMin >= 5")],
+  ["provider-side DND is dropped from the automated path", CORE,
+    (s) => s.replace(/checkDnd: true,/, "checkDnd: false,")],
   ["a second communications row is written per attempt", CORE,
     (s) => s.replace(
       /const res = await sendGhlSms\(\{/,
@@ -440,8 +491,6 @@ const CONTROLS = [
     (s) => s.replace(/if \(!smsRes\.duplicateSuppressed\) \{/, "if (true) {")],
   ["the durable eligibility gate is removed", CORE,
     (s) => s.replace(/sms_attempt_is_eligible/, "sms_attempt_always_true")],
-  ["the automated path stops checking provider-side DND", CORE,
-    (s) => s.replace(/checkDnd: true,/, "checkDnd: false,")],
   ["an unknown provider failure becomes retryable again", GHLSMS,
     (s) => s.replace(
       /return \{ outcome: "permanent", code: "provider_rejected" \};\n\}/,
