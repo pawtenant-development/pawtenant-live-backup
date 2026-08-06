@@ -227,6 +227,65 @@ async function resolveUnpaidLeadRecipients(): Promise<{ enabled: boolean; recipi
 
 // ── ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001 ───────────────────────────────
 /**
+ * PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001.
+ *
+ * "Blank" for the purposes of refusing an overwrite. Covers the three shapes a
+ * reset client actually sends:
+ *   • ""  / null / undefined            — every scalar question default
+ *   • [] / {}                            — multi-select and object defaults
+ *   • [{name:"",age:"",breed:"",...}]    — the SYNTHESISED pet placeholder the
+ *     stable-checkout resume builds from a pet COUNT, which looks populated
+ *     (right length, right keys) but carries no information at all. This one
+ *     is the whole reason a naive `!value` check is not enough.
+ */
+function isBlankAnswer(v: unknown): boolean {
+  if (v === null || v === undefined) return true;
+  if (typeof v === "string") return v.trim() === "";
+  if (Array.isArray(v)) return v.length === 0 || v.every((el) => isBlankAnswer(el));
+  if (typeof v === "object") {
+    const vals = Object.values(v as Record<string, unknown>);
+    return vals.length === 0 || vals.every((el) => isBlankAnswer(el));
+  }
+  return false; // numbers and booleans are real answers, including 0 and false
+}
+
+/**
+ * Merge incoming assessment answers over the stored ones without ever letting a
+ * blank erase a real answer.
+ *
+ * Returns the merged object. Logs a COUNT of refused erasures — never the keys'
+ * values, which are mental-health intake and must not reach logs.
+ */
+function mergeAssessmentAnswers(
+  stored: Record<string, unknown> | null | undefined,
+  incoming: Record<string, unknown>,
+  confirmationId: string,
+): Record<string, unknown> {
+  const base: Record<string, unknown> =
+    stored && typeof stored === "object" && !Array.isArray(stored) ? { ...stored } : {};
+  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) return base;
+
+  let refused = 0;
+  for (const [key, value] of Object.entries(incoming)) {
+    if (isBlankAnswer(value) && !isBlankAnswer(base[key])) {
+      refused++;               // stored answer survives
+      continue;
+    }
+    base[key] = value;
+  }
+
+  if (refused > 0) {
+    // Loud on purpose: a non-zero count means a client just tried to erase
+    // clinical answers, which is the signature of a resume path that reset its
+    // own state. Silence here is what let this run undetected.
+    console.warn(
+      `[get-resume-order] MERGE PROTECTED ${refused} stored answer field(s) from blank overwrite for ${confirmationId}`,
+    );
+  }
+  return base;
+}
+
+/**
  * Security telemetry. Written best-effort and DEDUPED per order+action so the
  * thank-you page's normal polling cannot flood audit_logs. Never stores the
  * Stripe secret, the Authorization header, or any card/payment-method detail.
@@ -486,7 +545,7 @@ serve(async (req) => {
       const { data: byConfId, error: byConfIdErr } = await supabase
         .from("orders")
         .select(
-          "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount"
+          "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount, assessment_answers"
         )
         .eq("confirmation_id", confirmationId)
         .maybeSingle();
@@ -510,7 +569,7 @@ serve(async (req) => {
         const { data: byPi } = await supabase
           .from("orders")
           .select(
-            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount"
+            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount, assessment_answers"
           )
           .eq("payment_intent_id", body.paymentIntentId)
           .maybeSingle();
@@ -531,7 +590,7 @@ serve(async (req) => {
         const { data: byEmail } = await supabase
           .from("orders")
           .select(
-            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount"
+            "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount, assessment_answers"
           )
           .ilike("email", normalizedEmail)
           .not("status", "in", `("refunded","cancelled")`)
@@ -662,7 +721,36 @@ serve(async (req) => {
           );
         }
       }
-      if (body.assessmentAnswers !== undefined) upsertPayload.assessment_answers = body.assessmentAnswers;
+      // ── PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001 ──────────────
+      // This line used to be a WHOLESALE REPLACE:
+      //     upsertPayload.assessment_answers = body.assessmentAnswers;
+      // which made the client the sole authority over the entire clinical
+      // record. Combined with resume paths that reset the client's in-memory
+      // answers to defaults, one step-2 submit destroyed a completed PSD
+      // intake: 22 answered clinical fields collapsed to 3 on LIVE order
+      // PT-PSDCUFKXQ61, and the same payload reproduced it exactly on TEST.
+      //
+      // The stored answers are now MERGED, under one rule: a blank incoming
+      // value may never overwrite a stored non-blank one. Real edits still
+      // win — this only refuses erasure.
+      //
+      // Deliberate trade-off: a customer cannot blank an already-answered
+      // field through this endpoint. That is not reachable in the UI anyway
+      // (radios/selects can only be changed to another option, and the free
+      // text fields carry minimum-length validation), and refusing a silent
+      // erasure of mental-health intake is worth more than supporting a
+      // clear-to-empty no one can perform.
+      //
+      // This mirrors the STICKY attribution rule already enforced below, and
+      // exists for the same reason: a later save arriving with less context
+      // than an earlier one must not be allowed to win.
+      if (body.assessmentAnswers !== undefined) {
+        upsertPayload.assessment_answers = mergeAssessmentAnswers(
+          existingOrder?.assessment_answers as Record<string, unknown> | null | undefined,
+          body.assessmentAnswers,
+          effectiveConfirmationId,
+        );
+      }
       if (body.price !== undefined) upsertPayload.price = body.price;
       if (body.planType !== undefined) upsertPayload.plan_type = body.planType;
       if (body.paymentMethod !== undefined) upsertPayload.payment_method = body.paymentMethod;
