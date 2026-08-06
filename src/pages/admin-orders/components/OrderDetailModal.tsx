@@ -92,6 +92,7 @@ interface Order {
   signed_letter_url: string | null;
   patient_notification_sent_at: string | null;
   assessment_answers: Record<string, unknown> | null;
+  assessment_progress?: Record<string, unknown> | null;
   created_at: string;
   ghl_synced_at: string | null;
   ghl_sync_error: string | null;
@@ -5680,6 +5681,7 @@ export default function OrderDetailModal({
 
               {isPSDOrder(order) ? (
                 <PSDAssessmentView
+                  progress={(order.assessment_progress ?? null) as never}
                   answers={order.assessment_answers}
                   orderInfo={{
                     firstName: order.first_name,

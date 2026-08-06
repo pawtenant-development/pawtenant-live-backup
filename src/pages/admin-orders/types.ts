@@ -77,6 +77,8 @@ export interface Order {
   signed_letter_url: string | null;
   patient_notification_sent_at: string | null;
   assessment_answers: Record<string, unknown> | null;
+  /** Server-maintained PSD progress (PSD-ASSESSMENT-...-001). Read-only. */
+  assessment_progress?: Record<string, unknown> | null;
   created_at: string;
   ghl_synced_at: string | null;
   ghl_sync_error: string | null;

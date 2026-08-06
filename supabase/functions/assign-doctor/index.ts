@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkPsdAssessmentComplete } from "../_shared/psdCompletionGate.ts";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
 
 const CORS_HEADERS = {
@@ -111,6 +112,39 @@ Deno.serve(async (req: Request) => {
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const normalizedEmail = doctorEmail.toLowerCase().trim();
+
+  // ── PSD completion gate ────────────────────────────────────────────────────
+  // PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001.
+  //
+  // A provider must never be handed a psychiatric assessment with no clinical
+  // answers in it. They would open the case, find nothing to review, and either
+  // bounce it back or — worse — sign off on an intake that was never completed.
+  //
+  // Checked against the authoritative per-answer rows, not the projected JSON
+  // blob and not the caller's claim. The order stays in the customer-completion
+  // workflow and Admin is told which answers are missing.
+  {
+    const { data: gateOrder } = await supabase
+      .from("orders").select("id, letter_type").eq("confirmation_id", confirmationId).maybeSingle();
+    const gateOrderId = (gateOrder as { id?: string } | null)?.id ?? null;
+    const gate = await checkPsdAssessmentComplete(supabase, gateOrderId);
+    if (!gate.allowed) {
+      console.warn(
+        `[assign-doctor] BLOCKED assignment of ${confirmationId}: ${gate.answered}/${gate.requiredTotal} required PSD answers`,
+      );
+      return json({
+        error: gate.adminMessage,
+        code: "psd_assessment_incomplete",
+        answered: gate.answered,
+        requiredTotal: gate.requiredTotal,
+        missingCount: gate.missingCount,
+        // Question IDs only — never answer values.
+        missing: gate.missing,
+      }, 409);
+    }
+  }
+
+
 
   // ── PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §16 ───────────────
   // Resolve the ACTING EMPLOYEE from the caller's own JWT. Assignment was

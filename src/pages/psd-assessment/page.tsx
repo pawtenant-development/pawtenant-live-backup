@@ -11,6 +11,7 @@ import CustomerOtpStep from "../assessment/components/CustomerOtpStep";
 import AssuranceScreen from "../assessment/components/AssuranceScreen";
 import PackageSelectionStep from "../assessment/components/PackageSelectionStep";
 import { supabase } from "../../lib/supabaseClient";
+import { usePsdAutosave, storeAssessmentToken, readAssessmentToken, readDraft } from "./usePsdAutosave";
 import { nextBookingGate } from "@/lib/bookingProgress";
 import { readResumeToken, hadLegacyResumeParam } from "@/lib/resumeTokenParam";
 import { isDirectCheckout, flowVersionProp } from "@/config/flowVersion";
@@ -147,6 +148,80 @@ export default function PSDAssessmentPage() {
   // Post-OTP routing target: first-time → "assurance"; resume → "package"/"pay".
   // (UNPAID-CUSTOMER-PORTAL-AND-RESUME-CONTINUITY-001)
   const postOtpGateRef = useRef<"assurance" | "package" | "pay">("assurance");
+  // PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001: incremental server
+  // persistence. Answers no longer wait for the end of the flow.
+  const autosave = usePsdAutosave();
+
+  // ── Continue PSD Assessment handoff (/continue/<slug>) ──────────────────
+  // PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001.
+  //
+  // The resolver already authorised this order and left the payload in memory
+  // (never storage — it holds customer identity). We rehydrate identity + pets
+  // here and pull the CLINICAL answers from the server with the write
+  // credential, then land on the questions. The server has already decided
+  // this order is incomplete; the client does not re-litigate it.
+  useEffect(() => {
+    const handoff = (window as unknown as { __ptContinueAssessment?: Record<string, unknown> })
+      .__ptContinueAssessment;
+    if (!handoff) return;
+    try { delete (window as unknown as { __ptContinueAssessment?: unknown }).__ptContinueAssessment; }
+    catch { /* non-fatal */ }
+
+    (async () => {
+      const o = handoff as Record<string, unknown>;
+      setConfirmationId(String(o.confirmationId ?? ""));
+      setStep2((prev) => ({
+        ...prev,
+        firstName: String(o.firstName ?? ""),
+        lastName:  String(o.lastName ?? ""),
+        email:     String(o.email ?? ""),
+        phone:     String(o.phone ?? ""),
+        state:     String(o.state ?? ""),
+        dob:       String(o.dob ?? ""),
+        pets: Array.isArray(o.pets) && (o.pets as unknown[]).length > 0
+          ? (o.pets as Step2Data["pets"])
+          : prev.pets,
+      }));
+      const pk = typeof o.packageKey === "string" ? o.packageKey : null;
+      if (pk === "psd_ra_bundle" || pk === "psd_standard") setSelectedPackage(pk);
+      setStateConfirmed(true);
+
+      // Clinical answers come from the authenticated load — never from the URL
+      // and never from the resolver payload.
+      try {
+        const tok = readAssessmentToken();
+        if (tok) {
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/psd-assessment-answers`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: SUPABASE_KEY,
+              Authorization: `Bearer ${SUPABASE_KEY}`,
+            },
+            body: JSON.stringify({ action: "load", token: tok }),
+          });
+          const j = await res.json().catch(() => null) as {
+            answers?: Record<string, unknown>; revisions?: Record<string, number>;
+          } | null;
+          if (j?.answers) setStep1((prev) => ({ ...prev, ...(j.answers as Partial<PSDStep1Data>) }));
+          if (j?.revisions) autosave.seedRevisions(j.revisions);
+        }
+      } catch { /* the questions still render; answers simply start empty */ }
+
+      const route = String(o.route ?? "continue_assessment");
+      setStep(route === "resume_checkout" ? 3 : 1);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Restore any step-1 answers drafted before the order existed. Without this,
+  // a refresh mid-questionnaire still looked like total loss to the customer
+  // even though the answers were on disk.
+  useEffect(() => {
+    const d = readDraft();
+    if (Object.keys(d).length === 0) return;
+    setStep1((prev) => ({ ...prev, ...(d as Partial<PSDStep1Data>) }));
+  }, []);
   const [step1, setStep1] = useState<PSDStep1Data>(DEFAULT_STEP1);
   const [step2, setStep2] = useState<Step2Data>(DEFAULT_STEP2);
   const [confirmationId, setConfirmationId] = useState(() => {
@@ -404,7 +479,38 @@ export default function PSDAssessmentPage() {
           postOtpGateRef.current = nextGate;
           setCheckoutGate("otp");
         }
-        setStep(3);
+        // ── Where a resume actually lands ────────────────────────────────
+        // PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001.
+        //
+        // This used to be an unconditional `setStep(3)` — every resume went
+        // straight to checkout regardless of whether the clinical answers
+        // existed. For an order whose answers were blank that was a closed
+        // loop: the customer could never reach the questions again, which is
+        // exactly what "I tried the assessment several times" looked like from
+        // the outside.
+        //
+        // A resume now lands on the QUESTIONS whenever required answers are
+        // still missing, and on checkout only when the assessment is actually
+        // complete. Completeness is the SERVER's answer, not a client guess.
+        let requiredComplete = false;
+        try {
+          const tok = readAssessmentToken();
+          if (tok) {
+            const st = await fetch(`${SUPABASE_URL}/functions/v1/psd-assessment-answers`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${SUPABASE_KEY}`,
+              },
+              body: JSON.stringify({ action: "status", token: tok }),
+            });
+            const sj = await st.json().catch(() => null) as { status?: { complete?: boolean } } | null;
+            requiredComplete = sj?.status?.complete === true;
+          }
+        } catch { /* unknown -> treat as incomplete and show the questions */ }
+
+        setStep(requiredComplete ? 3 : 1);
         window.scrollTo({ top: 0, behavior: "smooth" });
       } catch (err) {
         setResumeNotFound(true);
@@ -504,6 +610,17 @@ export default function PSDAssessmentPage() {
       // Funnel: PSD assessment answers persisted. loggedFetch only throws on a
       // hard network error, so a 4xx/5xx still resolves — gate on the response
       // status or this would claim a submit the server actually rejected.
+      // The upsert mints the order-bound autosave credential exactly once.
+      // Store it before anything else can throw, or the customer keeps typing
+      // into a form that has quietly stopped persisting.
+      try {
+        const upsertJson = await upsertRes?.clone().json().catch(() => null) as { assessmentToken?: string } | null;
+        storeAssessmentToken(upsertJson?.assessmentToken);
+        // The lead now exists, so the step-1 answers held only in the local
+        // draft can finally become authoritative server rows. Until this point
+        // there was no order to attach them to.
+        await autosave.flushDraft();
+      } catch { /* autosave degrades; the lead is still saved */ }
       if (upsertRes?.ok) {
         try { trackAssessmentSubmitted(confirmationId, "psd"); } catch { /* analytics never blocks */ }
       }
@@ -746,11 +863,37 @@ export default function PSDAssessmentPage() {
               )}
 
               {step === 1 && (
+                <>
                 <PSDStep1
                   data={step1}
                   onChange={setStep1}
+                  onAnswerChange={(qid, val) => autosave.saveAnswer(qid, val)}
                   onNext={() => setStep(2)}
                 />
+                {/* Save state. The customer must never be told "Saved" for a
+                    write the server did not accept — a silent failure here is
+                    indistinguishable from a working product until a provider
+                    opens an empty assessment. */}
+                <div aria-live="polite" className="mt-3 flex items-center justify-end gap-1.5 text-xs font-semibold min-h-[20px]">
+                  {autosave.saveState === "saving" && (
+                    <span className="text-gray-500 flex items-center gap-1.5">
+                      <i className="ri-loader-4-line animate-spin"></i>Saving…</span>
+                  )}
+                  {autosave.saveState === "saved" && (
+                    <span className="text-emerald-600 flex items-center gap-1.5">
+                      <i className="ri-checkbox-circle-fill"></i>Saved</span>
+                  )}
+                  {autosave.saveState === "retrying" && (
+                    <span className="text-amber-600 flex items-center gap-1.5">
+                      <i className="ri-refresh-line animate-spin"></i>Save failed — retrying…</span>
+                  )}
+                  {autosave.saveState === "failed" && (
+                    <span className="text-red-600 flex items-center gap-1.5">
+                      <i className="ri-error-warning-line"></i>
+                      Could not save your last answer. Check your connection — your other answers are safe.</span>
+                  )}
+                </div>
+                </>
               )}
 
               {step === 2 && (

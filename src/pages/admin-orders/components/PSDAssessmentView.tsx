@@ -50,8 +50,23 @@ interface OrderInfo {
   createdAt?: string | null;
 }
 
-interface Props {
-  answers: Record<string, unknown> | null;
+interface Props {
+  answers: Record<string, unknown> | null;
+  /**
+   * PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001.
+   * Server-maintained progress (orders.assessment_progress). Distinguishes
+   * NEVER STARTED from IN PROGRESS from COMPLETE — the distinction this view
+   * could not previously make, which is why an order whose customer had
+   * genuinely attempted the assessment rendered as a flat "no answers".
+   */
+  progress?: {
+    required_total?: number;
+    required_answered?: number;
+    pct?: number;
+    complete?: boolean;
+    last_saved_at?: string;
+    assessment_version?: string;
+  } | null;
   orderInfo?: OrderInfo;
   /** Cosmetic only — tunes the intro/footer wording. Never changes what is shown. */
   audience?: "provider" | "admin" | "customer";
@@ -145,7 +160,7 @@ function QuestionBlock({
   );
 }
 
-export default function PSDAssessmentView({ answers, orderInfo, audience = "provider" }: Props) {
+export default function PSDAssessmentView({ answers, orderInfo, audience = "provider", progress }: Props) {
   const contentRef = useRef<HTMLDivElement>(null);
 
   if (!answers) {
@@ -274,11 +289,44 @@ export default function PSDAssessmentView({ answers, orderInfo, audience = "prov
         </div>
 
         <div className="p-5">
-          {!hasAnyQuestionnaire ? (
-            <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center">
-              <p className="text-sm text-gray-400">No questionnaire answers recorded for this order.</p>
-            </div>
-          ) : (
+          {!hasAnyQuestionnaire ? (() => {
+            // Four distinguishable states. "No answers recorded" was one
+            // message covering all of them, so a customer who had attempted
+            // the assessment and a customer who had never opened it looked
+            // identical to Admin — and the difference is the whole triage.
+            const total = Number(progress?.required_total ?? 0);
+            const answered = Number(progress?.required_answered ?? 0);
+            const started = answered > 0;
+            const savedAt = progress?.last_saved_at
+              ? new Date(progress.last_saved_at).toLocaleString()
+              : null;
+            return (
+              <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center">
+                <p className="text-sm font-bold text-gray-600 mb-1">
+                  {started
+                    ? "PSD assessment incomplete — required answers missing."
+                    : total > 0
+                      ? "PSD assessment not started."
+                      : "No questionnaire answers recorded for this order."}
+                </p>
+                {total > 0 && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    {answered} of {total} required questions answered
+                    {total > answered ? ` · ${total - answered} still missing` : ""}
+                  </p>
+                )}
+                {savedAt && (
+                  <p className="text-[11px] text-gray-400 mt-1">Last saved {savedAt}</p>
+                )}
+                {progress?.assessment_version && (
+                  <p className="text-[11px] text-gray-300 mt-1">Assessment version {progress.assessment_version}</p>
+                )}
+                <p className="text-[11px] text-gray-400 mt-3">
+                  The customer must complete the remaining questions before this order can be paid or assigned to a provider.
+                </p>
+              </div>
+            );
+          })() : (
             <div className="space-y-6">
               {PSD_QUESTIONNAIRE_ITEMS.map((q) => {
                 // ── Evidence upload ──

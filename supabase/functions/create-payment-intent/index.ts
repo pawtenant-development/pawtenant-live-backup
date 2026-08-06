@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkPsdAssessmentComplete } from "../_shared/psdCompletionGate.ts";
 import { packageEntitlementPatch } from "../_shared/packageEntitlement.ts";
 import {
   oneTimeCents,
@@ -337,6 +338,46 @@ Deno.serve(async (req: Request) => {
   if (letterType === "psd-consultation" || packageKey === "psd_consultation") {
     return json({ error: "The PSD consultation is no longer available.", retired: true }, 410);
   }
+
+  // ── PSD completion gate (PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001)
+  // Refuse to mint a charge for a PSD order whose required clinical answers are
+  // not on the server. Taking money for an assessment a provider cannot review
+  // produces a refund and a customer who has to redo the whole intake.
+  //
+  // Server-side ON PURPOSE: the form's own validation lives in the browser, and
+  // this endpoint accepts the public anon key. LIVE order PT-PSDCUFKXQ61 reached
+  // checkout-ready state with an empty clinical record, which is exactly what a
+  // disabled button cannot prevent.
+  if (String(letterType).toLowerCase() === "psd" && confirmationId) {
+    try {
+      const gateClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const { data: gateOrder } = await gateClient
+        .from("orders").select("id").eq("confirmation_id", confirmationId).maybeSingle();
+      const gate = await checkPsdAssessmentComplete(
+        gateClient, (gateOrder as { id?: string } | null)?.id ?? null,
+      );
+      if (!gate.allowed) {
+        // Counts only — the missing question IDs are operational detail for
+        // Admin, not something to hand back to an unauthenticated caller.
+        console.warn(
+          `[create-payment-intent] PSD gate blocked ${confirmationId}: ${gate.answered}/${gate.requiredTotal} answered`,
+        );
+        return json({
+          error: gate.customerMessage,
+          code: "psd_assessment_incomplete",
+          answered: gate.answered,
+          requiredTotal: gate.requiredTotal,
+        }, 409);
+      }
+    } catch (e) {
+      console.error("[create-payment-intent] PSD gate threw:", String(e));
+      return json({
+        error: "Please complete the remaining assessment questions before continuing to payment.",
+        code: "psd_assessment_incomplete",
+      }, 409);
+    }
+  }
+
 
   // ── Phase 1 analytics: read attribution fields (all optional, all safe) ──
   // Six fields ONLY are forwarded into Stripe payment_intent.metadata so

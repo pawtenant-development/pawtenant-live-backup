@@ -31,6 +31,8 @@ interface Props {
   data: PSDStep1Data;
   onChange: (data: PSDStep1Data) => void;
   onNext: () => void;
+  /** Persist one answer. Optional so the component works without a transport. */
+  onAnswerChange?: (questionId: string, value: string | string[]) => void;
 }
 
 const DOG_TASKS = [
@@ -125,11 +127,23 @@ function QCard({ number, question, hint, required, hasError, children }: { numbe
   );
 }
 
-export default function PSDStep1({ data, onChange, onNext }: Props) {
+export default function PSDStep1({ data, onChange, onNext, onAnswerChange }: Props) {
   const [errors, setErrors] = useState<string[]>([]);
 
-  const update = (field: keyof PSDStep1Data, val: string | string[]) => onChange({ ...data, [field]: val });
-  const updateMulti = (fields: Partial<PSDStep1Data>) => onChange({ ...data, ...fields });
+  // PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001: every answer change is
+  // handed to the autosave layer as well as local state. `onAnswerChange` is
+  // optional so this component still renders standalone (and in tests) without
+  // a save transport wired up.
+  const update = (field: keyof PSDStep1Data, val: string | string[]) => {
+    onChange({ ...data, [field]: val });
+    onAnswerChange?.(field as string, val);
+  };
+  const updateMulti = (fields: Partial<PSDStep1Data>) => {
+    onChange({ ...data, ...fields });
+    // One save per QUESTION, not one per keystroke batch: the server model is
+    // per-question and a combined write would reintroduce blast radius.
+    for (const [k, v] of Object.entries(fields)) onAnswerChange?.(k, v as string | string[]);
+  };
 
   const showDiagText = data.priorDiagnosis === "yes" || data.priorDiagnosis === "informal";
 

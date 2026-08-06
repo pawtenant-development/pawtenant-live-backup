@@ -70,6 +70,8 @@ const MetaEsaLetterPage = lazy(() => import("../pages/meta-esa-letter/page"));
 const RecoveryClickBridge = lazy(() => import("../pages/r/page"));
 // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001 — stable /checkout/<slug> entry.
 const CheckoutLinkPage = lazy(() => import("../pages/checkout-link/page"));
+// PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001 - Continue PSD Assessment.
+const ContinueAssessmentPage = lazy(() => import("../pages/continue-assessment/page"));
 // Consultation Slot Recovery Funnel — unpaid lead recovery V1
 const ConsultationRequestPage = lazy(() => import("../pages/consultation-request/page"));
 // ESA laws / compliance content pages (informational, indexable).
@@ -235,6 +237,10 @@ const routes: RouteObject[] = [
   { path: "/r/:stage", element: <P C={RecoveryClickBridge} /> },
   // Stable, non-expiring, reusable customer recovery link.
   { path: "/checkout/:slug", element: <P C={CheckoutLinkPage} /> },
+  // Incomplete PSD assessment recovery. Deliberately NOT /checkout/<slug>:
+  // that path takes a COMPLETED order to payment, and routing an unfinished
+  // assessment down it is what trapped the customer on checkout.
+  { path: "/continue/:slug", element: <P C={ContinueAssessmentPage} /> },
   { path: "/checkout", element: <P C={CheckoutLinkPage} /> },
   { path: "/assessment", element: <P C={AssessmentPage} /> },
   { path: "/assessment/thank-you", element: <P C={AssessmentThankYouPage} /> },
