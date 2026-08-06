@@ -265,6 +265,7 @@ declare
   v_target    uuid;
   v_owners    int;
   v_conf      text;
+  v_changed   int;
 begin
   if v_actor is null or not public.check_is_admin() then
     raise exception 'Not authorized' using errcode = '42501';
@@ -304,8 +305,22 @@ begin
   end if;
 
   perform set_config('app.portal_identity_writer', 'on', true);
-  update public.orders set user_id = v_target where id = p_order_id and user_id is null;
+  -- The `user_id is null` guard makes the WRITE idempotent; capture whether THIS
+  -- call is the one that won so the AUDIT row is idempotent too. Without this,
+  -- rapid duplicate clicks produced one repair but N audit events (caught in
+  -- browser QA: 5 clicks => 5 rows).
+  with upd as (
+    update public.orders set user_id = v_target
+     where id = p_order_id and user_id is null
+    returning id
+  )
+  select count(*) into v_changed from upd;
   perform set_config('app.portal_identity_writer', 'off', true);
+
+  if v_changed = 0 then
+    return jsonb_build_object('ok', false, 'reason', 'already_linked',
+      'current_user_id', (select o.user_id from public.orders o where o.id = p_order_id));
+  end if;
 
   insert into public.audit_logs
     (actor_id, actor_name, actor_role, actor_type, category, source,

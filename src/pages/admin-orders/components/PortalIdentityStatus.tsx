@@ -142,31 +142,34 @@ export default function PortalIdentityStatus({
         </span>
       </div>
 
-      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mt-3 text-[11px]">
-        <div className="flex justify-between gap-2 min-w-0">
-          <dt className="opacity-70">Order</dt>
-          <dd className="font-mono truncate">{confirmationId}</dd>
+      {/* UUIDs and email addresses must WRAP, never ellipsize: a half-shown
+          user_id is worse than useless when an operator is deciding whether an
+          identity conflict is real. `truncate` clipped 4 of 5 values at 390px. */}
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 mt-3 text-[11px]">
+        <div className="flex justify-between items-start gap-3 min-w-0">
+          <dt className="opacity-70 flex-shrink-0">Order</dt>
+          <dd className="font-mono break-all text-right">{confirmationId}</dd>
         </div>
-        <div className="flex justify-between gap-2 min-w-0">
-          <dt className="opacity-70">Normalized order email</dt>
-          <dd className="font-mono truncate">{row.normalized_order_email ?? "—"}</dd>
+        <div className="flex justify-between items-start gap-3 min-w-0">
+          <dt className="opacity-70 flex-shrink-0">Normalized order email</dt>
+          <dd className="font-mono break-all text-right">{row.normalized_order_email ?? "—"}</dd>
         </div>
-        <div className="flex justify-between gap-2 min-w-0">
-          <dt className="opacity-70">orders.user_id</dt>
-          <dd className="font-mono truncate">{row.order_user_id ?? "NULL"}</dd>
+        <div className="flex justify-between items-start gap-3 min-w-0">
+          <dt className="opacity-70 flex-shrink-0">orders.user_id</dt>
+          <dd className="font-mono break-all text-right">{row.order_user_id ?? "NULL"}</dd>
         </div>
-        <div className="flex justify-between gap-2 min-w-0">
-          <dt className="opacity-70">Matching auth user</dt>
-          <dd className="font-mono truncate">{row.candidate_user_id ?? "—"}</dd>
+        <div className="flex justify-between items-start gap-3 min-w-0">
+          <dt className="opacity-70 flex-shrink-0">Matching auth user</dt>
+          <dd className="font-mono break-all text-right">{row.candidate_user_id ?? "—"}</dd>
         </div>
-        <div className="flex justify-between gap-2 min-w-0">
-          <dt className="opacity-70">Verified accounts on this email</dt>
-          <dd className="font-mono">{row.candidate_count}</dd>
+        <div className="flex justify-between items-start gap-3 min-w-0">
+          <dt className="opacity-70 flex-shrink-0">Verified accounts on this email</dt>
+          <dd className="font-mono text-right">{row.candidate_count}</dd>
         </div>
         {row.status === "conflicting_identity" && (
-          <div className="flex justify-between gap-2 min-w-0">
-            <dt className="opacity-70">Linked account's email</dt>
-            <dd className="font-mono truncate">{row.linked_user_email ?? "—"}</dd>
+          <div className="flex justify-between items-start gap-3 min-w-0">
+            <dt className="opacity-70 flex-shrink-0">Linked account's email</dt>
+            <dd className="font-mono break-all text-right">{row.linked_user_email ?? "—"}</dd>
           </div>
         )}
       </dl>
@@ -185,7 +188,7 @@ export default function PortalIdentityStatus({
           {confirming && (
             <div className="rounded-lg bg-white/70 border border-current/20 p-3">
               <p className="text-xs font-bold mb-1">Link this order to the verified customer account for this email?</p>
-              <ul className="text-[11px] space-y-0.5 mb-2 opacity-90">
+              <ul className="text-[11px] space-y-0.5 mb-2 opacity-90 break-all">
                 <li>Order <span className="font-mono">{confirmationId}</span></li>
                 <li>Email <span className="font-mono">{row.normalized_order_email}</span></li>
                 <li>Account <span className="font-mono">{row.candidate_user_id}</span></li>

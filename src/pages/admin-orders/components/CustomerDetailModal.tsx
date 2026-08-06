@@ -347,9 +347,13 @@ export default function CustomerDetailModal({ email, fullName, onClose }: Custom
             <p className="text-sm text-gray-400">No orders found for this customer.</p>
           </div>
         ) : (
-          <div className="flex flex-1 overflow-hidden">
+          <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+            {/* Stack the case list above the detail pane below `md`. The fixed
+                w-60 sidebar previously left only ~118px for content at 390px,
+                so the whole detail pane (including Portal View) collapsed and
+                its controls fell outside the viewport. Desktop is unchanged. */}
             {/* Left sidebar */}
-            <div className="w-60 flex-shrink-0 border-r border-gray-100 bg-gray-50/60 overflow-y-auto">
+            <div className="w-full md:w-60 flex-shrink-0 max-h-44 md:max-h-none border-b md:border-b-0 md:border-r border-gray-100 bg-gray-50/60 overflow-y-auto">
               <div className="px-3 py-3">
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">Cases ({orders.length})</p>
                 <div className="space-y-1">
