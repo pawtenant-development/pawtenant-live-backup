@@ -88,12 +88,15 @@ Deno.serve(async (req: Request) => {
     const newUserId = userData.user.id;
 
     // ── Link any existing orders with this email to the new account ───────
-    const { count: linkedOrders } = await adminClient
-      .from("orders")
-      .update({ user_id: newUserId })
-      .eq("email", email)
-      .is("user_id", null)
-      .select("id", { count: "exact", head: true });
+    // CUSTOMER-PORTAL-ORDER-IDENTITY-LINK-INTEGRITY-001: `.eq("email", email)`
+    // compared the lower-cased input against the verbatim column, so an order
+    // saved as 'ANDREWW261@OUTLOOK.COM' never linked. Route through the one
+    // normalized server-side linker instead.
+    const { data: linkRes } = await adminClient.rpc("link_orders_to_account", {
+      p_email: email,
+      p_user_id: newUserId,
+    });
+    const linkedOrders = Number((linkRes as { linked?: number } | null)?.linked ?? 0);
 
     console.log(
       `[create-customer-account] Created user ${newUserId} for ${email}. Linked ${linkedOrders ?? 0} existing order(s).`,

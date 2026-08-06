@@ -744,6 +744,24 @@ export default function MyOrdersPage() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { navigate("/customer-login"); return; }
         setUserEmail(user.email ?? "");
+
+        // CUSTOMER-PORTAL-ORDER-IDENTITY-LINK-INTEGRITY-001
+        // Self-heal BEFORE the order query, so historical orders that were
+        // never linked to this account (orders.user_id IS NULL) become owned
+        // by auth.uid() and appear on this very load — no reload, no loop.
+        // Everything that matters is decided server-side: the RPC reads
+        // auth.uid() and the VERIFIED auth.users email itself, links only
+        // unowned exact-normalized-email matches, refuses ambiguous
+        // identities, never overwrites a non-null user_id, and is idempotent
+        // (a second call links 0). Failure is non-fatal — the RLS
+        // verified-email disjunct still shows the orders, and the next
+        // sign-in retries.
+        try {
+          await supabase.rpc("claim_my_orders");
+        } catch (healErr) {
+          console.warn("[my-orders] portal self-heal skipped:", healErr);
+        }
+
         // Do NOT derive a name from the email. Keep only real metadata; the
         // authoritative display name is resolved from the order / metadata later.
         setAuthMeta((user.user_metadata as Record<string, unknown> | undefined) ?? null);

@@ -110,13 +110,23 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 2) Back-link unpaid orders with this email to the user.
+    // 2) Back-link EVERY safely-matching order for this verified customer —
+    //    historical completed orders included, not just the lead in hand.
+    //    CUSTOMER-PORTAL-ORDER-IDENTITY-LINK-INTEGRITY-001: the old
+    //    `.ilike("email", email)` matched case-insensitively but treated % / _
+    //    in the address as wildcards, and PostgREST cannot filter on
+    //    normalize_email(email) at all. The RPC is the single normalized rule
+    //    shared with claim_my_orders() and the Admin repair action; it also
+    //    refuses to link to an account that does not own the address.
+    let linkedOrders = 0;
     if (userId) {
       try {
-        await admin.from("orders").update({ user_id: userId })
-          .ilike("email", email)
-          .is("user_id", null);
-      } catch { /* non-fatal */ }
+        const { data: linkRes } = await admin.rpc("link_orders_to_account", {
+          p_email: email,
+          p_user_id: userId,
+        });
+        linkedOrders = Number((linkRes as { linked?: number } | null)?.linked ?? 0);
+      } catch { /* non-fatal — the portal self-heals on next sign-in */ }
     }
 
     // 3) Best-effort session token for the browser (magic link, not emailed).
@@ -127,7 +137,7 @@ Deno.serve(async (req) => {
       sessionToken = (link as any)?.properties?.hashed_token ?? null;
     } catch { /* non-fatal — checkout proceeds without an auto-session */ }
 
-    return json({ ok: true, verified: true, accountLinked: !!userId, accountCreated, sessionToken });
+    return json({ ok: true, verified: true, accountLinked: !!userId, accountCreated, linkedOrders, sessionToken });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[verify-customer-otp] error:", msg);

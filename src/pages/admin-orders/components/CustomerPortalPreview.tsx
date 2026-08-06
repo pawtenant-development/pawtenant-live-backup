@@ -1,5 +1,12 @@
 // CustomerPortalPreview — Read-only replica of what the customer sees in /my-orders
+//
+// CUSTOMER-PORTAL-ORDER-IDENTITY-LINK-INTEGRITY-001: this preview is loaded BY
+// EMAIL, so it can render an order the authenticated customer cannot actually
+// reach (that is how PT-MQRIJKGN looked healthy here while the customer saw
+// "No orders found"). It is now labelled as a diagnostic, and every order
+// carries a server-evaluated Portal identity status.
 import { useMemo } from "react";
+import PortalIdentityStatus from "./PortalIdentityStatus";
 
 interface OrderDocument {
   id: string;
@@ -313,11 +320,16 @@ export default function CustomerPortalPreview({ orders, userEmail }: CustomerPor
 
   return (
     <div>
-      {/* Admin banner */}
-      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-4">
-        <i className="ri-eye-line text-amber-600 text-sm flex-shrink-0"></i>
+      {/* Admin banner. This preview resolves orders BY EMAIL, which is not how
+          the real portal works — the portal loads by authenticated ownership.
+          Never claim the two are the same; the per-order Portal identity status
+          below states, per order, whether the customer can actually see it. */}
+      <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-4">
+        <i className="ri-information-line text-amber-600 text-sm flex-shrink-0 mt-0.5"></i>
         <p className="text-xs text-amber-800 font-semibold">
-          <strong>Admin Preview</strong> — This is exactly what {firstName} sees when they log into their customer portal.
+          <strong>Diagnostic preview by email</strong> — this may differ from {firstName}'s authenticated portal.
+          It is rendered from orders matching this email address, not from what their account can actually load.
+          Check the <strong>Portal identity status</strong> on each order below.
         </p>
       </div>
 
@@ -356,7 +368,10 @@ export default function CustomerPortalPreview({ orders, userEmail }: CustomerPor
             <>
               <div className="space-y-4">
                 {orders.map((order) => (
-                  <PortalOrderCard key={order.id} order={order} userEmail={userEmail} />
+                  <div key={order.id}>
+                    <PortalIdentityStatus orderId={order.id} confirmationId={order.confirmation_id} />
+                    <PortalOrderCard order={order} userEmail={userEmail} />
+                  </div>
                 ))}
               </div>
 

@@ -142,8 +142,14 @@ serve(async (req) => {
         });
       }
 
-      // Link existing orders to the new account
-      await adminClient.from("orders").update({ user_id: newUserData.user.id }).eq("email", targetEmail).is("user_id", null);
+      // Link existing orders to the new account.
+      // CUSTOMER-PORTAL-ORDER-IDENTITY-LINK-INTEGRITY-001: `.eq()` was
+      // case-sensitive against the verbatim orders.email column; use the one
+      // normalized server-side linker.
+      await adminClient.rpc("link_orders_to_account", {
+        p_email: targetEmail,
+        p_user_id: newUserData.user.id,
+      });
       accountCreated = true;
 
       // Generate a recovery link so they can set their own password
@@ -179,6 +185,14 @@ serve(async (req) => {
       }
 
       actionLink = (linkData as { properties?: { action_link?: string } })?.properties?.action_link ?? null;
+
+      // CUSTOMER-PORTAL-ORDER-IDENTITY-LINK-INTEGRITY-001: the pre-existing
+      // account branch never linked anything, so a returning customer resetting
+      // their password still landed on an empty portal. Same normalized linker.
+      await adminClient.rpc("link_orders_to_account", {
+        p_email: targetEmail,
+        p_user_id: (existingUser as { id?: string }).id ?? null,
+      });
     }
 
     if (!actionLink) {
