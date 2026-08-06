@@ -152,6 +152,13 @@ export default function PSDAssessmentPage() {
   // persistence. Answers no longer wait for the end of the flow.
   const autosave = usePsdAutosave();
 
+  const [step1, setStep1] = useState<PSDStep1Data>(DEFAULT_STEP1);
+  const [step2, setStep2] = useState<Step2Data>(DEFAULT_STEP2);
+
+  // Declared AFTER the state they drive. Hooks that call setStep1/setStep2
+  // must not be written above those declarations: it reads as a temporal
+  // dead-zone hazard and it is what made a hot reload reorder the hook
+  // list mid-mount and crash the page into the ErrorBoundary.
   // ── Continue PSD Assessment handoff (/continue/<slug>) ──────────────────
   // PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001.
   //
@@ -222,8 +229,7 @@ export default function PSDAssessmentPage() {
     if (Object.keys(d).length === 0) return;
     setStep1((prev) => ({ ...prev, ...(d as Partial<PSDStep1Data>) }));
   }, []);
-  const [step1, setStep1] = useState<PSDStep1Data>(DEFAULT_STEP1);
-  const [step2, setStep2] = useState<Step2Data>(DEFAULT_STEP2);
+
   const [confirmationId, setConfirmationId] = useState(() => {
     const id = generateConfirmationId();
     storeSetConfirmationId(id);
