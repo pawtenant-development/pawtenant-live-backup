@@ -62,17 +62,25 @@ export async function checkPsdAssessmentComplete(
 
   if (!orderId) return closed({ adminMessage: "PSD gate: no order id supplied." });
 
-  try {
+  type PsdStatus = {
+    is_psd?: boolean; required_total?: number; answered?: number;
+    missing_count?: number; missing?: string[]; complete?: boolean;
+  };
+
+  const readStatus = async (): Promise<PsdStatus | null> => {
     const { data, error } = await client.rpc("psd_assessment_status", { p_order_id: orderId });
     if (error || !data) {
       console.error("[psdCompletionGate] status unavailable:", error?.message ?? "no data");
+      return null;
+    }
+    return data as PsdStatus;
+  };
+
+  try {
+    let s = await readStatus();
+    if (!s) {
       return closed({ adminMessage: "PSD assessment status could not be verified — blocked." });
     }
-
-    const s = data as {
-      is_psd?: boolean; required_total?: number; answered?: number;
-      missing_count?: number; missing?: string[]; complete?: boolean;
-    };
 
     // A non-PSD order has no PSD questionnaire to complete. Passing it through
     // is correct, not a hole: ESA has its own flow.
@@ -81,6 +89,45 @@ export async function checkPsdAssessmentComplete(
         allowed: true, isPsd: false, requiredTotal: 0, answered: 0,
         missingCount: 0, missing: [],
       };
+    }
+
+    // ── Legacy-projection compatibility ───────────────────────────────────
+    // PSD-CHECKOUT-CANONICAL-ANSWER-GATE-LIVE-INCIDENT-002.
+    //
+    // The canonical model can be empty for an order whose customer genuinely
+    // answered everything: the per-answer writer depends on an autosave
+    // credential, and where that credential was never issued the answers only
+    // ever reached the projection on the order. Those customers completed the
+    // assessment and were then refused payment for questions they had answered.
+    //
+    // So before refusing, give the order one chance to rebuild its canonical
+    // record from values it already holds. The RPC is the authority on whether
+    // that is legitimate — it repairs only an unpaid PSD order whose projection
+    // answers EVERY required question of the version it was actually asked, it
+    // promotes no blanks, and it cannot overwrite a newer answer. An incomplete
+    // assessment is refused there and stays blocked here.
+    //
+    // Re-read after a repair rather than trusting its return value: the gate
+    // must always be the status RPC's verdict, never a caller's optimism.
+    if (s.complete !== true) {
+      try {
+        const { data: repair, error: repairErr } = await client.rpc(
+          "psd_repair_answers_from_projection", { p_order_id: orderId },
+        );
+        if (repairErr) {
+          console.warn("[psdCompletionGate] projection repair failed:", repairErr.message);
+        } else if ((repair as { repaired?: boolean } | null)?.repaired === true) {
+          console.info(
+            `[psdCompletionGate] ${orderId}: rebuilt canonical answers from projection`,
+            JSON.stringify(repair),
+          );
+          const after = await readStatus();
+          if (after) s = after;
+        }
+      } catch (e) {
+        // A failed repair must never turn a block into an error. Stay closed.
+        console.warn("[psdCompletionGate] projection repair threw:", String(e));
+      }
     }
 
     const missing = Array.isArray(s.missing) ? s.missing : [];

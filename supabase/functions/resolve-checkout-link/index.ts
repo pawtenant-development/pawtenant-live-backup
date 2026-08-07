@@ -95,6 +95,32 @@ serve(async (req) => {
 
     const r = data[0] as Record<string, unknown>;
 
+    // PSD-CHECKOUT-CANONICAL-ANSWER-GATE-LIVE-INCIDENT-002.
+    //
+    // Whether the clinical questions still need answering is the SERVER's
+    // answer. The checkout screen used to decide it by probing with a
+    // browser-held autosave credential, so anyone arriving on a link without
+    // one — a new phone, a cleared browser, or an order whose credential was
+    // never minted — was shown a blank assessment and told the assessment they
+    // had finished was empty.
+    //
+    // A boolean is safe to return here: it is the same counts-not-values
+    // contract the payment gate uses, and it never carries intake detail.
+    let assessmentComplete = false;
+    if (String(r.letter_type ?? "").toLowerCase() === "psd") {
+      try {
+        const { data: ord } = await admin
+          .from("orders").select("id")
+          .eq("confirmation_id", r.confirmation_id as string).maybeSingle();
+        const oid = (ord as { id?: string } | null)?.id ?? null;
+        if (oid) {
+          const { data: st } = await admin.rpc("psd_assessment_status", { p_order_id: oid });
+          assessmentComplete = (st as { complete?: boolean } | null)?.complete === true;
+        }
+      } catch {
+        // Unknown -> false -> show the questions. Never skip them on a guess.
+      }
+    }
     // Shape the payload for the checkout screen. No assessment answers, no
     // order UUID, no slug echoed back.
     return new Response(
@@ -121,6 +147,7 @@ serve(async (req) => {
           // COUNT only — drives multi-pet pricing (1 -> $129, 2-3 -> $149).
           // Without it checkout defaults to one pet and undercharges by $20.
           petCount: Number(r.pet_count ?? 1) || 1,
+          assessmentComplete,
         },
       }),
       { status: 200, headers: { ...CORS, ...SECURITY, "Content-Type": "application/json" } },

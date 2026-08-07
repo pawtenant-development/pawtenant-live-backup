@@ -1102,6 +1102,51 @@ serve(async (req) => {
         }
       }
 
+      // ── PSD autosave credential ──────────────────────────────────────────
+      // PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001.
+      //
+      // Incremental autosave needs a per-answer write credential, and a
+      // confirmation id must never be one — it is a display reference that
+      // travels through emails, SMS, URLs and support threads, while the thing
+      // it would unlock is mental-health intake.
+      //
+      // So an UNPAID PSD lead upsert mints an opaque, order-bound token here and
+      // returns it exactly once. Only its sha256 is stored, so reading the table
+      // cannot replay a session. Non-PSD and paid orders get nothing.
+      let assessmentToken: string | null = null;
+      try {
+        const isPsdLead =
+          String(body.letterType ?? "").toLowerCase() === "psd" &&
+          paymentState === "unpaid";
+        // The upsert above does not return the row id, and `existingOrder` is
+        // null for a brand-new lead — so resolve it explicitly rather than
+        // referencing an identifier that does not exist in this scope.
+        let orderRowId: string | null = (existingOrder?.id as string | undefined) ?? null;
+        if (isPsdLead && !orderRowId) {
+          const { data: justSaved } = await supabase
+            .from("orders").select("id")
+            .eq("confirmation_id", effectiveConfirmationId).maybeSingle();
+          orderRowId = (justSaved as { id?: string } | null)?.id ?? null;
+        }
+        if (isPsdLead && orderRowId) {
+          const raw = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+            .map((b) => b.toString(16).padStart(2, "0")).join("");
+          const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+          const hash = Array.from(new Uint8Array(digest))
+            .map((b) => b.toString(16).padStart(2, "0")).join("");
+          const { error: sessErr } = await supabase.from("assessment_sessions").insert({
+            token_hash: hash,
+            order_id: orderRowId,
+            // Long enough to finish an assessment in one or several sittings,
+            // short enough that an abandoned token does not live forever.
+            expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          });
+          if (!sessErr) assessmentToken = raw;
+        }
+      } catch (e) {
+        // Never block a lead save on this. Autosave degrades; the lead is kept.
+        console.warn("[get-resume-order] assessment session mint failed:", String(e));
+      }
       return new Response(
         JSON.stringify({
           ok: true,
@@ -1113,6 +1158,7 @@ serve(async (req) => {
           paymentState,
           reconciled,
           idDiverged: effectiveConfirmationId !== confirmationId,
+          assessmentToken,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

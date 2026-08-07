@@ -51,6 +51,8 @@ export interface CheckoutResumePayload {
   couponCode: string | null;
   couponDiscount: number | null;
   otpVerified: boolean;
+  /** Server's verdict on the PSD assessment. Boolean only — never values. */
+  assessmentComplete?: boolean;
   /** COUNT only — drives multi-pet pricing. No pet detail is ever returned. */
   petCount: number;
 }

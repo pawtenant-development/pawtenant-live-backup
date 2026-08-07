@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import PSDAssessmentNavbar from "./components/PSDAssessmentNavbar";
 import PSDStep1, { PSDStep1Data } from "./components/PSDStep1";
@@ -297,6 +297,7 @@ export default function PSDAssessmentPage() {
         // third-party script that reads location.search later in the page life.
         let stableOrder: (Record<string, unknown> & { already_paid?: boolean }) | null = null;
         let stableOtpVerified = false;
+        let stableAssessmentComplete = false;
         if (checkoutResume) {
           try {
             delete (window as unknown as { __ptCheckoutResume?: unknown }).__ptCheckoutResume;
@@ -318,6 +319,11 @@ export default function PSDAssessmentPage() {
             already_paid: false,
           };
           stableOtpVerified = cr.otpVerified === true;
+          // PSD-CHECKOUT-CANONICAL-ANSWER-GATE-LIVE-INCIDENT-002: completeness now
+          // arrives with the link, decided by the server against the authoritative
+          // answers, so a customer on a new device is not told their finished
+          // assessment is empty.
+          stableAssessmentComplete = cr.assessmentComplete === true;
         }
 
         const rawToken = resumeToken;
@@ -498,7 +504,11 @@ export default function PSDAssessmentPage() {
         // A resume now lands on the QUESTIONS whenever required answers are
         // still missing, and on checkout only when the assessment is actually
         // complete. Completeness is the SERVER's answer, not a client guess.
-        let requiredComplete = false;
+        // Seeded from the server's verdict when the customer arrived on a stable
+        // checkout link. The token probe below is only a fallback for flows that
+        // carry a credential; it must never be the ONLY way to learn this, or a
+        // browser without one re-asks questions the customer already answered.
+        let requiredComplete = stableAssessmentComplete;
         try {
           const tok = readAssessmentToken();
           if (tok) {
@@ -512,7 +522,9 @@ export default function PSDAssessmentPage() {
               body: JSON.stringify({ action: "status", token: tok }),
             });
             const sj = await st.json().catch(() => null) as { status?: { complete?: boolean } } | null;
-            requiredComplete = sj?.status?.complete === true;
+            // Only ever UPGRADE. A failed or tokenless probe must not overturn a
+            // completeness the server already confirmed.
+            requiredComplete = requiredComplete || sj?.status?.complete === true;
           }
         } catch { /* unknown -> treat as incomplete and show the questions */ }
 
