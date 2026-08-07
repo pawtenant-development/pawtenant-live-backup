@@ -8,6 +8,7 @@ import {
   COMBO_ONE_TIME_CENTS,
   COMBO_ANNUAL_CENTS,
 } from "../_shared/pricingMatrix.ts";
+import { resolveTrustedQuote, issueTrustedQuote } from "../_shared/priceQuote.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -242,37 +243,30 @@ const PRICING_V2_LAUNCH_AT = new Date(
   Deno.env.get("PRICING_V2_LAUNCH_AT") ?? "2026-07-03T00:00:00Z",
 );
 
+// ORDERS-PUBLIC-LEAD-UPDATE-POLICY-HARDENING-001 (P0)
+// WAS: read orders.price and use it as the charge base. `orders` grants UPDATE
+// to anon/authenticated and RLS cannot restrict columns, so that column was
+// client-writable - a customer could set it on their own unpaid lead and be
+// charged that amount. The old comment claimed the value was safe "because it
+// comes from the DB, not the client"; that premise was wrong.
+//
+// NOW: honour ONLY a server-issued quote (public.order_price_quotes, append-only,
+// service-role). No trusted quote => canonical pricing from the shared matrix.
+// orders.price is never read as a charge basis again.
 async function resolveLegacyQuoteLock(
   confirmationId: string,
   configBaseCents: number,
-): Promise<{ baseCents: number; pricingSource: string }> {
-  const out = { baseCents: configBaseCents, pricingSource: "current_pricing" };
-  if (!confirmationId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return out;
-  try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data } = await supabase
-      .from("orders")
-      .select("price, created_at, paid_at, payment_intent_id")
-      .eq("confirmation_id", confirmationId)
-      .maybeSingle();
-    if (!data) return out;
-    if (data.payment_intent_id || data.paid_at) return out; // never reprice paid
-    const savedPrice = typeof data.price === "number" ? data.price : null;
-    const isLegacy = data.created_at
-      ? new Date(data.created_at as string).getTime() < PRICING_V2_LAUNCH_AT.getTime()
-      : false;
-    if (savedPrice != null && savedPrice > 0) {
-      const savedCents = Math.round(savedPrice * 100);
-      out.baseCents = savedCents;
-      out.pricingSource = savedCents !== configBaseCents ? "legacy_saved_quote" : "current_pricing";
-      return out;
-    }
-    out.pricingSource = isLegacy ? "legacy_fallback" : "current_pricing";
-    return out;
-  } catch (err) {
-    console.warn("[create-checkout-session] legacy quote lock failed — using current pricing:", err instanceof Error ? err.message : String(err));
-    return out;
+): Promise<{ baseCents: number; pricingSource: string; savedPriceCents: number | null }> {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return { baseCents: configBaseCents, pricingSource: "current_pricing", savedPriceCents: null };
   }
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const q = await resolveTrustedQuote(supabase, confirmationId, configBaseCents);
+  return {
+    baseCents: q.baseCents,
+    pricingSource: q.pricingSource,
+    savedPriceCents: q.usedTrustedQuote ? q.baseCents : null,
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -496,6 +490,24 @@ Deno.serve(async (req: Request) => {
       console.info(`[create-checkout-session] legacy price lock: ${confirmationId} $${configBaseCents / 100} → $${quoteLock.baseCents / 100} (${quoteLock.pricingSource})`);
     }
     sharedMetadata.pricing_source = quoteLock.pricingSource;
+
+    // Record the server-decided base so a later resume (either charge path)
+    // reproduces this amount rather than silently repricing.
+    if (confirmationId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+      await issueTrustedQuote(
+        createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY),
+        {
+          confirmationId,
+          amountCents: quoteLock.baseCents,
+          packageKey,
+          billingPlan: "one_time",
+          letterType,
+          petCount,
+          pricingVersion: quoteLock.pricingSource,
+          source: "create-checkout-session",
+        },
+      );
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sessionParams: any = {
