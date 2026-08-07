@@ -243,7 +243,7 @@ Deno.serve(async (req) => {
         .limit(1);
       if (!Array.isArray(priorPending) || priorPending.length === 0) {
         await admin.from("audit_logs").insert({
-          actor_name: actorName, actor_role: actorRole, actor_type: actorRole === "admin" ? "user" : "system",
+          actor_name: actorName, actor_role: actorRole, actor_type: actorRole === "admin" ? "admin" : "system",
           category: "communications", source: "notify_provider_additional_doc",
           object_type: "notification", object_id: confirmationId, order_id: order.id,
           action: "provider_additional_doc_notification_pending",
@@ -315,7 +315,7 @@ Deno.serve(async (req) => {
     });
     try {
       await admin.from("audit_logs").insert({
-        actor_name: actorName, actor_role: actorRole, actor_type: actorRole === "admin" ? "user" : "system",
+        actor_name: actorName, actor_role: actorRole, actor_type: actorRole === "admin" ? "admin" : "system",
         category: "communications", source: "notify_provider_additional_doc",
         object_type: "notification", object_id: confirmationId, order_id: order.id,
         action: "notification_suppressed_test_fixture",
@@ -519,7 +519,7 @@ Deno.serve(async (req) => {
 
   try {
     await admin.from("audit_logs").insert({
-      actor_name: actorName, actor_role: actorRole, actor_type: actorRole === "admin" ? "user" : "system",
+      actor_name: actorName, actor_role: actorRole, actor_type: actorRole === "admin" ? "admin" : "system",
       category: "communications", source: "notify_provider_additional_doc",
       object_type: "notification", object_id: confirmationId, order_id: order.id,
       action: sent
