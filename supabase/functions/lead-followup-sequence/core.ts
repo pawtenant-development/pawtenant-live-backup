@@ -393,6 +393,45 @@ async function sendRecoverySms(
     );
   }
 
+  // GHL-CONTACT-READ-SCOPE-AND-DND-INTEGRITY-001.
+  //
+  // The credential can no longer read opt-out state, so every automated SMS is
+  // now being refused. That is the correct refusal — we will not message a
+  // customer whose opt-out state we cannot establish — but it silently disables
+  // checkout recovery, and only a credential change restores it. Page an
+  // operator rather than letting the channel go quiet unnoticed.
+  // Written to `audit_logs` rather than `system_errors`: system_errors exists
+  // only on TEST, so an alert sent there would be silently discarded on LIVE —
+  // precisely where it matters. audit_logs exists on both and Admin already
+  // surfaces it.
+  //
+  // Rate-limited to one row per hour. The refusal is per-lead, and a credential
+  // outage refuses EVERY lead on EVERY tick; without this the alert itself
+  // becomes the storm it is warning about.
+  if (res.failureCode === "dnd_scope_denied") {
+    try {
+      const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { count } = await supabase
+        .from("audit_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("action", "ghl_contact_read_denied")
+        .gte("created_at", since);
+      if (!count) {
+        await supabase.from("audit_logs").insert({
+          actor_name: "Lead Follow-up Sequence", actor_role: "system", actor_type: "system",
+          category: "integration", source: "lead-followup-sequence",
+          object_type: "integration", object_id: "gohighlevel",
+          action: "ghl_contact_read_denied",
+          description:
+            "Automated recovery SMS is SUSPENDED: GoHighLevel refused the contact read, so opt-out (DND) state cannot be verified. " +
+            "No automated SMS will be sent until the GHL credential can read contacts. Customer-initiated and manual admin sends are unaffected.",
+          // Reason only — never a token, phone number or message body.
+          metadata: { failure_reason: res.failureReason, first_seen_confirmation_id: opts.confirmationId },
+        });
+      }
+    } catch { /* alerting must never break the send loop */ }
+  }
+
   return {
     sent: res.ok,
     outcome: res.outcome,

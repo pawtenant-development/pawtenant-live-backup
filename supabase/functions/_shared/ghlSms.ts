@@ -103,6 +103,8 @@ export type GhlSmsFailureCode =
   | "test_guard_blocked"
   | "dnd_blocked"
   | "dnd_unverified"
+  /** The credential may not READ contacts. Terminal until credentials change. */
+  | "dnd_scope_denied"
   | "contact_unavailable"
   | "provider_auth"
   | "provider_rejected"
@@ -286,20 +288,30 @@ async function resolveContact(
 /** Read DND for a KNOWN contact id. Only ever called after the contact exists. */
 async function contactSmsDnd(
   contactId: string, apiKey: string,
-): Promise<{ blocked: boolean; verified: boolean; detail: string; transient: boolean }> {
+): Promise<{
+  blocked: boolean; verified: boolean; detail: string; transient: boolean;
+  /** 401/403 — the credential itself may not read contacts. Not transient. */
+  authDenied: boolean;
+}> {
   try {
     const res = await ghlFetch(`/contacts/${encodeURIComponent(contactId)}`, apiKey);
     if (!res.ok) {
       const transient = res.status >= 500 || res.status === 429;
-      return { blocked: false, verified: false, transient, detail: `contact fetch HTTP ${res.status}` };
+      // An authorization refusal is NOT transient: retrying it every cron tick
+      // burns the retry budget on a condition only a credential change fixes.
+      const authDenied = res.status === 401 || res.status === 403;
+      return {
+        blocked: false, verified: false, transient, authDenied,
+        detail: `contact fetch HTTP ${res.status}`,
+      };
     }
     // deno-lint-ignore no-explicit-any
     const contact = ((await res.json().catch(() => null)) as any)?.contact;
     if (!contact || typeof contact !== "object") {
-      return { blocked: false, verified: false, transient: true, detail: "malformed contact response" };
+      return { blocked: false, verified: false, transient: true, authDenied: false, detail: "malformed contact response" };
     }
     if (contact.dnd === true) {
-      return { blocked: true, verified: true, transient: false, detail: "global DND active" };
+      return { blocked: true, verified: true, transient: false, authDenied: false, detail: "global DND active" };
     }
     const dndSettings = contact.dndSettings && typeof contact.dndSettings === "object"
       ? contact.dndSettings as Record<string, unknown>
@@ -309,14 +321,14 @@ async function contactSmsDnd(
       // deno-lint-ignore no-explicit-any
       const st = String((value as any)?.status ?? "").toLowerCase();
       if (st === "active" || st === "permanent") {
-        return { blocked: true, verified: true, transient: false, detail: `SMS DND ${st}` };
+        return { blocked: true, verified: true, transient: false, authDenied: false, detail: `SMS DND ${st}` };
       }
     }
-    return { blocked: false, verified: true, transient: false, detail: "no SMS DND on contact" };
+    return { blocked: false, verified: true, transient: false, authDenied: false, detail: "no SMS DND on contact" };
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
     return {
-      blocked: false, verified: false, transient: true,
+      blocked: false, verified: false, transient: true, authDenied: false,
       detail: aborted ? "GHL DND check timeout" : "GHL DND check unreachable",
     };
   }
@@ -406,28 +418,41 @@ export async function sendGhlSms(opts: SendGhlSmsOptions): Promise<GhlSmsResult>
       );
     }
     if (!dnd.verified) {
-      // DELIBERATELY NOT FAIL-CLOSED HERE, and this is the one place in this
-      // module where that is the right call.
+      // GHL-CONTACT-READ-SCOPE-AND-DND-INTEGRITY-001 — FAIL CLOSED.
       //
-      // Measured on TEST 2026-08-06: GHL answers `POST /contacts/` but returns
-      // 401 on `GET /contacts/{id}` — the API key has write but not read scope
-      // for a single contact. (The same lookup succeeded in July, so the key's
-      // permissions changed under us.) Treating an unreadable DND as a refusal
-      // would have made EVERY automated recovery SMS terminal on attempt one:
-      // the identical outcome as the Twilio incident this task exists to fix,
-      // just with a more respectable-looking reason in the logs.
+      // This used to proceed to the provider on an unreadable DND, on the
+      // reasoning that GHL enforces DND at send time anyway. That reasoning was
+      // written when `GET /contacts/{id}` appeared to be refused outright, and
+      // refusing every send would have killed the recovery channel entirely.
       //
-      // The opt-out guarantee does not depend on us reading it. GHL enforces
-      // DND on the Conversations send itself and rejects a DND'd recipient, and
-      // `classifyGhlFailure` maps that rejection to PERMANENT. So the customer
-      // is still protected — by the provider, at the point of sending, which is
-      // the authoritative place — while a scope regression can no longer take
-      // the whole channel down silently.
+      // Re-measured 2026-08-07 against the same credential: the contact read
+      // returns 200 and `dndSettings.SMS.status` arrives. The read works. So
+      // "unverified" is no longer the normal case that has to be tolerated — it
+      // is now genuinely exceptional, and the owner's rule applies: PawTenant
+      // must independently establish that sending is permitted rather than
+      // discovering it from a provider rejection.
       //
-      // What we lose is one round trip's worth of politeness: a DND'd contact
-      // costs a rejected provider call instead of being skipped locally. That
-      // is a cost worth paying for not being able to fail silently.
-      console.warn(`[ghlSms] DND unverified, proceeding to provider: ${dnd.detail}`);
+      // The distinction that keeps this from becoming the retry storm the old
+      // comment feared:
+      //   authDenied (401/403) — only a credential change fixes it. PERMANENT,
+      //     so the cron stops instead of re-asking every 15 minutes, and the
+      //     failure code names the cause for an operator.
+      //   anything else — transient. RETRYABLE, and the existing bounded
+      //     backoff (original → +60m → +360m → terminal) bounds it.
+      // Either way the customer is not messaged while their opt-out state is
+      // unknown.
+      const authDenied = dnd.authDenied;
+      console.warn(
+        `[ghlSms] DND unverified — refusing to send (${authDenied ? "authorization" : "transient"}): ${dnd.detail}`,
+      );
+      return fail(
+        authDenied ? "permanent" : "retryable",
+        authDenied ? "dnd_scope_denied" : "dnd_unverified",
+        authDenied
+          ? `Opt-out state could not be read — GHL refused the contact read (${dnd.detail}). Not sent: SMS stays suspended until the GHL credential can read contacts.`
+          : `Opt-out state could not be verified (${dnd.detail}). Not sent.`,
+        { phone, contactId: contact.contactId, fromNumber: fromNumber || null },
+      );
     }
   }
 
