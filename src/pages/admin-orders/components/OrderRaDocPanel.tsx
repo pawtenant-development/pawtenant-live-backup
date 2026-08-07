@@ -118,11 +118,12 @@ export default function OrderRaDocPanel({ orderId, onOpenFile }: Props) {
       const { data, error } = await supabase.functions.invoke("notify-provider-additional-doc", {
         body: { confirmationId, trigger: "manual_resend" },
       });
-      const res = (data ?? {}) as { emailSent?: boolean; error?: string; pending?: boolean };
+      const res = (data ?? {}) as { emailSent?: boolean; error?: string; reason?: string; pending?: boolean };
       if (error) setResendMsg(`Failed: ${error.message}`);
       else if (res.emailSent) setResendMsg("Sent to the assigned provider.");
       else if (res.pending) setResendMsg("No provider assigned yet — will send on assignment.");
-      else setResendMsg(`Not sent: ${res.error ?? "not actionable"}`);
+      // reason carries the suppressed/duplicate explanation; error carries a refusal.
+      else setResendMsg(`Not sent: ${res.error ?? res.reason ?? "not actionable"}`);
     } catch (e) {
       setResendMsg(`Failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
