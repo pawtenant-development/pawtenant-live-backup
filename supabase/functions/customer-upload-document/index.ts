@@ -22,6 +22,7 @@
 // Contract / limits mirror supabase/functions/admin-upload-document.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { notifyProviderAdditionalDoc } from "../_shared/notifyProviderAdditionalDoc.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -398,6 +399,22 @@ Deno.serve(async (req) => {
       console.warn("[customer-upload-document] internal notification failed (non-fatal):", e instanceof Error ? e.message : String(e));
     }
   }
+
+  // ── Provider EMAIL notification (ADDITIONAL-DOCUMENTATION-PROVIDER-
+  // NOTIFICATION-001) ────────────────────────────────────────────────────
+  // The in-portal doctor_notifications row above only reaches a provider who is
+  // already logged in. This fires the email arm so the assigned provider learns
+  // the case is actionable again. Fired for EVERY upload (customer or admin-on-
+  // behalf): the notifier re-derives actionability + the assigned provider
+  // itself and is exactly-once at the DB level, so an extra trigger is free.
+  // Awaited so the send completes before the function returns, but it can never
+  // fail the upload the customer just made.
+  await notifyProviderAdditionalDoc({
+    supabaseUrl,
+    serviceKey,
+    confirmationId: order.confirmation_id,
+    trigger: "customer_upload",
+  });
 
   return json(200, { ok: true, document: inserted });
 });

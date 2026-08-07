@@ -22,6 +22,9 @@ interface Props {
 }
 
 interface OrderRa {
+  confirmation_id: string | null;
+  doctor_name: string | null;
+  doctor_email: string | null;
   package_key: string | null;
   package_display_name: string | null;
   billing_plan: string | null;
@@ -32,6 +35,9 @@ interface OrderRa {
 }
 interface AddonReq { id: string; status: string; amount_cents: number | null; created_at: string; paid_at: string | null; }
 interface Doc { id: string; label: string | null; uploaded_at: string | null; doc_type: string; }
+/** Provider notification attempts — the same communications rows the notifier
+ *  reserves, so a failed send is visible here without a second source of truth. */
+interface Notif { id: string; status: string | null; email_to: string | null; created_at: string; }
 
 function fmt(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -53,17 +59,22 @@ export default function OrderRaDocPanel({ orderId, onOpenFile }: Props) {
   const [ra, setRa] = useState<OrderRa | null>(null);
   const [reqs, setReqs] = useState<AddonReq[]>([]);
   const [docs, setDocs] = useState<Doc[]>([]);
+  const [notifs, setNotifs] = useState<Notif[]>([]);
   const [loading, setLoading] = useState(true);
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
+
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       setLoading(true);
       try {
-        const [orderRes, reqRes, docRes] = await Promise.all([
+        const [orderRes, reqRes, docRes, notifRes] = await Promise.all([
           supabase
             .from("orders")
-            .select("package_key, package_display_name, billing_plan, includes_reasonable_accommodation_letter, additional_documentation_status, additional_documentation_requested_at, customer_uploaded_additional_document_at")
+            .select("confirmation_id, doctor_name, doctor_email, package_key, package_display_name, billing_plan, includes_reasonable_accommodation_letter, additional_documentation_status, additional_documentation_requested_at, customer_uploaded_additional_document_at")
             .eq("id", orderId)
             .maybeSingle(),
           supabase
@@ -77,11 +88,18 @@ export default function OrderRaDocPanel({ orderId, onOpenFile }: Props) {
             .eq("order_id", orderId)
             .eq("doc_type", "customer_upload")
             .order("uploaded_at", { ascending: false }),
+          supabase
+            .from("communications")
+            .select("id, status, email_to, created_at")
+            .eq("order_id", orderId)
+            .eq("slug", "provider_additional_doc_ready")
+            .order("created_at", { ascending: false }),
         ]);
         if (!alive) return;
         setRa((orderRes.data as OrderRa) ?? null);
         setReqs((reqRes.data as AddonReq[]) ?? []);
         setDocs((docRes.data as Doc[]) ?? []);
+        setNotifs((notifRes.data as Notif[]) ?? []);
       } catch {
         /* fail soft — panel simply renders the empty/idle state */
       } finally {
@@ -89,7 +107,29 @@ export default function OrderRaDocPanel({ orderId, onOpenFile }: Props) {
       }
     })();
     return () => { alive = false; };
-  }, [orderId]);
+  }, [orderId, reloadKey]);
+
+  // Authorized manual resend. The edge function re-checks admin privileges and
+  // re-derives the recipient itself — this button only names the order.
+  async function handleResend(confirmationId: string) {
+    setResending(true);
+    setResendMsg(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("notify-provider-additional-doc", {
+        body: { confirmationId, trigger: "manual_resend" },
+      });
+      const res = (data ?? {}) as { emailSent?: boolean; error?: string; pending?: boolean };
+      if (error) setResendMsg(`Failed: ${error.message}`);
+      else if (res.emailSent) setResendMsg("Sent to the assigned provider.");
+      else if (res.pending) setResendMsg("No provider assigned yet — will send on assignment.");
+      else setResendMsg(`Not sent: ${res.error ?? "not actionable"}`);
+    } catch (e) {
+      setResendMsg(`Failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setResending(false);
+      setReloadKey((k) => k + 1);
+    }
+  }
 
   if (loading) return null;
 
@@ -114,6 +154,20 @@ export default function OrderRaDocPanel({ orderId, onOpenFile }: Props) {
   let statusCls = "bg-amber-50 text-[#B45309]";
   if (s === "completed") { statusLabel = "Completed by provider"; statusCls = "bg-emerald-50 text-emerald-700"; }
   else if (s === "in_review" || s === "uploaded" || docs.length > 0) { statusLabel = "Uploaded — under provider review"; statusCls = "bg-blue-50 text-blue-700"; }
+
+  // Newest attempt wins: a successful resend after a failure must read as sent.
+  const latestNotif = notifs[0] ?? null;
+  const notifStatus = (latestNotif?.status ?? "").toLowerCase();
+  const notifLabel = notifStatus === "sent"
+    ? "Notified"
+    : notifStatus === "failed"
+      ? "Send failed — needs attention"
+      : "Sending…";
+  const notifCls = notifStatus === "sent"
+    ? "bg-emerald-50 text-emerald-700"
+    : notifStatus === "failed"
+      ? "bg-red-50 text-red-700"
+      : "bg-gray-100 text-gray-600";
 
   const source = isCombo
     ? "Combo included"
@@ -161,6 +215,51 @@ export default function OrderRaDocPanel({ orderId, onOpenFile }: Props) {
             </ul>
           )}
         </div>
+
+        {/* Provider notification (ADDITIONAL-DOCUMENTATION-PROVIDER-NOTIFICATION-001).
+            Surfaced here so a send that FAILED is visible to Admin rather than
+            silently absent — the previous behaviour was no email at all. */}
+        {(docs.length > 0 || notifs.length > 0) && (
+          <div className="border-t border-gray-200 pt-3">
+            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Provider notification</p>
+            <div className="flex items-center justify-between gap-2 flex-wrap bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+              <span className="min-w-0">
+                {latestNotif ? (
+                  <>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${notifCls}`}>{notifLabel}</span>
+                    <span className="block text-[10px] text-gray-500 mt-1 truncate">
+                      {latestNotif.email_to ?? "—"} · {fmt(latestNotif.created_at) || "—"}
+                      {notifs.length > 1 ? ` · ${notifs.length} attempts` : ""}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-[#B45309]">
+                      {ra?.doctor_email ? "Not notified" : "Pending — no provider assigned"}
+                    </span>
+                    <span className="block text-[10px] text-gray-500 mt-1 truncate">
+                      {ra?.doctor_email
+                        ? `Assigned to ${ra.doctor_name ?? ra.doctor_email}`
+                        : "The notification will send automatically once a provider is assigned."}
+                    </span>
+                  </>
+                )}
+              </span>
+              {ra?.confirmation_id && (
+                <button
+                  type="button"
+                  disabled={resending || !ra.doctor_email}
+                  onClick={() => handleResend(ra.confirmation_id as string)}
+                  title={ra.doctor_email ? "Send this notification to the assigned provider again" : "No provider assigned"}
+                  className="text-xs font-semibold text-[#3b6ea5] hover:text-[#1e3a5f] whitespace-nowrap flex items-center gap-1 cursor-pointer flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <i className="ri-mail-send-line"></i>{resending ? "Sending…" : "Resend to provider"}
+                </button>
+              )}
+            </div>
+            {resendMsg && <p className="text-[10px] text-gray-500 mt-1.5">{resendMsg}</p>}
+          </div>
+        )}
       </div>
     </div>
   );

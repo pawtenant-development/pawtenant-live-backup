@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkPsdAssessmentComplete } from "../_shared/psdCompletionGate.ts";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
+import { notifyProviderAdditionalDoc } from "../_shared/notifyProviderAdditionalDoc.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -378,6 +379,22 @@ Deno.serve(async (req: Request) => {
       tags: ["Doctor Assigned", "Pending Review"],
     }),
   }).catch(() => {});
+
+  // ── Pending additional-documentation handoff (ADDITIONAL-DOCUMENTATION-
+  // PROVIDER-NOTIFICATION-001) ──────────────────────────────────────────────
+  // If the customer already uploaded the requested additional documentation
+  // while the order was UNASSIGNED, that notification has been sitting pending —
+  // there was nobody to send it to. Now that a provider is assigned, fire it.
+  // This is also the REASSIGNMENT path: the notifier's dedupe key includes the
+  // provider address, so the newly assigned provider is notified exactly once
+  // and the previous provider is not re-notified. A no-op when there is no
+  // actionable additional-documentation request.
+  await notifyProviderAdditionalDoc({
+    supabaseUrl,
+    serviceKey,
+    confirmationId,
+    trigger: "assignment",
+  });
 
   return json({
     ok: true,
