@@ -340,17 +340,41 @@ const CHECKS = [
     // number, so without this the cron keeps messaging an opted-out customer.
     return /checkDnd:\s*true/.test(recoverySender(read(CORE)));
   }],
-  ["S36", "a POSITIVE DND is terminal, an UNREADABLE one does not kill the channel", () => {
+  ["S36", "a POSITIVE DND is terminal; an UNREADABLE one never sends, and only an auth denial is terminal", () => {
     const c = stripComments(read(GHLSMS));
-    // Measured on TEST 2026-08-06: GHL answers POST /contacts/ but 401s on
-    // GET /contacts/{id}. Refusing to send on an unreadable DND made every
-    // recovery SMS terminal on attempt one — the Twilio incident's outcome
-    // with a better excuse. GHL enforces DND at send time and that rejection
-    // classifies as permanent, so the customer stays protected either way.
+    // SUPERSEDED ASSERTION — do not restore the old one.
+    //
+    // This check used to require that an UNREADABLE DND still SENT, on the
+    // 2026-08-06 measurement that GHL 401'd `GET /contacts/{id}` and refusing
+    // would have killed the recovery channel outright.
+    //
+    // GHL-CONTACT-READ-SCOPE-AND-DND-INTEGRITY-001 re-measured the same
+    // credential on 2026-08-07: the contact read returns 200 and
+    // `dndSettings.SMS.status` arrives. The 401 does not reproduce. So
+    // "unverified" is no longer the normal case that had to be tolerated, and
+    // the owner's rule applies — PawTenant must independently establish that
+    // sending is permitted rather than discovering it from a provider
+    // rejection. `ghlSms.ts` now fails CLOSED, and this guard pins THAT.
+    //
+    // The split is what stops fail-closed becoming a retry storm:
+    //   authDenied (401/403) → PERMANENT `dnd_scope_denied` — only a credential
+    //     change fixes it, so the cron stops instead of re-asking every 15 min;
+    //   anything else        → RETRYABLE `dnd_unverified` — bounded backoff.
     if (!/return fail\(\s*"permanent", "dnd_blocked"/.test(c)) return false;
-    const m = c.match(/if \(!dnd\.verified\) \{([\s\S]{0,400}?)\n {4}\}/);
+    const m = c.match(/if \(!dnd\.verified\) \{([\s\S]{0,1200}?)\n {4}\}/);
     if (!m) return false;
-    return !/return fail\(/.test(m[1]) && /console\.warn/.test(m[1]);
+    const branch = m[1];
+    // It must refuse the send…
+    if (!/return fail\(/.test(branch)) return false;
+    // …and it must be OBSERVABLE, or a suspended channel looks like a quiet one.
+    if (!/console\.warn/.test(branch)) return false;
+    // …and the terminality must be decided by the auth denial, not blanket.
+    const classifiedByAuth = /authDenied \? "permanent" : "retryable"/.test(branch);
+    const namesBothCodes = /"dnd_scope_denied"/.test(branch) && /"dnd_unverified"/.test(branch);
+    // A blanket `"permanent"` for every unreadable read is the retry-storm
+    // inverse and must not pass.
+    const notBlanketPermanent = !/return fail\(\s*"permanent",\s*"dnd_unverified"/.test(branch);
+    return classifiedByAuth && namesBothCodes && notBlanketPermanent;
   }],
   ["S37", "a send with unreadable opt-out state is logged, never silent", () =>
     /res\.ok && !res\.dndVerified/.test(recoverySender(read(CORE)))],
@@ -507,10 +531,21 @@ const CONTROLS = [
     (s) => s.replace(
       /return isTestSupabaseProject\(supabaseUrl\) &&/,
       "return false && isTestSupabaseProject(supabaseUrl) &&")],
-  ["an unreadable DND blocks the whole channel again", GHLSMS,
+  // GHL-CONTACT-READ-SCOPE-AND-DND-INTEGRITY-001 flipped this policy from
+  // fail-OPEN to fail-CLOSED, so the old control ("an unreadable DND blocks the
+  // whole channel again") anchored on a console.warn string that no longer
+  // exists and had silently become a NO-OP. These three replace it and pin the
+  // three ways the current policy can regress.
+  ["an unreadable DND sends anyway (the refusal branch is disabled)", GHLSMS,
+    (s) => s.replace(/if \(!dnd\.verified\) \{/, "if (false) {")],
+  ["every unreadable DND becomes terminal (the retry-storm inverse)", GHLSMS,
+    (s) => s
+      .replace(/authDenied \? "permanent" : "retryable",/, '"permanent",')
+      .replace(/authDenied \? "dnd_scope_denied" : "dnd_unverified",/, '"dnd_unverified",')],
+  ["a suspended SMS channel becomes silent (the operator warning is dropped)", GHLSMS,
     (s) => s.replace(
-      /console\.warn\(`\[ghlSms\] DND unverified, proceeding to provider: \$\{dnd\.detail\}`\);/,
-      'return fail("permanent", "dnd_unverified", "unreadable");')],
+      /console\.warn\(\r?\n\s*`\[ghlSms\] DND unverified — refusing to send/,
+      'void (\n        `[ghlSms] DND unverified — refusing to send')],
   ["a positive DND stops being terminal", GHLSMS,
     (s) => s.replace(/return fail\(\n        "permanent", "dnd_blocked",/,
       'return fail(\n        "retryable", "dnd_blocked",')],

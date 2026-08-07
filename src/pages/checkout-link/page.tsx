@@ -1,39 +1,76 @@
 // src/pages/checkout-link/page.tsx
 //
 // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001
+// ASSESSMENT-CHECKOUT-REFRESH-AND-RESUME-PERSISTENCE-LIVE-INCIDENT-003
 //
-// Customer entry point for the stable recovery link:
+// The customer-facing DURABLE payment location:
 //
 //     https://pawtenant.com/checkout/<slug>
 //
-// This is a thin, credential-safe bridge. It resolves the slug server-side and
-// hands the resolved order to the assessment route IN MEMORY, then replaces the
-// history entry so the slug never persists in the address bar.
+// WHAT THIS PAGE USED TO DO, AND WHY IT WAS THE BUG
+// -------------------------------------------------
+// It resolved the slug, then immediately did BOTH of these:
 //
-// WHY HAND OFF INSTEAD OF RENDERING CHECKOUT HERE:
-// Secure Checkout is step 3 of the assessment route (gates: otp → assurance →
-// package → pay). Re-implementing it here would fork the Stripe payment-intent
-// lifecycle, the duplicate-order guards and the package/plan restore logic —
-// exactly the things this task must preserve. So we reuse that screen rather
-// than clone it.
+//     window.history.replaceState({}, "", "/checkout");   // slug destroyed
+//     navigate("/psd-assessment", { replace: true });     // route left behind
 //
-// SLUG CONFIDENTIALITY:
-//   • the payload is passed on `window.__ptCheckoutResume` — memory only, never
-//     sessionStorage or localStorage;
-//   • `history.replaceState` drops the slug from the URL BEFORE the handoff, so
-//     the tag stack never reports it as `dl`/`dr` (the same failure that made
-//     `?rt=` leak into nine third-party beacons);
-//   • the slug is never logged, never sent to analytics, never put in an audit
-//     description or an error payload.
+// so the durable handle was thrown away at the exact moment it started
+// mattering. From then on the customer stood on `/psd-assessment` (or
+// `/assessment`) with the whole checkout state — current step, the server's
+// assessment-complete verdict, restored identity, the Stripe client secret —
+// living only in React component state.
+//
+// Pressing F5 remounted that component. `useState(1)` won. A customer who had
+// just finished a 16-question clinical intake was returned to Question 1,
+// "0 answered · Step 1 of 3". Reproduced on LIVE, twice, on both flows.
+//
+// WHAT IT DOES NOW
+// ----------------
+// The slug STAYS in the address bar and this route renders the checkout in
+// place. `/checkout/<slug>` becomes the canonical browser location for payment,
+// so the server — not browser memory — decides what the customer sees:
+//
+//     refresh            -> resolve again -> payment
+//     hard refresh       -> resolve again -> payment
+//     close and reopen   -> resolve again -> payment
+//     second device      -> resolve again -> payment
+//     order now paid     -> resolver declines -> the neutral screen below
+//
+// Nothing here depends on `currentStep`, `assessmentComplete`, an assessment
+// token, React state, or a previous component mount.
+//
+// WHY IT RENDERS THE ASSESSMENT SHELL INSTEAD OF ITS OWN CHECKOUT
+// --------------------------------------------------------------
+// Secure Checkout is step 3 of the assessment route (gates: otp -> assurance ->
+// package -> pay). Re-implementing it here would fork the Stripe
+// payment-intent lifecycle, the duplicate-order guards and the package/plan
+// restore logic — exactly the things this task must preserve. So the resolved
+// order is handed to that screen as a PROP and this route becomes its host.
+//
+// SLUG CONFIDENTIALITY UNDER THE NEW SHAPE
+// ----------------------------------------
+// The slug is now visible in the address bar — that is the point, and it is the
+// trade-off the owner accepted in exchange for a payment URL that survives a
+// refresh. It is contained rather than hidden:
+//   • it is in the PATH, never the query string, so it is not in
+//     `location.search` where the tag stack reads `dl`;
+//   • every URL capture surface masks it to `/checkout/:slug`
+//     (see src/lib/checkoutSlugMask.ts, attributionStore and index.html);
+//   • `no-referrer` is asserted for this view so no outbound request carries it;
+//   • the route is noindex, so it can never be crawled or indexed;
+//   • it is never logged, never written to storage, never sent to analytics and
+//     never placed in an audit description or error payload.
 
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useParams, Link } from "react-router-dom";
 import SharedNavbar from "@/components/feature/SharedNavbar";
 import SharedFooter from "@/components/feature/SharedFooter";
+import { CHECKOUT_SLUG_RE } from "@/lib/checkoutSlugMask";
 
-// 8 = legacy slugs already in customer inboxes; 12 = current format.
-// Exactly these two lengths — never an arbitrary-length wildcard.
-const SLUG_RE = /^([2-9A-HJ-NP-TV-Z]{8}|[2-9A-HJ-NP-TV-Z]{12})$/;
+// The two checkout hosts. Lazy so an unresolved / failed slug never pays the
+// cost of the Stripe bundle.
+const AssessmentPage = lazy(() => import("../assessment/page"));
+const PSDAssessmentPage = lazy(() => import("../psd-assessment/page"));
 
 export interface CheckoutResumePayload {
   confirmationId: string;
@@ -57,24 +94,38 @@ export interface CheckoutResumePayload {
   petCount: number;
 }
 
+/** Shown while the server decides what this customer should see.
+ *
+ *  This is the explicit RESOLVING state the incident asked for. Rendering the
+ *  assessment optimistically and correcting it afterwards is what produced the
+ *  Step-1 flash; a completed customer must never see Question 1, not even for
+ *  one frame. */
+function ResolvingCheckout() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="text-center">
+        <div
+          className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"
+          aria-hidden
+        />
+        <p className="text-[15px] text-slate-600">Opening your secure checkout…</p>
+      </div>
+    </div>
+  );
+}
+
 export default function CheckoutLinkPage() {
   const { slug = "" } = useParams();
-  const navigate = useNavigate();
   const ranRef = useRef(false);
+  const [resume, setResume] = useState<CheckoutResumePayload | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (ranRef.current) return;
     ranRef.current = true;
 
-    // Scrub the slug from the address bar synchronously, before any await and
-    // before the tag stack can read location. Keep the raw value in a local.
     const raw = slug.trim().toUpperCase();
-    try {
-      window.history.replaceState({}, "", "/checkout");
-    } catch { /* non-fatal */ }
-
-    if (!SLUG_RE.test(raw)) { setFailed(true); return; }
+    if (!CHECKOUT_SLUG_RE.test(raw)) { setFailed(true); return; }
 
     (async () => {
       try {
@@ -94,23 +145,20 @@ export default function CheckoutLinkPage() {
         const json = (await res.json()) as { ok?: boolean; resume?: CheckoutResumePayload };
         if (!json?.ok || !json.resume) { setFailed(true); return; }
 
-        // Memory-only handoff. Never persisted.
-        (window as unknown as { __ptCheckoutResume?: CheckoutResumePayload }).__ptCheckoutResume =
-          json.resume;
-
-        const isPsd = String(json.resume.letterType ?? "").toLowerCase() === "psd";
-        navigate(isPsd ? "/psd-assessment" : "/assessment", { replace: true });
+        setResume(json.resume);
       } catch {
         setFailed(true);
       }
     })();
-  }, [slug, navigate]);
+  }, [slug]);
 
   if (failed) {
     // Neutral. Discloses nothing about whether the order exists, was paid, was
     // refunded, or the slug was simply wrong.
     return (
       <div className="min-h-screen flex flex-col bg-white">
+        <meta name="robots" content="noindex, nofollow" />
+        <meta name="referrer" content="no-referrer" />
         <SharedNavbar />
         <main className="flex-1 flex items-center justify-center px-5 py-20">
           <div className="max-w-md w-full text-center">
@@ -142,15 +190,20 @@ export default function CheckoutLinkPage() {
     );
   }
 
+  if (!resume) return <ResolvingCheckout />;
+
+  const isPsd = String(resume.letterType ?? "").toLowerCase() === "psd";
+
+  // The hosted assessment shell asserts `noindex` + `no-referrer` for itself
+  // (it checks `isDurableCheckoutPath()`), so this route does not duplicate the
+  // tags here — one owner per directive, no conflicting robots values.
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="text-center">
-        <div
-          className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"
-          aria-hidden
-        />
-        <p className="text-[15px] text-slate-600">Opening your secure checkout…</p>
-      </div>
-    </div>
+    <>
+      <Suspense fallback={<ResolvingCheckout />}>
+        {isPsd
+          ? <PSDAssessmentPage checkoutResume={resume as unknown as Record<string, unknown>} />
+          : <AssessmentPage checkoutResume={resume as unknown as Record<string, unknown>} />}
+      </Suspense>
+    </>
   );
 }

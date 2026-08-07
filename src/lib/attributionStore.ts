@@ -56,6 +56,7 @@
 
 import { sanitizeMacroValue } from "./attributionMacros";
 import { detectAiChannelFromReferrer } from "./aiReferral";
+import { maskCheckoutSlugPath } from "./checkoutSlugMask";
 
 const SS = typeof sessionStorage !== "undefined" ? sessionStorage : null;
 const LS = typeof localStorage !== "undefined" ? localStorage : null;
@@ -200,7 +201,16 @@ const ONCE_KEYS: Set<keyof AttributionData> = new Set([
  */
 const CREDENTIAL_PARAMS = ["rt", "resume", "token"];
 
-/** Remove credential-bearing params from a URL, preserving everything else. */
+/**
+ * Remove credential-bearing params from a URL, preserving everything else.
+ *
+ * ASSESSMENT-CHECKOUT-REFRESH-AND-RESUME-PERSISTENCE-LIVE-INCIDENT-003:
+ * credentials are no longer only in the QUERY. The durable payment URL is
+ * `/checkout/<slug>` and that slug is a credential in the PATH, so a
+ * query-only strip would have let it through into `landing_url` — which is
+ * written to the order row and forwarded to GHL and analytics. The path mask
+ * runs on every call, including the ones that strip no params at all.
+ */
 export function stripCredentialParams(rawUrl: string): string {
   if (!rawUrl) return rawUrl;
   try {
@@ -209,11 +219,11 @@ export function stripCredentialParams(rawUrl: string): string {
     for (const p of CREDENTIAL_PARAMS) {
       if (u.searchParams.has(p)) { u.searchParams.delete(p); touched = true; }
     }
-    return touched ? u.toString() : rawUrl;
+    return maskCheckoutSlugPath(touched ? u.toString() : rawUrl);
   } catch {
     // Unparseable URL: fail SAFE by dropping the query string entirely rather
     // than returning a string that might still embed a token.
-    return rawUrl.split("?")[0];
+    return maskCheckoutSlugPath(rawUrl.split("?")[0]);
   }
 }
 

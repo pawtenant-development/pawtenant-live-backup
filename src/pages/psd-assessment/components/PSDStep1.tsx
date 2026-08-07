@@ -127,6 +127,48 @@ function QCard({ number, question, hint, required, hasError, children }: { numbe
   );
 }
 
+/**
+ * The 16 required PSD questions and how each is satisfied.
+ *
+ * Exported (with `psdRequiredProgress` below) because the page-level
+ * StepIndicator needs the SAME count this step renders. It previously had no
+ * count at all and fell back to the ESA default, so the PSD header read
+ * "Question 1 · 0 answered · Step 1 of 3" no matter how many answers the
+ * customer had given — directly above this component's own correct progress
+ * bar. Two disagreeing progress readouts is worse than one.
+ * (ASSESSMENT-CHECKOUT-REFRESH-AND-RESUME-PERSISTENCE-LIVE-INCIDENT-003)
+ */
+export function psdRequiredFields(
+  data: PSDStep1Data,
+): Array<{ key: keyof PSDStep1Data; check: () => boolean }> {
+  return [
+    // Safety screen must be "no" to continue — "yes" shows the crisis panel
+    // and withholds the continue button until the answer changes.
+    { key: "safetyCheck",        check: () => data.safetyCheck === "no" },
+    { key: "dogTasks",           check: () => data.dogTasks.length > 0 },
+    { key: "taskTraining",       check: () => !!data.taskTraining },
+    { key: "taskDescription",    check: () => data.taskDescription.trim().length >= 15 },
+    { key: "taskReliability",    check: () => !!data.taskReliability },
+    { key: "taskPublicAccess",   check: () => !!data.taskPublicAccess },
+    { key: "dogDuration",        check: () => !!data.dogDuration },
+    { key: "emotionalFrequency", check: () => !!data.emotionalFrequency },
+    { key: "conditions",         check: () => data.conditions.length > 0 },
+    { key: "lifeChangeStress",   check: () => !!data.lifeChangeStress },
+    { key: "dailyImpact",        check: () => !!data.dailyImpact },
+    { key: "medication",         check: () => !!data.medication },
+    { key: "priorDiagnosis",     check: () => !!data.priorDiagnosis },
+    { key: "currentTreatment",   check: () => !!data.currentTreatment },
+    { key: "dogHelpDescription", check: () => data.dogHelpDescription.trim().length >= 10 },
+    { key: "housingType",        check: () => !!data.housingType },
+  ];
+}
+
+/** How many of the 16 required PSD questions are currently satisfied. */
+export function psdRequiredProgress(data: PSDStep1Data): { answered: number; total: number } {
+  const fields = psdRequiredFields(data);
+  return { answered: fields.filter((f) => f.check()).length, total: fields.length };
+}
+
 export default function PSDStep1({ data, onChange, onNext, onAnswerChange }: Props) {
   const [errors, setErrors] = useState<string[]>([]);
 
@@ -147,29 +189,9 @@ export default function PSDStep1({ data, onChange, onNext, onAnswerChange }: Pro
 
   const showDiagText = data.priorDiagnosis === "yes" || data.priorDiagnosis === "informal";
 
-  const REQUIRED: Array<{ key: keyof PSDStep1Data; check: () => boolean }> = [
-    // Safety screen must be "no" to continue — "yes" shows the crisis panel
-    // and withholds the continue button until the answer changes.
-    { key: "safetyCheck",        check: () => data.safetyCheck === "no" },
-    { key: "dogTasks",           check: () => data.dogTasks.length > 0 },
-    { key: "taskTraining",       check: () => !!data.taskTraining },
-    { key: "taskDescription",    check: () => data.taskDescription.trim().length >= 15 },
-    { key: "taskReliability",    check: () => !!data.taskReliability },
-    { key: "taskPublicAccess",   check: () => !!data.taskPublicAccess },
-    { key: "dogDuration",        check: () => !!data.dogDuration },
-    { key: "emotionalFrequency", check: () => !!data.emotionalFrequency },
-    { key: "conditions",         check: () => data.conditions.length > 0 },
-    { key: "lifeChangeStress",   check: () => !!data.lifeChangeStress },
-    { key: "dailyImpact",        check: () => !!data.dailyImpact },
-    { key: "medication",         check: () => !!data.medication },
-    { key: "priorDiagnosis",     check: () => !!data.priorDiagnosis },
-    { key: "currentTreatment",   check: () => !!data.currentTreatment },
-    { key: "dogHelpDescription", check: () => data.dogHelpDescription.trim().length >= 10 },
-    { key: "housingType",        check: () => !!data.housingType },
-  ];
+  const REQUIRED = psdRequiredFields(data);
 
-  const answered = REQUIRED.filter((f) => f.check()).length;
-  const total = REQUIRED.length;
+  const { answered, total } = psdRequiredProgress(data);
   const pct = Math.round((answered / total) * 100);
 
   const validate = () => {

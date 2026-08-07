@@ -38,6 +38,7 @@ import {
 } from "@/lib/attributionStore";
 import { markAssessmentStarted, markPaid, getSessionId } from "@/lib/visitorSession";
 import { readResumeToken, hadLegacyResumeParam } from "@/lib/resumeTokenParam";
+import { ensureDurableCheckoutUrl, isDurableCheckoutPath, enforceNoindexOnDurableCheckout } from "@/lib/durableCheckoutUrl";
 import { getEsaOneTimeTotal, getEsaAnnualTotal, getPackageTotal } from "@/config/pricing";
 import type { PackageKey } from "@/config/pricing";
 import { trackAssessmentStepView, trackAssessmentSubmitted, trackPaymentSuccess, trackAssessmentCompleted, trackRecoveryConversionIfFlagged, trackPostOtpDestination, trackPlanChanged, trackPackageChangeOpened, trackPackageSelected } from "@/lib/trackEvent";
@@ -386,7 +387,19 @@ async function fireGHLFinalLead(
 
 // ── Main Assessment Page ─────────────────────────────────────────────────────
 
-export default function AssessmentPage() {
+export interface AssessmentPageProps {
+  /**
+   * ASSESSMENT-CHECKOUT-REFRESH-AND-RESUME-PERSISTENCE-LIVE-INCIDENT-003
+   *
+   * Set when this screen is hosted by the DURABLE `/checkout/<slug>` route,
+   * which has already resolved the order server-side. Passing it as a prop —
+   * rather than reading it off `window` — is what makes the very first render
+   * know a completed customer is arriving, so Question 1 is never painted.
+   */
+  checkoutResume?: Record<string, unknown>;
+}
+
+export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: AssessmentPageProps = {}) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const preSelectedDoctorId = searchParams.get("doctor") ?? "";
@@ -461,7 +474,27 @@ export default function AssessmentPage() {
   const [stripeSecretError, setStripeSecretError] = useState("");
   const [stripePaymentIntentId, setStripePaymentIntentId] = useState("");
   const stripeSecretInFlight = useRef(false); // dedupe concurrent calls
-  const [resumeLoading, setResumeLoading] = useState(!!resumeConfirmationId || !!resumeToken);
+  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001 — the stable /checkout/<slug>
+  // route resolves the slug server-side and hands the order to this screen. The
+  // PROP is the durable path — this component is rendered BY that route, which
+  // now STAYS in the address bar. The `window` fallback is kept for the
+  // in-memory handoff producers that still use it (memory only — never storage).
+  //
+  // Declared HERE, above `resumeLoading`, because the initial loading value
+  // depends on it — see the next statement.
+  const checkoutResume =
+    checkoutResumeProp ??
+    (typeof window !== "undefined"
+      ? (window as unknown as { __ptCheckoutResume?: Record<string, unknown> }).__ptCheckoutResume
+      : undefined);
+  // NO STEP-1 FLASH. `checkoutResume` belongs in this initial value, not just in
+  // the effect that consumes it: without it the first paint rendered the state
+  // picker / Question 1 for a customer the server had already resolved to
+  // payment, and the correction arrived a frame later as a visible flicker.
+  // (ASSESSMENT-CHECKOUT-REFRESH-...-INCIDENT-003)
+  const [resumeLoading, setResumeLoading] = useState(
+    !!resumeConfirmationId || !!resumeToken || !!checkoutResume,
+  );
   // A legacy ?resume=<confirmationId> link can no longer load order data.
   // (ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001)
   const [resumeNeedsSecureLink, setResumeNeedsSecureLink] = useState(false);
@@ -527,6 +560,33 @@ export default function AssessmentPage() {
   // Generate once per session
   const confirmationId = useRef(`PT-${Date.now().toString(36).toUpperCase()}`);
 
+  // ── The address bar becomes durable at payment ───────────────────────────
+  // ASSESSMENT-CHECKOUT-REFRESH-AND-RESUME-PERSISTENCE-LIVE-INCIDENT-003
+  //
+  // Up to here the customer's whole checkout state lives in this component.
+  // The moment they are verified and standing on step 3, swap the ephemeral
+  // `/assessment` location for the durable `/checkout/<slug>` one, so a refresh
+  // is resolved by the SERVER instead of being lost with the mount.
+  //
+  // `replaceState`, never `navigate`: a route change here would unmount the
+  // checkout, throw away the Stripe Elements instance and mint a second
+  // PaymentIntent for a customer who is mid-payment.
+  useEffect(() => {
+    if (currentStep !== 3) return;
+    if (!otpVerified) return;            // no session yet -> no authority to mint
+    if (!confirmationId.current) return;
+    void ensureDurableCheckoutUrl({ confirmationId: confirmationId.current, isPsd: false });
+  }, [currentStep, otpVerified]);
+
+  // index.html ships a static `index, follow` robots tag, so the JSX noindex
+  // further down only ADDS a second, conflicting directive. Overwrite them all
+  // while the credential-bearing URL is showing, and put them back on the way
+  // out.
+  useEffect(() => {
+    if (!isDurableCheckoutPath()) return;
+    return enforceNoindexOnDurableCheckout();
+  }, [currentStep, checkoutGate]);
+
   // ── answeredInStep1 must be computed BEFORE any effect that uses it ────────
   const answeredInStep1 = [
     step1.safetyCheck,
@@ -552,13 +612,6 @@ export default function AssessmentPage() {
   // Which state's waiting-period acknowledgment has already been audit-logged
   // this session — prevents duplicate audit rows when Step 2 is revisited.
   const stateAckAuditRef = useRef<string | null>(null);
-
-  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001 — stable /checkout/<slug>
-  // handoff, memory only (never storage, never analytics).
-  const checkoutResume =
-    typeof window !== "undefined"
-      ? (window as unknown as { __ptCheckoutResume?: Record<string, unknown> }).__ptCheckoutResume
-      : undefined;
 
   // ── Resume flow: if ?resume=CONFIRMATION_ID, pre-fill and jump to step 3 ──
   useEffect(() => {
@@ -1727,7 +1780,17 @@ export default function AssessmentPage() {
   return (
     <div className="min-h-screen bg-white">
       <title>Get Your ESA Letter Online — Free Assessment | PawTenant</title>
-      <meta name="robots" content="index, follow" />
+      {/* Under /checkout/<slug> the URL itself is a credential: never indexable,
+          and never a referrer. The bare /assessment entry point keeps its normal
+          SEO posture. (ASSESSMENT-CHECKOUT-REFRESH-...-INCIDENT-003) */}
+      {isDurableCheckoutPath() ? (
+        <>
+          <meta name="robots" content="noindex, nofollow" />
+          <meta name="referrer" content="no-referrer" />
+        </>
+      ) : (
+        <meta name="robots" content="index, follow" />
+      )}
       {/* Discount popup — only appears on checkout step, 18s delay */}
 
 

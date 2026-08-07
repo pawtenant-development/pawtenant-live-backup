@@ -262,6 +262,28 @@
         // token, and landing_url is written to the order row and forwarded to
         // GHL and analytics. Keep this list in sync with CREDENTIAL_PARAMS in
         // src/lib/attributionStore.ts.
+        //
+        // ASSESSMENT-CHECKOUT-REFRESH-AND-RESUME-PERSISTENCE-LIVE-INCIDENT-003
+        // The durable payment URL is `/checkout/<slug>` — a credential in the
+        // PATH, which a query-only strip would sail straight past. Mask it to
+        // `/checkout/:slug` here too. Keep in sync with
+        // src/lib/checkoutSlugMask.ts.
+        var maskSlug = function (raw) {
+          if (!raw) return raw;
+          try {
+            var u = new URL(raw, window.location.origin);
+            var parts = u.pathname.split('/').filter(Boolean);
+            if (parts.length === 2 &&
+                ['checkout', 'continue'].indexOf(parts[0].toLowerCase()) >= 0 &&
+                /^([2-9A-HJ-NP-TV-Z]{8}|[2-9A-HJ-NP-TV-Z]{12})$/.test(parts[1].toUpperCase())) {
+              u.pathname = '/' + parts[0].toLowerCase() + '/:slug';
+              return u.toString();
+            }
+            return raw;
+          } catch (e) {
+            return String(raw).split('?')[0];
+          }
+        };
         var stripCreds = function (raw) {
           if (!raw) return raw;
           try {
@@ -270,9 +292,9 @@
             ['rt', 'resume', 'token'].forEach(function (p) {
               if (u.searchParams.has(p)) { u.searchParams.delete(p); touched = true; }
             });
-            return touched ? u.toString() : raw;
+            return maskSlug(touched ? u.toString() : raw);
           } catch (e) {
-            return String(raw).split('?')[0];
+            return maskSlug(String(raw).split('?')[0]);
           }
         };
         if (!sessionStorage.getItem('landing_url')) {

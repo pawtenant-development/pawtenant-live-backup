@@ -10,6 +10,17 @@ interface StepIndicatorProps {
    * the shared labels or this component gains real per-flow theming.
    */
   steps?: Array<{ label: string; step: number }>;
+  /**
+   * Which product the customer is actually buying.
+   *
+   * ASSESSMENT-CHECKOUT-REFRESH-AND-RESUME-PERSISTENCE-LIVE-INCIDENT-003:
+   * this component is shared by both flows but its motivational copy was
+   * hard-coded to ESA, so `/psd-assessment` told a Psychiatric Service Dog
+   * customer "Check if you qualify for an ESA letter in 2 minutes" directly
+   * under a header that said PSD. Visible on LIVE. Defaults to "esa" so every
+   * existing ESA call site is unchanged.
+   */
+  letterType?: "esa" | "psd";
 }
 
 const STEPS = [
@@ -52,12 +63,20 @@ function getProgressPercent(
 function getMotivationalCopy(
   currentStep: number,
   answered: number,
-  total: number
+  total: number,
+  letterType: "esa" | "psd" = "esa"
 ): { headline: string; sub: string } {
+  // Approved product wording. PSD letters are ADA task-based documentation for
+  // a Psychiatric Service Dog; calling one an "ESA letter" is not a typo, it
+  // describes a different product under a different law.
+  const isPsd = letterType === "psd";
+  const productName = isPsd ? "Psychiatric Service Dog letter" : "ESA letter";
   if (currentStep === 1) {
     if (answered === 0)
       return {
-        headline: "Check if you qualify for an ESA letter in 2 minutes",
+        headline: isPsd
+          ? "Check if you qualify for a Psychiatric Service Dog letter"
+          : "Check if you qualify for an ESA letter in 2 minutes",
         sub: "Answer honestly — this confidential screening takes about 2 minutes.",
       };
     if (answered < 5)
@@ -81,7 +100,7 @@ function getMotivationalCopy(
       sub: "We just need a few personal details. Takes about 1 minute.",
     };
   return {
-    headline: "Last step — your ESA letter is minutes away!",
+    headline: `Last step — your ${productName} is minutes away!`,
     sub: "Choose your provider and complete your secure payment.",
   };
 }
@@ -90,9 +109,10 @@ export default function StepIndicator({
   currentStep,
   answeredInStep1 = 0,
   totalInStep1 = 12,
+  letterType = "esa",
 }: StepIndicatorProps) {
   const progress = getProgressPercent(currentStep, answeredInStep1, totalInStep1);
-  const { headline, sub } = getMotivationalCopy(currentStep, answeredInStep1, totalInStep1);
+  const { headline, sub } = getMotivationalCopy(currentStep, answeredInStep1, totalInStep1, letterType);
 
   return (
     <div className="w-full mb-2">

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import PSDAssessmentNavbar from "./components/PSDAssessmentNavbar";
-import PSDStep1, { PSDStep1Data } from "./components/PSDStep1";
+import PSDStep1, { PSDStep1Data, psdRequiredProgress } from "./components/PSDStep1";
 // Step 3 (payment) is code-split — Stripe.js / Klarna / payment forms load only at Step 3.
 import Step2PersonalInfo, { Step2Data } from "../assessment/components/Step2PersonalInfo";
 import StepIndicator from "../assessment/components/StepIndicator";
@@ -14,6 +14,7 @@ import { supabase } from "../../lib/supabaseClient";
 import { usePsdAutosave, storeAssessmentToken, readAssessmentToken, readDraft } from "./usePsdAutosave";
 import { nextBookingGate } from "@/lib/bookingProgress";
 import { readResumeToken, hadLegacyResumeParam } from "@/lib/resumeTokenParam";
+import { ensureDurableCheckoutUrl, isDurableCheckoutPath, enforceNoindexOnDurableCheckout } from "@/lib/durableCheckoutUrl";
 import { isDirectCheckout, flowVersionProp } from "@/config/flowVersion";
 import type { PackageKey } from "@/config/pricing";
 import type { StateAcknowledgment } from "../assessment/components/StateAcknowledgmentModal";
@@ -101,7 +102,19 @@ function generateConfirmationId(): string {
   return `PT-PSD${rand}`;
 }
 
-export default function PSDAssessmentPage() {
+export interface PSDAssessmentPageProps {
+  /**
+   * ASSESSMENT-CHECKOUT-REFRESH-AND-RESUME-PERSISTENCE-LIVE-INCIDENT-003
+   *
+   * Set when this screen is hosted by the DURABLE `/checkout/<slug>` route,
+   * which has already resolved the order server-side. Passing it as a prop —
+   * rather than reading it off `window` — is what makes the very first render
+   * know a completed customer is arriving, so Question 1 is never painted.
+   */
+  checkoutResume?: Record<string, unknown>;
+}
+
+export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }: PSDAssessmentPageProps = {}) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const resumeConfirmationId = searchParams.get("resume") ?? (hadLegacyResumeParam(searchParams) ? "legacy" : "");
@@ -113,10 +126,14 @@ export default function PSDAssessmentPage() {
   // address bar, so the raw value now arrives in memory rather than in the URL.
   const resumeToken = readResumeToken(searchParams);
   // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001 — memory-only stable handoff.
+  // The PROP is the durable path (this component is rendered BY the
+  // /checkout/<slug> route, which stays in the address bar). The `window`
+  // fallback is kept for the in-memory handoff producers that still use it.
   const checkoutResume =
-    typeof window !== "undefined"
+    checkoutResumeProp ??
+    (typeof window !== "undefined"
       ? (window as unknown as { __ptCheckoutResume?: Record<string, unknown> }).__ptCheckoutResume
-      : undefined;
+      : undefined);
   // POST-OTP-DIRECT-CHECKOUT-001: verified customers land on checkout directly.
   const directCheckout = isDirectCheckout();
 
@@ -154,6 +171,9 @@ export default function PSDAssessmentPage() {
 
   const [step1, setStep1] = useState<PSDStep1Data>(DEFAULT_STEP1);
   const [step2, setStep2] = useState<Step2Data>(DEFAULT_STEP2);
+  // Same required-field list PSDStep1 renders its own progress bar from, so the
+  // header and the step can never report different numbers.
+  const psdProgress = psdRequiredProgress(step1);
 
   // Declared AFTER the state they drive. Hooks that call setStep1/setStep2
   // must not be written above those declarations: it reads as a temporal
@@ -236,7 +256,14 @@ export default function PSDAssessmentPage() {
     return id;
   });
   const [saving, setSaving] = useState(false);
-  const [resumeLoading, setResumeLoading] = useState(!!resumeConfirmationId || !!resumeToken);
+  // NO STEP-1 FLASH. `checkoutResume` belongs in this initial value, not just in
+  // the effect that consumes it: without it the first paint rendered the state
+  // picker / Question 1 for a customer the server had already resolved to
+  // payment, and the correction arrived a frame later as a visible flicker.
+  // (ASSESSMENT-CHECKOUT-REFRESH-...-INCIDENT-003)
+  const [resumeLoading, setResumeLoading] = useState(
+    !!resumeConfirmationId || !!resumeToken || !!checkoutResume,
+  );
   const [resumeNotFound, setResumeNotFound] = useState(false);
   const [resendEmail, setResendEmail] = useState("");
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
@@ -556,6 +583,32 @@ export default function PSDAssessmentPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── The address bar becomes durable at payment ───────────────────────────
+  // ASSESSMENT-CHECKOUT-REFRESH-AND-RESUME-PERSISTENCE-LIVE-INCIDENT-003
+  //
+  // Up to here the customer's whole checkout state lives in this component.
+  // The moment they are verified and standing on step 3, swap the ephemeral
+  // `/psd-assessment` location for the durable `/checkout/<slug>` one, so a
+  // refresh is resolved by the SERVER instead of being lost with the mount.
+  //
+  // `replaceState`, never `navigate`: a route change here would unmount the
+  // checkout, throw away the Stripe Elements instance and mint a second
+  // PaymentIntent for a customer who is mid-payment.
+  useEffect(() => {
+    if (step !== 3) return;
+    if (!otpVerified) return;              // no session yet -> no authority to mint
+    if (!confirmationId) return;
+    void ensureDurableCheckoutUrl({ confirmationId, isPsd: true });
+  }, [step, otpVerified, confirmationId]);
+
+  // index.html ships a static `index, follow` robots tag, so the JSX noindex
+  // below only ADDS a second, conflicting directive. Overwrite them all while
+  // the credential-bearing URL is showing, and put them back on the way out.
+  useEffect(() => {
+    if (!isDurableCheckoutPath()) return;
+    return enforceNoindexOnDurableCheckout();
+  }, [step, checkoutGate]);
+
   const saveLeadToSupabase = async (step2Data: Step2Data) => {
     setSaving(true);
     const assessmentPayload = {
@@ -763,7 +816,17 @@ export default function PSDAssessmentPage() {
         letterType="psd"
       />
       <title>Psychiatric Service Dog Letter Online — ADA Compliant PSD Letter | PawTenant</title>
-      <meta name="robots" content="index, follow" />
+      {/* Under /checkout/<slug> the URL itself is a credential: never indexable,
+          and never a referrer. The bare /psd-assessment entry point keeps its
+          normal SEO posture. (ASSESSMENT-CHECKOUT-REFRESH-...-INCIDENT-003) */}
+      {isDurableCheckoutPath() ? (
+        <>
+          <meta name="robots" content="noindex, nofollow" />
+          <meta name="referrer" content="no-referrer" />
+        </>
+      ) : (
+        <meta name="robots" content="index, follow" />
+      )}
       {/* Navbar */}
       <PSDAssessmentNavbar />
 
@@ -789,8 +852,16 @@ export default function PSDAssessmentPage() {
             : "max-w-3xl mx-auto px-4 py-8"
         }
       >
+        {/* letterType="psd" is not cosmetic: without it this shared component
+            told a Psychiatric Service Dog customer they were buying an ESA
+            letter. answeredInStep1/totalInStep1 come from the SAME required-field
+            list PSDStep1 renders its own progress bar from, so the two readouts
+            can no longer disagree. */}
         <StepIndicator
           currentStep={step}
+          letterType="psd"
+          answeredInStep1={psdProgress.answered}
+          totalInStep1={psdProgress.total}
           steps={[
             { label: "PSD Assessment", step: 1 },
             { label: "Your Information", step: 2 },

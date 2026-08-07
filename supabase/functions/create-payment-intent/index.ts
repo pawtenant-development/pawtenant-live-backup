@@ -241,6 +241,93 @@ async function resolveLegacyQuoteLock(
   };
 }
 
+// ── Open-PaymentIntent reuse ─────────────────────────────────────────────────
+// ASSESSMENT-CHECKOUT-REFRESH-AND-RESUME-PERSISTENCE-LIVE-INCIDENT-003
+//
+// Checkout now survives a refresh, which means Step 3 remounts on every reload
+// and asks for a PaymentIntent again. Without reuse, five refreshes leave five
+// abandoned intents on the order. They are never charges — an intent stuck in
+// `requires_payment_method` has taken no money — but they are litter in Stripe
+// reporting, and the refresh bug was the only thing that used to prevent them.
+//
+// `open_payment_intent_id` is a column of its own on purpose. It must never be
+// `payment_intent_id`, which means "this order was PAID": writing an unpaid id
+// there is precisely what used to stamp `paid_at` and mint an entitlement for
+// an unpaid order (ORDER-PAYMENT-INTENT-LIFECYCLE-TRIGGER-HARDENING-001).
+
+/** The order's still-open intent id, or null. Never returns a paid intent. */
+async function readOpenPaymentIntentId(confirmationId: string): Promise<string | null> {
+  if (!confirmationId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { data } = await supabase
+      .from("orders")
+      .select("open_payment_intent_id, paid_at, payment_intent_id")
+      .eq("confirmation_id", confirmationId)
+      .maybeSingle();
+    if (!data) return null;
+    // Belt and braces: a paid order must never hand back a reusable intent.
+    if (data.paid_at || data.payment_intent_id) return null;
+    const id = (data.open_payment_intent_id as string | null) ?? null;
+    return id && id.startsWith("pi_") ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+async function rememberOpenPaymentIntentId(
+  confirmationId: string,
+  paymentIntentId: string,
+): Promise<void> {
+  if (!confirmationId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    await supabase
+      .from("orders")
+      .update({ open_payment_intent_id: paymentIntentId })
+      .eq("confirmation_id", confirmationId);
+  } catch { /* best-effort — a missed note only costs an extra intent later */ }
+}
+
+/**
+ * Reuse the order's open intent if — and only if — it is genuinely still open
+ * and genuinely belongs to this order. Anything else returns null and the
+ * caller mints a fresh one, which is always the safe direction.
+ *
+ * Reprices and re-stamps metadata on the way, so a customer who changed package
+ * or applied a coupon between reloads is charged the CURRENT server-decided
+ * amount, never a stale one.
+ */
+async function reuseOpenPaymentIntent(
+  stripe: Stripe,
+  confirmationId: string,
+  amount: number,
+  metadata: Record<string, string>,
+): Promise<Stripe.PaymentIntent | null> {
+  const openId = await readOpenPaymentIntentId(confirmationId);
+  if (!openId) return null;
+  try {
+    const existing = await stripe.paymentIntents.retrieve(openId);
+    // `requires_payment_method` is the ONLY safe status: no payment method is
+    // attached, nothing is in flight, and the amount is still mutable. Anything
+    // further along (processing, succeeded, requires_action, canceled) must be
+    // left completely alone.
+    if (existing.status !== "requires_payment_method") return null;
+    if (existing.currency !== "usd") return null;
+    // Never adopt an intent minted for a different order.
+    if ((existing.metadata?.confirmation_id ?? "") !== confirmationId) return null;
+
+    const updated = await stripe.paymentIntents.update(openId, { amount, metadata });
+    console.info(
+      `[create-payment-intent] Reused open PI ${openId} for ${confirmationId} — repriced to $${amount / 100}`,
+    );
+    return updated;
+  } catch {
+    // Deleted, from another Stripe account, API blip — mint a new one.
+    return null;
+  }
+}
+
 async function stampPricingSource(confirmationId: string, pricingSource: string): Promise<void> {
   if (!confirmationId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
   try {
@@ -791,30 +878,47 @@ Deno.serve(async (req: Request) => {
 
     const finalAmount = Math.max(baseAmount - discountCents, 0);
 
-    const paymentIntent = await stripe.paymentIntents.create({
+    const piMetadata: Record<string, string> = {
+      ...(confirmationId ? { confirmation_id: confirmationId } : {}),
+      email,
+      first_name: firstName,
+      last_name: lastName,
+      state,
+      letter_type: letterType,
+      delivery_speed: deliverySpeed,
+      pet_count: String(petCount),
+      pricing_source: pricingSource,
+      ...(couponCode && discountCents > 0
+        ? { coupon_code: couponCode, coupon_discount_cents: String(discountCents) }
+        : {}),
+      // ── RA bundle package metadata (additive) ─────────────────────────
+      ...buildPackageMeta("one_time"),
+      // ── Phase 1: attribution metadata (additive, all optional) ────────
+      ...buildAttributionMeta(),
+    };
+
+    // Refreshing a durable checkout URL remounts this screen. Reuse the order's
+    // still-open intent rather than littering Stripe with one per reload. Only
+    // ever adopts a `requires_payment_method` intent that carries THIS
+    // confirmation id, and reprices it to the amount just decided above.
+    // (ASSESSMENT-CHECKOUT-REFRESH-...-INCIDENT-003)
+    const reused = confirmationId
+      ? await reuseOpenPaymentIntent(stripe, confirmationId, finalAmount, piMetadata)
+      : null;
+
+    const paymentIntent = reused ?? await stripe.paymentIntents.create({
       amount: finalAmount,
       currency: "usd",
       payment_method_types: ["card"],
       // receipt_email intentionally omitted — we send our own branded receipt via Resend
-      metadata: {
-        ...(confirmationId ? { confirmation_id: confirmationId } : {}),
-        email,
-        first_name: firstName,
-        last_name: lastName,
-        state,
-        letter_type: letterType,
-        delivery_speed: deliverySpeed,
-        pet_count: String(petCount),
-        pricing_source: pricingSource,
-        ...(couponCode && discountCents > 0
-          ? { coupon_code: couponCode, coupon_discount_cents: String(discountCents) }
-          : {}),
-        // ── RA bundle package metadata (additive) ─────────────────────────
-        ...buildPackageMeta("one_time"),
-        // ── Phase 1: attribution metadata (additive, all optional) ────────
-        ...buildAttributionMeta(),
-      },
+      metadata: piMetadata,
     });
+
+    // Remember the OPEN intent (never `payment_intent_id` — that column means
+    // "paid" and writing an unpaid id there stamps paid_at).
+    if (!reused && confirmationId) {
+      await rememberOpenPaymentIntentId(confirmationId, paymentIntent.id);
+    }
 
     // Persist the pricing decision for admin visibility (best-effort, never
     // blocks payment setup). Amount is already locked above.
