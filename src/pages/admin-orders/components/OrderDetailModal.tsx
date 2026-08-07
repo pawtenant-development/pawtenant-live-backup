@@ -36,6 +36,10 @@ import RefundModal from "./RefundModal";
 import OrderRaOverviewStatus from "./OrderRaOverviewStatus";
 import OrderAdditionalPetPanel from "./OrderAdditionalPetPanel";
 import OrderAdditionalPetMenuAction from "./OrderAdditionalPetMenuAction";
+// ORDER-LINKED-CUSTOM-STRIPE-INVOICE-001: isolated component mounts. Eligibility,
+// dialog, validation, idempotency and the request list all live in the children.
+import OrderCustomPaymentMenuAction from "./OrderCustomPaymentMenuAction";
+import OrderCustomPaymentPanel from "./OrderCustomPaymentPanel";
 import OrderResumeCheckoutEmailAction from "./OrderResumeCheckoutEmailAction";
 import OrderRaDocPanel from "./OrderRaDocPanel";
 import OrderDocumentVersionsPanel from "./OrderDocumentVersionsPanel";
@@ -3324,6 +3328,15 @@ export default function OrderDetailModal({
                       confirmationId={order.confirmation_id}
                       onCloseMenu={() => setShowHeaderMore(false)}
                     />
+                    {/* ORDER-LINKED-CUSTOM-STRIPE-INVOICE-001: isolated component
+                        mount. A distinct action — deliberately NOT folded into
+                        Resume Checkout Email, normal checkout, the refund modal
+                        or either add-on flow. The child owns everything. */}
+                    <OrderCustomPaymentMenuAction
+                      orderId={order.id}
+                      confirmationId={order.confirmation_id}
+                      onCloseMenu={() => setShowHeaderMore(false)}
+                    />
                     {/* LEAD-FOLLOWUP-GHL-DELIVERY-AND-ADMIN-RESUME-CHECKOUT-EMAIL-002:
                         isolated component mount. Server-ruled eligibility,
                         confirmation dialog, idempotency, cooldown and comms
@@ -3809,6 +3822,16 @@ export default function OrderDetailModal({
                   merged into the original order price above. */}
               <div className="mt-3">
                 <OrderAdditionalPetPanel orderId={order.id} variant="payments" />
+              </div>
+
+              {/* ORDER-LINKED-CUSTOM-STRIPE-INVOICE-001: isolated panel mount.
+                  Custom payment requests are separate Stripe invoices raised
+                  against this order — they never touch orders.price, paid_at or
+                  the order's PaymentIntent, so they belong beside the add-on
+                  rather than inside the order's own payment history. Deliberately
+                  NOT on Overview. The child owns loading, actions and state. */}
+              <div className="mt-3">
+                <OrderCustomPaymentPanel orderId={order.id} variant="payments" />
               </div>
             </div>
           )}

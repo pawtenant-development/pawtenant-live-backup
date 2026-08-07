@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { reconcileCustomPaymentInvoice } from "../_shared/reconcileCustomPayment.ts";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 import { completeAdditionalDocPayment } from "../_shared/completeAdditionalDocPayment.ts";
 import { completeAdditionalPetPayment } from "../_shared/completeAdditionalPetPayment.ts";
@@ -761,6 +762,49 @@ Deno.serve(async (req: Request) => {
 
     if (!piId) { return json({ ok: true, skipped: true, reason: "no_payment_intent" }); }
 
+    // ── ORDER-LINKED-CUSTOM-STRIPE-INVOICE-001 ────────────────────────────
+    // A refund against a CUSTOM payment request reconciles onto that request,
+    // not onto the order. Handled before the order-level refund logic below,
+    // which would otherwise read a supplemental refund as the base order being
+    // refunded and flip the order's status and provider earnings.
+    {
+      const { data: cprRaw } = await supabase
+        .from("order_custom_payment_requests")
+        .select("id, order_id, confirmation_id, amount_cents, refunded_amount_cents, status")
+        .eq("stripe_payment_intent_id", piId).maybeSingle();
+      const cpr = cprRaw as {
+        id: string; order_id: string; confirmation_id: string | null;
+        amount_cents: number; refunded_amount_cents: number; status: string;
+      } | null;
+      if (cpr) {
+        const refundedCents = charge.amount_refunded ?? 0;
+        // Replay-safe: cumulative amount from Stripe, not an increment, so a
+        // redelivered event converges on the same value instead of doubling.
+        if (refundedCents === cpr.refunded_amount_cents) {
+          return json({ ok: true, type: t, custom_payment: true, duplicate: true, requestId: cpr.id });
+        }
+        const nextStatus = refundedCents >= cpr.amount_cents ? "refunded" : "partially_refunded";
+        await supabase.from("order_custom_payment_requests")
+          .update({ refunded_amount_cents: refundedCents, status: nextStatus })
+          .eq("id", cpr.id);
+
+        await supabase.from("audit_logs").insert({
+          actor_name: "Stripe Webhook", actor_role: "system", actor_type: "webhook",
+          category: "refunds", source: "stripe_webhook",
+          object_type: "order", object_id: cpr.confirmation_id, order_id: cpr.order_id,
+          action: "custom_payment_refunded",
+          description: `$${(refundedCents / 100).toFixed(2)} refunded on the custom payment request for order ${cpr.confirmation_id} (${nextStatus.replace(/_/g, " ")}). The original order's status and provider earnings are unchanged.`,
+          metadata: {
+            custom_payment_request_id: cpr.id, confirmation_id: cpr.confirmation_id,
+            refunded_cents: refundedCents, authorised_cents: cpr.amount_cents,
+            stripe_payment_intent_id: piId, order_status_changed: false,
+          },
+        });
+        return json({ ok: true, type: t, custom_payment: true, requestId: cpr.id, status: nextStatus });
+      }
+    }
+
+
     const order = await findOrderByPaymentIntent(piId);
     if (!order) { return json({ ok: true, skipped: true, reason: "no_matching_order", piId }); }
 
@@ -1061,6 +1105,16 @@ Deno.serve(async (req: Request) => {
 
   if (t === "invoice.paid") {
     const invoice = event.data.object; const amt = Math.round((invoice.amount_paid ?? 0) / 100); const billing = invoice.billing_reason; const cid = invoice.subscription_details?.metadata?.confirmation_id;
+
+    // ORDER-LINKED-CUSTOM-STRIPE-INVOICE-001 — reconciled by the shared helper,
+    // which is also reachable from invoice.payment_succeeded and from the admin
+    // "sync" recovery action. Runs BEFORE the subscription branches below,
+    // because those write orders.price and paid_at.
+    {
+      const handled = await reconcileCustomPaymentInvoice(supabase, invoice);
+      if (handled) return json({ ok: true, type: t, ...handled });
+    }
+
     if (billing === "subscription_cycle") {
       let order = cid ? await findOrderByConfId(cid) : null;
       if (!order && invoice.subscription) order = await findOrderBySubId(invoice.subscription);
@@ -1080,7 +1134,14 @@ Deno.serve(async (req: Request) => {
     }
     return json({ ok: true, type: t, billing, amount: amt });
   }
-  if (t === "invoice.payment_succeeded") { return json({ ok: true, type: t, amount: Math.round((event.data.object.amount_paid ?? 0) / 100) }); }
+  if (t === "invoice.payment_succeeded") {
+    // Same reconciliation as invoice.paid. Whichever event this endpoint is
+    // actually subscribed to, the custom payment settles exactly once — the
+    // helper's guarded update makes the second one a no-op.
+    const handled = await reconcileCustomPaymentInvoice(supabase, event.data.object);
+    if (handled) return json({ ok: true, type: t, ...handled });
+    return json({ ok: true, type: t, amount: Math.round((event.data.object.amount_paid ?? 0) / 100) });
+  }
   if (t === "invoice.payment_failed") {
     const invoice = event.data.object; const cid = invoice.subscription_details?.metadata?.confirmation_id;
     let order = cid ? await findOrderByConfId(cid) : null;
