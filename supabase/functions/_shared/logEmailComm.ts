@@ -57,12 +57,22 @@ export interface ReserveEmailParams {
   // preserve existing strict-dedupe behavior for slugs that should never retry
   // automatically (e.g. admin fan-out, marketing broadcasts).
   allowRetryAfterFailed?: boolean;
+  // ADMIN-AUDIT-...-COMMS-COMPOSER-UX-001 (Task 1C):
+  // Channel-specific columns merged into the reserved row — `phone_to` /
+  // `phone_from` for SMS, where the email columns do not apply. Keeping this as
+  // a passthrough is what lets SMS reuse this reservation instead of standing up
+  // a second, competing idempotency system.
+  extraColumns?: Record<string, unknown>;
+  // Minutes after which a claim still sitting in "sending" is considered
+  // abandoned (function timed out / cold-start killed mid-send) and may be
+  // reclaimed. Without this a crashed send would block that key forever.
+  staleClaimMinutes?: number;
 }
 
 export interface ReserveResult {
   proceed: boolean;
   rowId?: string | null;
-  reason?: "duplicate" | "db_error" | "retry_after_failed";
+  reason?: "duplicate" | "db_error" | "retry_after_failed" | "stale_claim_reclaimed";
   dedupeKey?: string | null;
 }
 
@@ -113,6 +123,7 @@ export async function reserveEmailSend(p: ReserveEmailParams): Promise<ReserveRe
         status: "sending",
         sent_by: p.sentBy ?? "system",
         dedupe_key: dedupeKey,
+        ...(p.extraColumns ?? {}),
       })
       .select("id")
       .maybeSingle();
@@ -120,6 +131,28 @@ export async function reserveEmailSend(p: ReserveEmailParams): Promise<ReserveRe
     if (error) {
       // PG unique_violation → existing row blocks this dedupe key.
       if ((error as { code?: string }).code === "23505") {
+        // Stale-claim recovery. A claim left in "sending" means the previous
+        // attempt died between claiming and finalising (function timeout, cold
+        // start kill). Without this the key is poisoned forever and the admin
+        // can never send that message again. Reclaimed only after the window,
+        // and only via a CAS update so a live in-flight send is never stolen.
+        const staleMinutes = p.staleClaimMinutes ?? 0;
+        if (staleMinutes > 0) {
+          const cutoff = new Date(Date.now() - staleMinutes * 60_000).toISOString();
+          const { data: reclaimed } = await p.supabase
+            .from("communications")
+            .update({ status: "sending", sent_by: p.sentBy ?? "system" })
+            .eq("dedupe_key", dedupeKey)
+            .eq("status", "sending")
+            .lt("created_at", cutoff)
+            .select("id")
+            .maybeSingle();
+          const reclaimedId = (reclaimed as { id?: string } | null)?.id;
+          if (reclaimedId) {
+            console.warn(`[reserveEmailSend] STALE CLAIM reclaimed row=${reclaimedId} key=${dedupeKey}`);
+            return { proceed: true, rowId: reclaimedId, reason: "stale_claim_reclaimed", dedupeKey };
+          }
+        }
         // Retry-after-failed: if the caller opts in AND the prior row finished
         // as "failed" (Resend outage / transient network), recycle that row by
         // flipping it back to "sending". This rescues confirmation emails that
@@ -175,6 +208,12 @@ export interface FinalizeEmailParams {
   body?: string | null;
   resendId?: string | null;
   errorMessage?: string | null;
+  // Task 1C state machine. Default keeps the historic "sent"/"failed" wording.
+  // A caller that can tell the difference should say so: "retryable_failed"
+  // invites another attempt, "terminal_failed" is evidence that must not be
+  // retried automatically.
+  status?: "sent" | "retryable_failed" | "terminal_failed" | "failed";
+  extraColumns?: Record<string, unknown>;
 }
 
 // finalizeEmailSend: flip the reserved row to sent/failed and store the final
@@ -187,11 +226,12 @@ export async function finalizeEmailSend(
   if (!rowId) return;
   try {
     const patch: Record<string, unknown> = {
-      status: opts.success ? "sent" : "failed",
+      status: opts.status ?? (opts.success ? "sent" : "failed"),
     };
     if (opts.body !== undefined) patch.body = opts.body;
     if (opts.resendId) patch.twilio_sid = opts.resendId; // reuse existing column for Resend message id
     if (!opts.success && opts.errorMessage) patch.body = `[send failed] ${opts.errorMessage}`;
+    Object.assign(patch, opts.extraColumns ?? {});
     await supabase.from("communications").update(patch).eq("id", rowId);
   } catch (err) {
     console.error("[finalizeEmailSend] update failed", err);

@@ -26,6 +26,7 @@
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendAdditionalPetEmail } from "../_shared/completeAdditionalPetPayment.ts";
+import { resolveAuditActor } from "../_shared/auditActor.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -65,6 +66,11 @@ Deno.serve(async (req) => {
   if (!body.requestId) return json(400, { ok: false, error: "requestId required" });
 
   // ── Caller identity ───────────────────────────────────────────────────────
+  // ADMIN-AUDIT-ACTOR-ATTRIBUTION-...-001: the audit rows below used to carry no
+  // actor columns at all, so "who approved this add-on?" fell back to the table
+  // defaults. The shared resolver is the single source of actor truth for edge
+  // functions — it reads the JWT and never the request body.
+  const auditActor = await resolveAuditActor(req, admin);
   let isAdmin = false;
   let callerUserId: string | null = null;
   if (bearer === serviceKey) {
@@ -182,6 +188,8 @@ Deno.serve(async (req) => {
 
     try {
       await admin.from("audit_logs").insert({
+        actor_id: auditActor.id, actor_name: auditActor.name,
+        actor_role: auditActor.role, actor_type: auditActor.type,
         action: "additional_pet_approved", object_type: "order", object_id: confId,
         description: `Additional Pet approved by ${actorRole} — awaiting the revised document. The original letter and its verification ID remain active and unchanged until the revision is generated.`,
         metadata: { request_id: reqRow.id, order_id: order.id, pet_name: petName,
@@ -255,6 +263,8 @@ Deno.serve(async (req) => {
       refundResult = { refunded: false, pending: true, error: "quote_not_resolvable",
                        requiresAdminReview: true };
       await admin.from("audit_logs").insert({
+        actor_id: auditActor.id, actor_name: auditActor.name,
+        actor_role: auditActor.role, actor_type: auditActor.type,
         action: "additional_pet_refund_blocked", object_type: "order", object_id: confId,
         description: `Additional Pet refund HELD for Admin review after provider rejection: the request does not carry a usable quote (amount_cents=${String(reqRow.amount_cents)}, currency=${String(reqRow.currency)}). No refund was issued and no amount was guessed.`,
         metadata: { request_id: reqRow.id, order_id: order.id, payment_intent_id: piId,
@@ -292,6 +302,8 @@ Deno.serve(async (req) => {
                       payment_intent_id: piId, scope: "addon_only" },
           });
           await admin.from("audit_logs").insert({
+        actor_id: auditActor.id, actor_name: auditActor.name,
+        actor_role: auditActor.role, actor_type: auditActor.type,
             action: "additional_pet_refund_blocked", object_type: "order", object_id: confId,
             description: `Additional Pet refund HELD for Admin review after provider rejection: the settled payment (${settledCents} ${settledCurrency}) does not match the request's quote (${quotedCents} ${quotedCurrency}${quotedVersion ? `, ${quotedVersion}` : ""}). No refund was issued — refunding either figure automatically would either short-change the customer or over-refund PawTenant.`,
             metadata: { request_id: reqRow.id, order_id: order.id, payment_intent_id: piId,
@@ -324,6 +336,8 @@ Deno.serve(async (req) => {
                            currency: quotedCurrency, pricingVersion: quotedVersion };
 
           await admin.from("audit_logs").insert({
+        actor_id: auditActor.id, actor_name: auditActor.name,
+        actor_role: auditActor.role, actor_type: auditActor.type,
             action: "additional_pet_refunded", object_type: "order", object_id: confId,
             description: `Additional Pet add-on refunded in full ($${(refundedCents / 100).toFixed(2)}${quotedVersion ? `, ${quotedVersion}` : ""}) after provider rejection — the amount this request was quoted and settled at, not the current list price. ADD-ON ONLY — the base order, its payment and the original document are untouched. No administration deduction. No Google Ads adjustment.`,
             metadata: { request_id: reqRow.id, order_id: order.id, stripe_refund_id: refund.id,
@@ -342,6 +356,8 @@ Deno.serve(async (req) => {
 
   try {
     await admin.from("audit_logs").insert({
+        actor_id: auditActor.id, actor_name: auditActor.name,
+        actor_role: auditActor.role, actor_type: auditActor.type,
       action: "additional_pet_rejected", object_type: "order", object_id: confId,
       description: `Additional Pet rejected by ${actorRole}. The base order and the original letter (and its verification ID) are unchanged.${wasPaid ? " Add-on refund initiated." : " No payment was taken, so no refund object was created."}`,
       metadata: { request_id: reqRow.id, order_id: order.id, was_paid: wasPaid, refund: refundResult },

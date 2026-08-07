@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkPsdAssessmentComplete } from "../_shared/psdCompletionGate.ts";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
 import { notifyProviderAdditionalDoc } from "../_shared/notifyProviderAdditionalDoc.ts";
+import { resolveAuditActor } from "../_shared/auditActor.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -154,33 +155,13 @@ Deno.serve(async (req: Request) => {
   // unanswerable. The actor is never taken from the request body: an
   // unauthenticated or automated caller is honestly recorded as System, not
   // attributed to a person.
-  const actor = await (async () => {
-    const header = req.headers.get("Authorization") ?? "";
-    const bearer = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-    const serviceKeyEnv = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    if (!bearer || bearer === anonKey || bearer === serviceKeyEnv) {
-      return { id: null as string | null, name: "PawTenant System", role: "system", type: "system" };
-    }
-    try {
-      const { data: { user } } = await supabase.auth.getUser(bearer);
-      if (!user) return { id: null, name: "PawTenant System", role: "system", type: "system" };
-      const { data: prof } = await supabase
-        .from("doctor_profiles")
-        .select("full_name, role, is_admin")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      const p = prof as { full_name?: string; role?: string; is_admin?: boolean } | null;
-      return {
-        id: user.id,
-        name: p?.full_name?.trim() || user.email || "Employee",
-        role: p?.role ?? (p?.is_admin ? "admin" : "staff"),
-        type: p?.is_admin ? "employee" : "provider",
-      };
-    } catch {
-      return { id: null, name: "PawTenant System", role: "system", type: "system" };
-    }
-  })();
+  //
+  // ADMIN-AUDIT-ACTOR-ATTRIBUTION-...-001: this used to be an inline copy of the
+  // resolver. It is now the shared `_shared/auditActor.ts` so there is exactly
+  // one definition of "who acted" across every edge function — the inline copy
+  // had already drifted (it fell back to role "staff" where the shared helper
+  // uses "provider").
+  const actor = await resolveAuditActor(req, supabase);
 
   let doctorUserId: string | null = null;
   let doctorName = "";
@@ -251,7 +232,12 @@ Deno.serve(async (req: Request) => {
   // whether a DIFFERENT provider was already on the order — the previous
   // provider is recorded so the timeline can read "X moved this from A to B".
   const isReassignment = !!previousDoctorEmail && previousDoctorEmail.toLowerCase() !== normalizedEmail;
-  await supabase.from("audit_logs").insert({
+  // Task 1B: one correlation id for this human action and every consequence it
+  // sets off. Consequences stay honestly attributed to the SYSTEM — the employee
+  // assigned the order, they did not personally send the provider's email.
+  const groupId = crypto.randomUUID();
+  const { data: primaryAudit } = await supabase.from("audit_logs").insert({
+    group_id: groupId,
     actor_id: actor.id,
     actor_name: actor.name,
     actor_role: actor.role,
@@ -278,7 +264,59 @@ Deno.serve(async (req: Request) => {
       previous_provider_email: previousDoctorEmail,
       assigned_at: now,
     },
+  }).select("id").maybeSingle();
+
+  const primaryAuditId = (primaryAudit as { id?: string } | null)?.id ?? null;
+
+  // Consequences of the assignment. Each is SYSTEM-attributed — the employee did
+  // not personally revoke the previous provider's access — but each carries the
+  // group so the Audit timeline can nest them under the one human action.
+  const consequences: Array<{ action: string; description: string; entity?: string | null }> = [];
+  if (isReassignment && previousDoctorEmail) {
+    consequences.push({
+      action: "provider_access_removed",
+      description: `Previous provider ${previousDoctorName ?? previousDoctorEmail} lost access to order ${confirmationId}.`,
+      entity: previousDoctorEmail,
+    });
+  }
+  consequences.push({
+    action: "provider_access_granted",
+    description: `${doctorName} was granted access to order ${confirmationId}.`,
+    entity: normalizedEmail,
   });
+  consequences.push({
+    action: "order_returned_to_review",
+    description: `Order ${confirmationId} moved to Pending Review for the assigned provider.`,
+    entity: null,
+  });
+  try {
+    await supabase.from("audit_logs").insert(consequences.map((c) => ({
+      group_id: groupId,
+      parent_audit_id: primaryAuditId,
+      actor_id: null,
+      actor_name: "PawTenant System",
+      actor_role: "system",
+      actor_type: "system",
+      category: "assignment",
+      source: "assign_doctor",
+      object_type: "order",
+      object_id: confirmationId,
+      order_id: order.id,
+      entity_type: c.entity ? "provider" : null,
+      entity_id: c.entity,
+      action: c.action,
+      description: c.description,
+      metadata: {
+        order_id: order.id,
+        confirmation_id: confirmationId,
+        consequence_of: isReassignment ? "provider_reassigned" : "provider_assigned",
+        initiated_by: actor.name,
+        initiated_by_actor_id: actor.id,
+      },
+    })));
+  } catch (e) {
+    console.warn("[assign-doctor] consequence audit insert failed:", e instanceof Error ? e.message : String(e));
+  }
 
   let earningsAction = "none";
   const patientName = `${order.first_name ?? ""} ${order.last_name ?? ""}`.trim() || (order.email as string);

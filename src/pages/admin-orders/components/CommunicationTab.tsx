@@ -1,5 +1,7 @@
 // CommunicationTab — WhatsApp-style chat history + collapsible compose panels
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+// ADMIN-AUDIT-...-COMMS-COMPOSER-UX-001: real GSM-7/UCS-2 segment accounting.
+import { analyzeSms } from "../../../lib/smsSegments";
 import { supabase } from "../../../lib/supabaseClient";
 import { getAdminToken } from "../../../lib/supabaseClient";
 // AI Support Assistant (Phase 1, rules scaffold) — admin-only, draft-only suggestions.
@@ -36,6 +38,11 @@ type SmsTemplateEntry = { id: string; label: string; icon: string; color: string
 // Trustpilot review URL — same constant used by the review request edge fn / Trustpilot panel.
 // Kept local so {review_url} renders identically across UI preview and actual SMS send.
 const TRUSTPILOT_REVIEW_URL = "https://www.trustpilot.com/review/pawtenant.com";
+
+// Operational SMS ceiling. The composer previously capped at 320 characters,
+// cutting real operator messages in half with no warning. The counter beside the
+// box shows the segment cost so the limit is informed rather than silent.
+const SMS_MAX = 1600;
 
 function groupStyleForSms(group: string): { icon: string; color: string; bg: string } {
   if (group === "Lead Recovery") return { icon: "ri-mail-send-line", color: "text-orange-600", bg: "bg-orange-50 border-orange-200 hover:border-orange-400" };
@@ -231,6 +238,11 @@ export default function CommunicationTab({
   const [commError, setCommError] = useState<string | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  // Composer grows with the message; an in-flight REF (not the `sending` state)
+  // blocks rapid repeat clicks — React state updates are async, so five fast
+  // clicks can all read `sending === false`.
+  const smsBoxRef = useRef<HTMLTextAreaElement>(null);
+  const smsInFlightRef = useRef(false);
 
   // Load SMS templates from DB on mount; fallback to hardcoded if empty
   useEffect(() => {
@@ -441,6 +453,11 @@ export default function CommunicationTab({
   // send is never blocked.
   const handleSendSMS = async () => {
     if (!phone || !smsText.trim()) return;
+    if (smsInFlightRef.current) return;
+    smsInFlightRef.current = true;
+    // Task 1C: one token per send the operator initiated, so concurrent retries
+    // of THIS send collapse server-side to a single provider call.
+    const operationToken = crypto.randomUUID();
     setSending(true); setSendMsg("");
     try {
       let messageToSend = smsText.trim();
@@ -458,14 +475,14 @@ export default function CommunicationTab({
             .replace(/\{name\}/g, firstName)
             .replace(/\{order_id\}/g, confirmationId)
             .replace(/\{review_url\}/g, TRUSTPILOT_REVIEW_URL)
-            .slice(0, 320);
+            .slice(0, SMS_MAX);
         }
       }
       const token = await getAdminToken();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ghl-send-sms`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ orderId, confirmationId, toPhone: phone, message: messageToSend, sentBy: adminName }),
+        body: JSON.stringify({ orderId, confirmationId, toPhone: phone, message: messageToSend, sentBy: adminName, operationToken }),
       });
       const result = await res.json() as { ok: boolean; error?: string };
       if (result.ok) {
@@ -477,6 +494,7 @@ export default function CommunicationTab({
       }
       else { setSendMsg(result.error ?? "Failed to send"); }
     } catch { setSendMsg("Network error"); }
+    smsInFlightRef.current = false;
     setSending(false);
     setTimeout(() => setSendMsg(""), 4000);
   };
@@ -539,6 +557,17 @@ export default function CommunicationTab({
   };
 
   const togglePanel = (p: PanelType) => setActivePanel((v) => v === p ? null : p);
+
+  const smsInfo = useMemo(() => analyzeSms(smsText), [smsText]);
+
+  // Auto-grow: reset to auto first so the box also SHRINKS on delete, then match
+  // content. max-h-32 caps it and hands scrolling back to the textarea.
+  useEffect(() => {
+    const el = smsBoxRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [smsText]);
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 0 }}>
@@ -874,7 +903,7 @@ export default function CommunicationTab({
           orderId={orderId}
           confirmationId={confirmationId}
           onUseDraft={(t) => {
-            setSmsText(t.slice(0, 320));
+            setSmsText(t.slice(0, SMS_MAX));
             // Treat AI drafts as manual content so send uses the textbox, not a template slug.
             setSelectedSmsSlug(null);
             setActivePanel(null);
@@ -911,8 +940,9 @@ export default function CommunicationTab({
           </button>
           {/* SMS textbox */}
           <textarea value={smsText}
+            ref={smsBoxRef}
             onChange={(e) => {
-              const next = e.target.value.slice(0, 320);
+              const next = e.target.value.slice(0, SMS_MAX);
               setSmsText(next);
               // Manual edit clears slug binding so send falls back to textbox content.
               if (selectedSmsSlug && next !== pristineSmsText) setSelectedSmsSlug(null);
@@ -937,7 +967,16 @@ export default function CommunicationTab({
           {!phone
             ? <span className="text-[10px] text-amber-600 font-semibold flex items-center gap-1"><i className="ri-alert-line"></i>Add a phone number to enable SMS</span>
             : <span className="text-[10px] text-gray-300">Enter to send · Shift+Enter for new line</span>}
-          <span className="text-[10px] text-gray-400">{smsText.length}/320</span>
+          {/* Real carrier cost, not just a character count: one curly quote or
+              emoji re-encodes the whole message to Unicode and roughly halves the
+              per-segment budget, so the operator must be able to see it. */}
+          <span className={`text-[10px] ${smsInfo.segments > 1 ? "text-amber-600 font-semibold" : "text-gray-400"}`}
+            title={smsInfo.unicodeTrigger
+              ? `Unicode encoding forced by "${smsInfo.unicodeTrigger}" — 70 characters per segment instead of 160.`
+              : "GSM-7 encoding — 160 characters in a single segment, 153 per segment once it splits."}>
+            {smsInfo.characters}/{SMS_MAX}
+            {smsInfo.segments > 0 && ` · ${smsInfo.segments} SMS · ${smsInfo.encoding}`}
+          </span>
         </div>
       </div>
     </div>

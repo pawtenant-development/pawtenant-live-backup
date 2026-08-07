@@ -5,6 +5,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
+// Task 1C — same reservation the SMS and provider-notification paths use.
+import { reserveEmailSend, finalizeEmailSend } from "../_shared/reserveEmailSend.ts";
 import { resolveAuditActor, maskEmail } from "../_shared/auditActor.ts";
 import { sendEmailViaResend } from "../_shared/resendClient.ts";
 import { renderOrderConfirmationContent } from "../_shared/orderConfirmationLayout.ts";
@@ -93,6 +95,9 @@ Deno.serve(async (req: Request) => {
       to: string;
       vars?: Record<string, string>;
       confirmationId?: string;
+      // Task 1C: one token per send the operator initiated. Concurrent retries
+      // carrying the same token collapse to a single Resend call.
+      operationToken?: string;
     };
 
     if (!body.slug || !body.to) {
@@ -237,6 +242,33 @@ Deno.serve(async (req: Request) => {
 
     // Centralized Resend transport via shared helper.
     // Helper does NOT auto-attach BCC and does NOT auto-write to communications;
+    // ── CLAIM before SEND (Task 1C) ────────────────────────────────────────
+    // The communications row used to be written AFTER Resend answered, so two
+    // concurrent requests could both deliver before either had logged anything.
+    // The claim goes in first, on the unique communications.dedupe_key index;
+    // the loser of the race never calls Resend. No token → unchanged behaviour.
+    const operationToken = (body.operationToken ?? "").toString().trim();
+    let claimRowId: string | null = null;
+    if (operationToken) {
+      const claim = await reserveEmailSend({
+        supabase,
+        confirmationId: body.confirmationId ?? null,
+        to: body.to,
+        from: FROM_EMAIL,
+        subject,
+        slug: body.slug,
+        dedupeKey: `${body.confirmationId ?? body.to}:${body.slug}:${operationToken}`,
+        templateSource: "db",
+        sentBy: actor.name,
+        staleClaimMinutes: 5,
+      });
+      if (!claim.proceed) {
+        console.log(`[send-templated-email] duplicate suppressed — operationToken=${operationToken}`);
+        return json({ ok: true, duplicate: true, skipped: true, reason: "already sent for this operation" });
+      }
+      claimRowId = claim.rowId ?? null;
+    }
+
     // Trustpilot BCC remains scoped to send-review-request only.
     const sendResult = await sendEmailViaResend(
       {
@@ -254,6 +286,15 @@ Deno.serve(async (req: Request) => {
     );
 
     if (!sendResult.ok) {
+      // Keep the evidence on the claimed row rather than leaving it stuck in
+      // "sending" — and mark whether another attempt is worth making.
+      await finalizeEmailSend(supabase, claimRowId, {
+        success: false,
+        status: (sendResult.status === 0 || sendResult.status === 429 || sendResult.status >= 500)
+          ? "retryable_failed"
+          : "terminal_failed",
+        errorMessage: `${sendResult.error} (HTTP ${sendResult.status})`,
+      });
       return json({ ok: false, error: `Resend error (${sendResult.status}): ${sendResult.raw || sendResult.error}` }, 500);
     }
 
@@ -266,18 +307,30 @@ Deno.serve(async (req: Request) => {
       orderIdForAudit = ((oRow as { id?: string } | null)?.id) ?? null;
     }
 
-    // Primary log → communications (single source of truth for the unified Comms timeline)
-    await logEmailComm({
-      supabase,
-      confirmationId: body.confirmationId ?? null,
-      to: body.to,
-      from: FROM_EMAIL,
-      subject,
-      body: bodyText,
-      slug: body.slug,
-      templateSource: "db",
-      sentBy: actor.name,
-    });
+    // Primary log → communications (single source of truth for the unified Comms
+    // timeline). With a claim this FINALISES the reserved row; inserting a second
+    // row here would defeat claiming first.
+    if (claimRowId) {
+      await finalizeEmailSend(supabase, claimRowId, {
+        success: true,
+        status: "sent",
+        body: bodyText,
+        resendId: sendResult.messageId,
+        extraColumns: { order_id: orderIdForAudit },
+      });
+    } else {
+      await logEmailComm({
+        supabase,
+        confirmationId: body.confirmationId ?? null,
+        to: body.to,
+        from: FROM_EMAIL,
+        subject,
+        body: bodyText,
+        slug: body.slug,
+        templateSource: "db",
+        sentBy: actor.name,
+      });
+    }
 
     // Audit the send. The rendered body is NOT copied here — `communications`
     // is the authoritative record; the audit row names the template and links

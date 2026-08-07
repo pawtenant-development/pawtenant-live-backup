@@ -6,6 +6,9 @@ import { issueResumeLink } from "../_shared/resumeLink.ts";
 // recovery sequence — rather than only to the endpoint that remembered to
 // import it. On LIVE it is inert (it stands down outside the TEST project).
 import { sendGhlSms } from "../_shared/ghlSms.ts";
+// Task 1C — the SAME reservation the email paths use, so SMS idempotency is one
+// system rather than a second competing one.
+import { reserveEmailSend, finalizeEmailSend } from "../_shared/reserveEmailSend.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -45,6 +48,11 @@ Deno.serve(async (req: Request) => {
     toPhone: string;
     message: string;
     sentBy?: string;
+    // Task 1C: one token minted by the UI per send the operator initiated. Every
+    // retry of THAT send carries the same token, so concurrent requests collapse
+    // to one provider call. Deliberately NOT derived from the message text — an
+    // admin sending the same short message again next week is a real send.
+    operationToken?: string;
   };
 
   try {
@@ -121,6 +129,42 @@ Deno.serve(async (req: Request) => {
   // adding a provider-side DND round trip here would change a working LIVE
   // admin workflow. The AUTOMATED sequence sets `checkDnd: true`, where an
   // unnoticed STOP would otherwise be re-messaged on a schedule.
+  // ── CLAIM before SEND (Task 1C) ──────────────────────────────────────────
+  // This row used to be written AFTER the provider call, so two concurrent
+  // requests could both reach GHL before either had logged anything — the
+  // customer got two texts and the duplicate was invisible in Comms. The claim
+  // now goes in FIRST, on the unique `communications.dedupe_key` index, so the
+  // loser of the race never calls GHL at all. No token → unchanged behaviour.
+  const operationToken = (body.operationToken ?? "").toString().trim();
+  let claimRowId: string | null = null;
+  if (operationToken) {
+    const claim = await reserveEmailSend({
+      supabase,
+      orderId: orderId ?? null,
+      confirmationId: confirmationId ?? null,
+      to: toPhone,
+      subject: "",
+      slug: "admin_sms",
+      type: "sms_outbound",
+      dedupeKey: `${confirmationId ?? orderId}:admin_sms:${operationToken}`,
+      sentBy,
+      staleClaimMinutes: 5,
+      extraColumns: {
+        phone_to: toPhone,
+        phone_from: GHL_FROM_NUMBER || null,
+        email_to: null,
+      },
+    });
+    if (!claim.proceed) {
+      console.log(`[GHL-SEND-SMS] duplicate suppressed — operationToken=${operationToken}`);
+      return new Response(
+        JSON.stringify({ ok: true, duplicate: true, skipped: true, reason: "already sent for this operation" }),
+        { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+      );
+    }
+    claimRowId = claim.rowId ?? null;
+  }
+
   const smsRes = await sendGhlSms({
     toPhone,
     message: outboundMessage,
@@ -134,6 +178,15 @@ Deno.serve(async (req: Request) => {
 
   // Refusals that never reached the provider keep their original contract: an
   // explicit status, and NO communications row — there was no attempt to log.
+  // The CLAIM must still be released, or a refused send would poison its key for
+  // five minutes and the operator's corrected retry would be swallowed.
+  if (smsRes.failureCode === "test_guard_blocked"
+      || smsRes.failureCode === "provider_not_configured"
+      || smsRes.failureCode === "contact_unavailable") {
+    if (claimRowId) {
+      await supabase.from("communications").delete().eq("id", claimRowId);
+    }
+  }
   if (smsRes.failureCode === "test_guard_blocked") {
     console.warn("[GHL-SEND-SMS] TEST tester guard refused send to non-approved number");
     return new Response(
@@ -158,7 +211,24 @@ Deno.serve(async (req: Request) => {
     const errMsg = smsRes.failureReason ?? "GHL send failed";
     console.error("[GHL-SEND-SMS] ❌ GHL send failed:", smsRes.failureCode, errMsg);
 
-    // Log failed attempt to communications
+    // Log the failed attempt. When a claim exists this UPDATES it — inserting a
+    // second row here would defeat the whole point of claiming first.
+    let failedCommId: string | null = null;
+    if (claimRowId) {
+      await finalizeEmailSend(supabase, claimRowId, {
+        success: false,
+        status: "terminal_failed",
+        body: outboundMessage,
+        extraColumns: {
+          phone_from: GHL_FROM_NUMBER || null,
+          phone_to: phone,
+          twilio_sid: ghlContactId ? `ghl:${ghlContactId}` : null,
+          failure_code: smsRes.failureCode,
+          failure_reason: smsRes.failureReason,
+        },
+      });
+      failedCommId = claimRowId;
+    } else {
     const { data: failedComm } = await supabase.from("communications").insert({
       order_id: orderId ?? null,
       confirmation_id: confirmationId ?? null,
@@ -173,8 +243,9 @@ Deno.serve(async (req: Request) => {
       failure_code: smsRes.failureCode,
       failure_reason: smsRes.failureReason,
     }).select("id").maybeSingle();
+      failedCommId = (failedComm as { id?: string } | null)?.id ?? null;
+    }
 
-    const failedCommId = (failedComm as { id?: string } | null)?.id ?? null;
     await supabase.from("audit_logs").insert({
       actor_id: actor.id, actor_name: actor.name, actor_role: actor.role,
       actor_type: actor.type, category: "communications",
@@ -199,23 +270,38 @@ Deno.serve(async (req: Request) => {
 
   console.log(`[GHL-SEND-SMS] ✅ Sent via GHL — messageId: ${ghlMessageId}, to: ${phone}`);
 
-  // ── Step 3: Log success to communications table ───────────────────────────
-  const { data: commRow } = await supabase.from("communications").insert({
-    order_id: orderId ?? null,
-    confirmation_id: confirmationId ?? null,
-    type: "sms_outbound",
-    direction: "outbound",
-    body: outboundMessage,
-    phone_from: GHL_FROM_NUMBER || null,
-    phone_to: phone,
-    status: "sent",
-    sent_by: sentBy,
-    twilio_sid: ghlMessageId ? `ghl:${ghlMessageId}` : null,
-  }).select("id").maybeSingle();
+  // ── Step 3: finalize the claim (or log the send when there was no claim) ──
+  let commId: string | null = null;
+  if (claimRowId) {
+    await finalizeEmailSend(supabase, claimRowId, {
+      success: true,
+      status: "sent",
+      body: outboundMessage,
+      extraColumns: {
+        phone_from: GHL_FROM_NUMBER || null,
+        phone_to: phone,
+        twilio_sid: ghlMessageId ? `ghl:${ghlMessageId}` : null,
+      },
+    });
+    commId = claimRowId;
+  } else {
+    const { data: commRow } = await supabase.from("communications").insert({
+      order_id: orderId ?? null,
+      confirmation_id: confirmationId ?? null,
+      type: "sms_outbound",
+      direction: "outbound",
+      body: outboundMessage,
+      phone_from: GHL_FROM_NUMBER || null,
+      phone_to: phone,
+      status: "sent",
+      sent_by: sentBy,
+      twilio_sid: ghlMessageId ? `ghl:${ghlMessageId}` : null,
+    }).select("id").maybeSingle();
+    commId = (commRow as { id?: string } | null)?.id ?? null;
+  }
 
   // Audit the send with the RESOLVED actor. The message body is not duplicated
   // here — `communications` is authoritative and the audit row links to it (§19).
-  const commId = (commRow as { id?: string } | null)?.id ?? null;
   await supabase.from("audit_logs").insert({
     actor_id: actor.id, actor_name: actor.name, actor_role: actor.role,
     actor_type: actor.type, category: "communications",

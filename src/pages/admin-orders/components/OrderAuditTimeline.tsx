@@ -123,6 +123,11 @@ interface TimelineEvent {
   oldValues: Record<string, unknown> | null;
   newValues: Record<string, unknown> | null;
   metadata: Record<string, unknown> | null;
+  /** ADMIN-AUDIT-...-001 Task 1B — correlation of one human action with the
+   *  system consequences it caused. Both null on legacy/standalone rows, which
+   *  therefore render exactly as they always have. */
+  groupId: string | null;
+  parentAuditId: string | null;
   communicationId: string | null;
   documentId: string | null;
   refundReference: string | null;
@@ -143,6 +148,8 @@ interface AuditRow {
   communication_id: string | null;
   document_id: string | null;
   refund_reference: string | null;
+  group_id: string | null;
+  parent_audit_id: string | null;
 }
 
 interface StatusRow {
@@ -239,7 +246,7 @@ export default function OrderAuditTimeline({
     const [auditRes, statusRes] = await Promise.all([
       supabase
         .from("audit_logs")
-        .select("id, created_at, action, description, actor_name, actor_role, actor_type, category, old_values, new_values, metadata, communication_id, document_id, refund_reference")
+        .select("id, created_at, action, description, actor_name, actor_role, actor_type, category, old_values, new_values, metadata, communication_id, document_id, refund_reference, group_id, parent_audit_id")
         .or(`order_id.eq.${orderId},object_id.eq.${confirmationId}`)
         .order("created_at", { ascending: false })
         .limit(300),
@@ -270,6 +277,8 @@ export default function OrderAuditTimeline({
         oldValues: a.old_values,
         newValues: a.new_values,
         metadata: a.metadata,
+        groupId: a.group_id,
+        parentAuditId: a.parent_audit_id ? `audit-${a.parent_audit_id}` : null,
         communicationId: a.communication_id,
         documentId: a.document_id,
         refundReference: a.refund_reference,
@@ -278,6 +287,7 @@ export default function OrderAuditTimeline({
 
     const statusEvents: TimelineEvent[] = ((statusRes.data as StatusRow[]) ?? []).map((s) => {
       const actor = resolveActor(s.changed_by, null);
+      // Status rows are never part of an audit group — they render standalone.
       const parts: string[] = [];
       if (s.old_status !== s.new_status && s.new_status) {
         parts.push(`${s.old_status ?? "—"} → ${s.new_status}`);
@@ -299,6 +309,8 @@ export default function OrderAuditTimeline({
         oldValues: { status: s.old_status, doctor_status: s.old_doctor_status },
         newValues: { status: s.new_status, doctor_status: s.new_doctor_status },
         metadata: null,
+        groupId: null,
+        parentAuditId: null,
         communicationId: null,
         documentId: null,
         refundReference: null,
@@ -330,6 +342,30 @@ export default function OrderAuditTimeline({
   );
 
   const filtered = filter === "all" ? events : events.filter((e) => e.category === filter);
+
+  // ── Grouping (Task 1B) ────────────────────────────────────────────────────
+  // One human action carries the system consequences it caused. Presentation
+  // only: nothing is merged, nothing historical is rewritten, and a row without
+  // a parent renders exactly as it always has.
+  //
+  // A child is only nested when its PARENT is actually present in the current
+  // filter — otherwise filtering to one category would silently swallow rows
+  // whose parent was filtered out.
+  const childrenByParent = new Map<string, TimelineEvent[]>();
+  const visibleIds = new Set(filtered.map((e) => e.id));
+  for (const e of filtered) {
+    if (e.parentAuditId && visibleIds.has(e.parentAuditId)) {
+      const list = childrenByParent.get(e.parentAuditId) ?? [];
+      list.push(e);
+      childrenByParent.set(e.parentAuditId, list);
+    }
+  }
+  // Children are rendered under their parent, so drop them from the top level.
+  const topLevel = filtered.filter((e) => !(e.parentAuditId && visibleIds.has(e.parentAuditId)));
+  // Oldest-first inside a group: consequences read in the order they happened.
+  for (const [, list] of childrenByParent) {
+    list.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+  }
 
   const toggle = (id: string) =>
     setExpanded((prev) => {
@@ -412,7 +448,7 @@ export default function OrderAuditTimeline({
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <ol className="divide-y divide-gray-100">
-            {filtered.map((e) => {
+            {topLevel.map((e) => {
               const meta = CATEGORY_META[e.category];
               const isOpen = expanded.has(e.id);
               const hasDetail = !!(e.oldValues || e.newValues || e.metadata);
@@ -489,6 +525,33 @@ export default function OrderAuditTimeline({
                           <KeyValues title="After" values={e.newValues} accent />
                           <KeyValues title="Details" values={e.metadata} />
                         </div>
+                      )}
+
+                      {/* ── Consequences of this action (Task 1B) ──────────────
+                          Nested, clearly SYSTEM-generated, and shown once. The
+                          employee is named on the parent only — they did not
+                          personally perform each consequence. */}
+                      {(childrenByParent.get(e.id) ?? []).length > 0 && (
+                        <ul className="mt-2 ml-1 border-l-2 border-gray-200 pl-3 space-y-1.5">
+                          {(childrenByParent.get(e.id) ?? []).map((c) => (
+                            <li key={c.id} className="flex items-start gap-2">
+                              <i className="ri-corner-down-right-line text-gray-300 text-xs mt-0.5 flex-shrink-0"></i>
+                              <div className="min-w-0">
+                                <p className="text-xs text-gray-700 leading-snug">
+                                  {ACTION_TITLE[c.action] ?? c.action.replace(/_/g, " ")}
+                                </p>
+                                {c.description && (
+                                  <p className="text-[11px] text-gray-500 leading-snug mt-0.5 break-words">
+                                    {c.description}
+                                  </p>
+                                )}
+                                <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-gray-100 text-gray-500 border border-gray-200">
+                                  <i className="ri-settings-3-line text-[9px]"></i>System
+                                </span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
                       )}
                     </div>
                   </div>

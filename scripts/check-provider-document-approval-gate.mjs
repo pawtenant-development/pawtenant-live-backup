@@ -211,10 +211,16 @@ function runChecks(f) {
     && !hasRe(f.gateSql, /update\s+public\.order_documents[\s\S]{0,200}set\s+customer_visible\s*=\s*false/i));
 
   // ── Part B · actor attribution ────────────────────────────────────────────
+  // ADMIN-AUDIT-ACTOR-ATTRIBUTION-...-001: this used to require the literal
+  // `supabase.auth.getUser(bearer)` call, pinning the check to ONE
+  // implementation. It now asserts the invariant itself.
   add("A15", "assignment records a server-resolved actor, never a body field",
-    has(f.assign, "supabase.auth.getUser(bearer)")
+    (has(f.assign, "resolveAuditActor(req, supabase)")
+      || has(f.assign, "supabase.auth.getUser(bearer)"))
+    && hasRe(f.assign, /actor_id:\s*actor\.id/)
+    && hasRe(f.assign, /actor_name:\s*actor\.name/)
     && hasRe(f.assign, /action:\s*isReassignment\s*\?\s*["']provider_reassigned["']/)
-    && !hasRe(f.assign, /actor_name:\s*body\./));
+    && !hasRe(f.assign, /actor_(name|id|role|type):\s*body\./));
 
   add("A16", "SMS/email ignore the client-supplied sentBy for attribution",
     has(f.actor, "resolveAuditActor")
