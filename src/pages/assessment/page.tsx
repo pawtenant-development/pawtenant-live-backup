@@ -800,8 +800,23 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
           if (savedPrice != null && savedPrice > 0) setQuotedBasePriceDollars(savedPrice);
         }
 
-        // Use the existing confirmation ID so payment upserts the right row
-        confirmationId.current = resumeConfirmationId;
+        // Use the existing confirmation ID so payment upserts the right row.
+        //
+        // ASSESSMENT-CHECKOUT-REFRESH-...-INCIDENT-003: this used to read ONLY
+        // `resumeConfirmationId`, which is `searchParams.get("resume")` — the
+        // LEGACY query param. A stable `/checkout/<slug>` arrival carries no
+        // `?resume=`, so this assigned the empty string and WIPED the id. The
+        // page then minted a PaymentIntent with no `confirmation_id` in its
+        // metadata: unlinked from the order and invisible to reconciliation.
+        // Harmless while a refresh dumped the customer back on Question 1;
+        // once checkout survives a reload it became the normal case.
+        //
+        // The resolved order is authoritative — fall back to the query param,
+        // then to the id already held, and never to "".
+        confirmationId.current =
+          String((data as Record<string, unknown>).confirmation_id ?? "")
+          || resumeConfirmationId
+          || confirmationId.current;
 
         // ── 2026-05-19 ATTR-RESUME-SESSION-LINKING ─────────────────────
         // Bridge this NEW browser session to the EXISTING order so the

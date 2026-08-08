@@ -310,6 +310,25 @@ const CHECKS = [
         && /totalInStep1=\{psdProgress\.total\}/.test(psd);
   }],
 
+  ["D18", "a resumed ESA checkout keeps its OWN confirmation id", (s) => {
+    const c = code(s.esaPage);
+    // `resumeConfirmationId` is `searchParams.get("resume")` — the LEGACY query
+    // param. A stable /checkout/<slug> arrival carries no `?resume=`, so
+    // assigning it alone WIPED the id to "" and the page minted a
+    // PaymentIntent with no `confirmation_id` in its metadata: unlinked from
+    // the order and invisible to reconciliation. Only harmless back when a
+    // refresh dumped the customer on Question 1.
+    const m = c.match(/confirmationId\.current =([\s\S]{0,260}?);/);
+    if (!m) return false;
+    const assign = m[1];
+    // The RESOLVED order must be the first source considered...
+    if (!/confirmation_id/.test(assign)) return false;
+    // ...and a bare assignment from the query param alone must not survive.
+    if (/^\s*resumeConfirmationId\s*$/.test(assign)) return false;
+    // An empty resolved id must never win over the id already held.
+    return /\|\|\s*confirmationId\.current/.test(assign);
+  }],
+
   ["D17", "the server, not the browser, decides that a completed order belongs at checkout", (s) => {
     const c = code(s.resolver);
     // The resolver must still return the completeness verdict and must still
@@ -424,6 +443,12 @@ const CONTROLS = [
   })],
   ["D16", "the PSD header loses its real progress count", (b) => ({
     psdPage: b.psdPage.replace("          answeredInStep1={psdProgress.answered}\n", ""),
+  })],
+  ["D18", "the resumed ESA confirmation id comes from the legacy query param again", (b) => ({
+    esaPage: b.esaPage.replace(
+      /confirmationId\.current =[\s\S]{0,260}?;/,
+      "confirmationId.current = resumeConfirmationId;",
+    ),
   })],
   ["D17", "the resolver assumes completeness instead of asking the server", (b) => ({
     resolver: b.resolver.replace(
