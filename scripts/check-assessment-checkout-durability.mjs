@@ -257,7 +257,7 @@ const CHECKS = [
     if (!/async function reuseOpenPaymentIntent\(/.test(c)) return false;
     // And the create path must actually CONSULT it, not merely define it.
     return /const reused = confirmationId[\s\S]{0,200}?await reuseOpenPaymentIntent\(/.test(c)
-        && /const paymentIntent = reused \?\? await stripe\.paymentIntents\.create\(/.test(c);
+        && /(const|let) paymentIntent = reused \?\? await stripe\.paymentIntents\.create\(/.test(c);
   }],
 
   ["D14", "the open intent lives in its OWN column, never payment_intent_id", (s) => {
@@ -267,7 +267,7 @@ const CHECKS = [
     // to stamp paid_at and mint an entitlement snapshot for an unpaid order
     // (ORDER-PAYMENT-INTENT-LIFECYCLE-TRIGGER-HARDENING-001). Scope the ban to
     // the update objects this task added.
-    const writer = c.slice(c.indexOf("async function rememberOpenPaymentIntentId"), c.indexOf("async function stampPricingSource"));
+    const writer = c.slice(c.indexOf("async function claimOpenPaymentIntentId"), c.indexOf("async function stampPricingSource"));
     if (!/\.update\(\{ open_payment_intent_id: paymentIntentId \}\)/.test(writer)) return false;
     // `[^_]` matters: `open_payment_intent_id:` CONTAINS `payment_intent_id:`,
     // so a naive negative lookup fails against the correct code.
@@ -327,6 +327,36 @@ const CHECKS = [
     if (/^\s*resumeConfirmationId\s*$/.test(assign)) return false;
     // An empty resolved id must never win over the id already held.
     return /\|\|\s*confirmationId\.current/.test(assign);
+  }],
+
+  ["D19", "every ESA mint call carries the order's confirmation id", (s) => {
+    const c = code(s.esaPage);
+    // THE root cause of the unlinked resumed ESA PaymentIntent. The resume
+    // effect called fetchClientSecret with `resumeConfirmationId` —
+    // `searchParams.get("resume")` — bypassing the ref it had just resolved
+    // from the order. On a /checkout/<slug> arrival that is "", and a falsy id
+    // makes create-payment-intent skip reuse, skip the reuse-pointer write,
+    // skip the trusted quote, and stamp NO confirmation_id into the Stripe
+    // metadata. Captured live: cid "", HTTP 200, a new pi_ on every reload.
+    const calls = [...c.matchAll(/fetchClientSecret\(([^)]*)\)/g)].map((m) => m[1]);
+    if (calls.length === 0) return false;
+    // No call site may pass the legacy query param as the confirmation id.
+    return !calls.some((a) => /(^|,)\s*resumeConfirmationId\s*(,|$)/.test(a));
+  }],
+
+  ["D20", "the open-intent slot is claimed atomically, so concurrent mounts cannot fan out", (s) => {
+    const c = code(s.paymentIntent);
+    if (!/async function claimOpenPaymentIntentId\(/.test(c)) return false;
+    const i = c.indexOf("async function claimOpenPaymentIntentId");
+    const region = c.slice(i, c.indexOf("async function rememberOpenPaymentIntentId", i));
+    // A read-then-write lets every racing mount see null and mint its own PI.
+    // The claim must be ONE conditional update guarded on the slot being empty.
+    if (!/\.is\("open_payment_intent_id",\s*null\)/.test(region)) return false;
+    // Losers must adopt the winner rather than serve their own intent...
+    if (!/select\("open_payment_intent_id"\)/.test(region)) return false;
+    // ...and the create path must actually USE the claim.
+    return /await claimOpenPaymentIntentId\(confirmationId, paymentIntent\.id\)/.test(c)
+        && /paymentIntents\.cancel\(loser\)/.test(c);
   }],
 
   ["D17", "the server, not the browser, decides that a completed order belongs at checkout", (s) => {
@@ -448,6 +478,18 @@ const CONTROLS = [
     esaPage: b.esaPage.replace(
       /confirmationId\.current =[\s\S]{0,260}?;/,
       "confirmationId.current = resumeConfirmationId;",
+    ),
+  })],
+  ["D19", "the ESA resume mint passes the legacy query param again", (b) => ({
+    esaPage: b.esaPage.replace(
+      "if (landGate === \"pay\") fetchClientSecret(loadedStep2, confirmationId.current);",
+      "if (landGate === \"pay\") fetchClientSecret(loadedStep2, resumeConfirmationId);",
+    ),
+  })],
+  ["D20", "the open-intent claim goes back to an unguarded write", (b) => ({
+    paymentIntent: b.paymentIntent.replace(
+      '      .is("open_payment_intent_id", null)\n',
+      "",
     ),
   })],
   ["D17", "the resolver assumes completeness instead of asking the server", (b) => ({

@@ -903,7 +903,23 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
           setCheckoutGate(landGate);
           setCurrentStep(3);
           window.scrollTo({ top: 0, behavior: "smooth" });
-          if (landGate === "pay") fetchClientSecret(loadedStep2, resumeConfirmationId);
+          // ASSESSMENT-CHECKOUT-REFRESH-...-INCIDENT-003 — THE root cause of the
+          // unlinked resumed ESA PaymentIntent.
+          //
+          // This passed `resumeConfirmationId`, i.e. `searchParams.get("resume")`,
+          // straight past the ref that the block above has just resolved from the
+          // RESOLVED ORDER. A stable `/checkout/<slug>` arrival carries no
+          // `?resume=`, so every resumed ESA checkout minted its PaymentIntent
+          // with `confirmationId: ""`. In create-payment-intent that falsy id
+          // skips open-intent reuse, skips the reuse-pointer write, skips the
+          // trusted quote — and stamps NO `confirmation_id` into the Stripe
+          // metadata, so the intent is orphaned from the order and invisible to
+          // reconciliation. Captured live: request confirmationId "", HTTP 200,
+          // a brand-new pi_ on every reload.
+          //
+          // `confirmationId.current` is authoritative here — it is assigned from
+          // `data.confirmation_id` earlier in this same effect.
+          if (landGate === "pay") fetchClientSecret(loadedStep2, confirmationId.current);
         } else {
           setOtpVerified(false);
           verifiedEmailRef.current = "";

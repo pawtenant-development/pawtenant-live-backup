@@ -275,18 +275,50 @@ async function readOpenPaymentIntentId(confirmationId: string): Promise<string |
   }
 }
 
-async function rememberOpenPaymentIntentId(
+/**
+ * Atomically CLAIM the open-intent slot for this order.
+ *
+ * Returns the id that won the slot — ours if we claimed it, or the id another
+ * concurrent request had already stored.
+ *
+ * Why this is a conditional update and not a plain write: the ESA checkout
+ * screen fires `fetchClientSecret` more than once per mount (the resume effect
+ * and the step-3 effect both call it, and React StrictMode double-invokes in
+ * dev). A read-then-write would let every one of those see a null pointer and
+ * create its own PaymentIntent — a fan-out that reuse alone cannot prevent
+ * because the reads all happen before any of the writes.
+ *
+ * `is("open_payment_intent_id", null)` makes exactly one writer win. The losers
+ * get the winner's id back and cancel the intent they just created, so the
+ * order ends with ONE open intent no matter how many requests raced.
+ */
+async function claimOpenPaymentIntentId(
   confirmationId: string,
   paymentIntentId: string,
-): Promise<void> {
-  if (!confirmationId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return;
+): Promise<string> {
+  if (!confirmationId || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return paymentIntentId;
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    await supabase
+    const { data: won } = await supabase
       .from("orders")
       .update({ open_payment_intent_id: paymentIntentId })
-      .eq("confirmation_id", confirmationId);
-  } catch { /* best-effort — a missed note only costs an extra intent later */ }
+      .eq("confirmation_id", confirmationId)
+      .is("open_payment_intent_id", null)
+      .select("open_payment_intent_id")
+      .maybeSingle();
+    if (won?.open_payment_intent_id) return won.open_payment_intent_id as string;
+
+    // Lost the race (0 rows matched). Adopt whoever won.
+    const { data: current } = await supabase
+      .from("orders")
+      .select("open_payment_intent_id")
+      .eq("confirmation_id", confirmationId)
+      .maybeSingle();
+    const winner = (current?.open_payment_intent_id as string | null) ?? null;
+    return winner && winner.startsWith("pi_") ? winner : paymentIntentId;
+  } catch {
+    return paymentIntentId;
+  }
 }
 
 /**
@@ -906,7 +938,7 @@ Deno.serve(async (req: Request) => {
       ? await reuseOpenPaymentIntent(stripe, confirmationId, finalAmount, piMetadata)
       : null;
 
-    const paymentIntent = reused ?? await stripe.paymentIntents.create({
+    let paymentIntent = reused ?? await stripe.paymentIntents.create({
       amount: finalAmount,
       currency: "usd",
       payment_method_types: ["card"],
@@ -914,10 +946,27 @@ Deno.serve(async (req: Request) => {
       metadata: piMetadata,
     });
 
-    // Remember the OPEN intent (never `payment_intent_id` — that column means
-    // "paid" and writing an unpaid id there stamps paid_at).
+    // Claim the OPEN-intent slot (never `payment_intent_id` — that column means
+    // "paid" and writing an unpaid id there stamps paid_at). The claim is
+    // conditional, so concurrent mounts cannot fan out into several intents:
+    // one writer wins, the rest adopt the winner and cancel what they minted.
     if (!reused && confirmationId) {
-      await rememberOpenPaymentIntentId(confirmationId, paymentIntent.id);
+      const winnerId = await claimOpenPaymentIntentId(confirmationId, paymentIntent.id);
+      if (winnerId !== paymentIntent.id) {
+        const loser = paymentIntent.id;
+        try {
+          // The winner is what the customer will actually pay against.
+          paymentIntent = await stripe.paymentIntents.retrieve(winnerId);
+          // Nothing has been confirmed on the loser — cancelling it is safe and
+          // keeps Stripe free of one abandoned intent per raced mount.
+          await stripe.paymentIntents.cancel(loser);
+          console.info(`[create-payment-intent] Lost open-intent race for ${confirmationId}; adopted ${winnerId}, cancelled ${loser}`);
+        } catch {
+          // If the winner cannot be retrieved, keep serving the intent we made
+          // rather than handing the customer a broken checkout.
+          console.warn(`[create-payment-intent] Could not adopt ${winnerId} for ${confirmationId}; serving ${loser}`);
+        }
+      }
     }
 
     // Persist the pricing decision for admin visibility (best-effort, never
