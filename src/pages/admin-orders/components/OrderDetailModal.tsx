@@ -2491,63 +2491,73 @@ export default function OrderDetailModal({
     setDeletingOrder(true);
     setDeleteOrderMsg("");
     try {
-      // Clean up ALL related records first — must be in dependency order to avoid FK violations.
-      // OPS-ORDER-PAYMENT-RELINK-DELETE-FK: capture child-delete errors instead of swallowing
-      // them. Supabase returns errors as `{ error }` rather than throwing, so the prior
-      // empty try/catch silently let RLS/permission failures pass through and the parent
-      // delete then surfaced a vague raw FK error.
-      // PostgrestFilterBuilder is a PromiseLike (no .catch/.finally) so the
-      // runner type Promise<...> rejects it. Wrap each call in
-      // Promise.resolve(...) to satisfy the type without changing the
-      // runtime query — same delete, same eq() filter, same returned shape.
-      const cleanups: Array<{ table: string; run: () => Promise<{ error?: { message: string } | null }> }> = [
-        { table: "communications",      run: () => Promise.resolve(supabase.from("communications").delete().eq("order_id", order.id)) },
-        { table: "doctor_earnings",     run: () => Promise.resolve(supabase.from("doctor_earnings").delete().eq("order_id", order.id)) },
-        { table: "order_documents",     run: () => Promise.resolve(supabase.from("order_documents").delete().eq("order_id", order.id)) },
-        { table: "doctor_notes",        run: () => Promise.resolve(supabase.from("doctor_notes").delete().eq("order_id", order.id)) },
-        { table: "order_status_logs",   run: () => Promise.resolve(supabase.from("order_status_logs").delete().eq("order_id", order.id)) },
-        { table: "doctor_notifications",run: () => Promise.resolve(supabase.from("doctor_notifications").delete().eq("order_id", order.id)) },
-        { table: "shared_order_notes",  run: () => Promise.resolve(supabase.from("shared_order_notes").delete().eq("order_id", order.id)) },
-        { table: "letter_verifications",run: () => Promise.resolve(supabase.from("letter_verifications").delete().eq("order_id", order.id)) },
-        { table: "meta_events",         run: () => Promise.resolve(supabase.from("meta_events").delete().eq("order_id", order.id)) },
-        { table: "audit_logs",          run: () => Promise.resolve(supabase.from("audit_logs").delete().eq("object_id", order.confirmation_id)) },
-      ];
-
-      const failedCleanups: string[] = [];
-      for (const c of cleanups) {
-        try {
-          const res = await c.run();
-          if (res?.error) {
-            console.warn(`[deleteOrder] ${c.table} cleanup failed:`, res.error);
-            failedCleanups.push(c.table);
-          }
-        } catch (err) {
-          console.warn(`[deleteOrder] ${c.table} cleanup threw:`, err);
-          failedCleanups.push(c.table);
-        }
+      // ── ADMIN-ORDER-DELETE-REPAIR-001 ──────────────────────────────────────
+      // This used to be a hand-maintained cascade of ten child DELETEs issued
+      // from the browser, followed by the parent delete. It could not work, and
+      // no edit to that list could have made it work:
+      //
+      //   • `order_price_quotes` CASCADEs from `orders` and carried an
+      //     append-only trigger that raised on EVERY delete. A cascade fires
+      //     child row triggers, so the child vetoed the parent delete. Any
+      //     order that had ever reached checkout was undeletable — 26.4% of
+      //     TEST orders, growing with every checkout — and the veto is not an
+      //     FK error, so the message parser below did not even match it and the
+      //     admin saw a raw Postgres string.
+      //   • `orders.parent_order_id` is NO ACTION, so an order with an
+      //     Additional-Pet child failed with a bare FK error naming no cause.
+      //   • Everything else referencing `orders` is CASCADE or SET NULL, so
+      //     most of that list was redundant work whose only real effect was
+      //     noisy `failedCleanups` warnings.
+      //
+      // The purge is now one admin-gated SECURITY DEFINER RPC. Running as the
+      // definer is what satisfies the quote trigger's DELETE exemption — the
+      // browser genuinely cannot do this itself. The RPC removes only the two
+      // NO ACTION children and lets the database cascade the rest, so it cannot
+      // drift out of date with the schema the way the list did.
+      //
+      // `audit_logs` is still cleared here, deliberately: it is keyed by
+      // confirmation_id with no FK, so it never blocked the delete and the RPC
+      // has no reason to touch it. Keeping it client-side preserves the
+      // existing behaviour exactly rather than quietly changing what a purge
+      // removes.
+      try {
+        const auditRes = await supabase.from("audit_logs").delete().eq("object_id", order.confirmation_id);
+        if (auditRes?.error) console.warn("[deleteOrder] audit_logs cleanup failed:", auditRes.error);
+      } catch (err) {
+        console.warn("[deleteOrder] audit_logs cleanup threw:", err);
       }
 
-      const { error } = await supabase.from("orders").delete().eq("id", order.id);
+      const { data: purge, error } = await supabase.rpc("admin_delete_order", { p_order_id: order.id });
       if (error) {
-        // Pull the offending child table out of the FK constraint message so the admin
-        // sees something actionable instead of a raw Postgres error. Common shape:
-        //   `... violates foreign key constraint "x_y_fkey" on table "child_table"`
-        const fkMatch = error.message.match(/on table "([^"]+)"/i);
-        const blockingTable = fkMatch?.[1];
-        if (blockingTable) {
+        setDeleteOrderMsg(
+          /admin access required/i.test(error.message)
+            ? "Admin access required to permanently delete orders."
+            : `Delete failed: ${error.message}`,
+        );
+        setDeletingOrder(false);
+        return;
+      }
+      const result = purge as { ok?: boolean; error?: string; child_count?: number } | null;
+      if (!result?.ok) {
+        if (result?.error === "has_child_orders") {
           setDeleteOrderMsg(
-            `Delete blocked by related records in "${blockingTable}". ` +
-            (failedCleanups.length > 0
-              ? `Cleanup also failed on: ${failedCleanups.join(", ")}. `
-              : "") +
-            "This is not a payment-status problem — extend the admin cleanup list or escalate.",
+            `This order has ${result.child_count ?? 1} linked Additional-Pet order(s). ` +
+            "Delete those first — removing this one would orphan them.",
           );
-        } else if (failedCleanups.length > 0) {
+        } else if (result?.error === "has_ad_conversion_records") {
+          // LIVE-only. These FKs are RESTRICT on purpose: the rows record what
+          // was reported to Google Ads, so the purge refuses rather than
+          // destroying conversion / refund-retraction provenance.
+          const adj = (result as { adjustments?: number }).adjustments ?? 0;
+          const upl = (result as { uploads?: number }).uploads ?? 0;
           setDeleteOrderMsg(
-            `Delete failed: ${error.message}. Cleanup failed earlier on: ${failedCleanups.join(", ")}.`,
+            `This order has Google Ads conversion records (${upl} upload(s), ${adj} adjustment(s)). ` +
+            "Deleting it would destroy what was reported to Google — escalate rather than force it.",
           );
+        } else if (result?.error === "order_not_found") {
+          setDeleteOrderMsg("This order no longer exists — it may already have been deleted.");
         } else {
-          setDeleteOrderMsg(`Delete failed: ${error.message}`);
+          setDeleteOrderMsg(`Delete failed: ${result?.error ?? "unknown error"}`);
         }
         setDeletingOrder(false);
         return;
