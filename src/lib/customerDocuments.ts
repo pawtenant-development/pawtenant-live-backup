@@ -15,12 +15,39 @@
 // `esa_letter`, `psd_letter`.
 //
 // "My Documents" shows ONLY:
-//   1. the FINALIZED (footer-injected) ESA/PSD letter — with its Verification ID,
+//   1. the delivered ESA/PSD letter — with its Verification ID,
 //   2. the provider-COMPLETED Housing Accommodation form — with NO Verification ID.
 // It never shows the customer's source upload (that lives in the Housing workflow
-// section) and never shows the provider's raw/un-stamped letter original.
+// section).
+//
+// ── CUSTOMER-DUAL-LETTER-DOWNLOADS-001 ──────────────────────────────────────
+// The signed letter is TWO distinct stored objects, never one:
+//   • the ORIGINAL      — order_documents.file_url, the exact bytes the provider
+//                         submitted, living in the private `provider-letters`
+//                         bucket. NOTHING in the pipeline ever rewrites it.
+//   • the VERIFICATION  — order_documents.processed_file_url, a SEPARATE object
+//                         written to the private `letters` bucket by
+//                         injectPdfVerification(), carrying the PawTenant
+//                         Verification ID + verify URL.
+// This resolver now exposes BOTH as independently retrievable downloads, in the
+// owner-mandated order (Original first, Verification second). A variant is only
+// offered when its file genuinely exists — the two buttons can never resolve to
+// the same object, and a missing artifact is reported rather than substituted.
 
 export type CustomerDocKind = "esa_letter" | "psd_letter" | "housing_completed";
+
+/** Which of the two independent letter artifacts a download targets. */
+export type DeliverableVariant = "original" | "verification";
+
+/** One concrete, independently retrievable download action. */
+export interface DeliverableDownload {
+  variant: DeliverableVariant;
+  /** order_documents.id — the token get-document-signed-url authorizes against. */
+  documentId: string;
+  /** Suggested download filename. The edge function corrects the extension to
+   *  match the real stored object (a handful of legacy originals are images). */
+  filename: string;
+}
 
 /** Minimal order_documents shape the resolver reads. */
 export interface ResolverDoc {
@@ -64,6 +91,15 @@ export interface CustomerDeliverable {
   isLegacyDirect?: boolean;
   /** Direct stored URL used only for the legacy fallback. */
   fallbackUrl?: string;
+  /** CUSTOMER-DUAL-LETTER-DOWNLOADS-001 — the provider's exact, unmodified file.
+   *  Letters only; absent when the row carries no original. */
+  originalDownload?: DeliverableDownload;
+  /** CUSTOMER-DUAL-LETTER-DOWNLOADS-001 — the separately generated copy carrying
+   *  the Verification ID + QR. Letters only; absent when injection never ran. */
+  verificationDownload?: DeliverableDownload;
+  /** Artifacts that genuinely do not exist for this deliverable. Drives the
+   *  "show only the valid action" rule and the operational shortfall report. */
+  missingArtifacts?: DeliverableVariant[];
 }
 
 export interface CustomerDocuments {
@@ -86,6 +122,46 @@ function letterDelivered(order: ResolverOrder): boolean {
 }
 
 /**
+ * `bucket/path` identity of a Supabase storage URL, with the signing query string
+ * stripped. Two URLs that sign the SAME object compare equal even though their
+ * tokens differ, which is what makes the "never point both buttons at one file"
+ * guard meaningful. Returns null for anything that is not a storage URL.
+ */
+function storageObjectKey(rawUrl: string | null | undefined): string | null {
+  if (!rawUrl) return null;
+  const m = rawUrl.match(
+    /\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/?]+)\/([^?]+)/,
+  );
+  return m ? `${decodeURIComponent(m[1])}/${decodeURIComponent(m[2])}` : null;
+}
+
+/**
+ * Download filename for a letter artifact, e.g.
+ *   PawTenant-ESA-Letter-Original-PT-MSMAS1S3.pdf
+ *   PawTenant-ESA-Letter-Verification-PT-MSMAS1S3.pdf
+ * The ESA/PSD label is derived from the ORDER, never from the provider's own
+ * document label, so a mislabelled upload cannot rename the customer's file.
+ */
+export function letterDownloadFilename(
+  psd: boolean,
+  confirmationId: string,
+  variant: DeliverableVariant,
+): string {
+  const product = psd ? "PSD" : "ESA";
+  const part = variant === "original" ? "Original" : "Verification";
+  const safeId = (confirmationId ?? "").replace(/[^A-Za-z0-9._-]/g, "") || "Order";
+  return `PawTenant-${product}-Letter-${part}-${safeId}.pdf`;
+}
+
+/** Ascending by uploaded_at. The resolver sorts explicitly rather than trusting
+ *  the caller's query order — one of the portal's three document fetches issues
+ *  no ORDER BY at all, so "newest wins" was position-dependent and could pick the
+ *  wrong revision. */
+function byUploadedAtAsc(a: ResolverDoc, b: ResolverDoc): number {
+  return (a.uploaded_at ?? "").localeCompare(b.uploaded_at ?? "");
+}
+
+/**
  * Resolve the customer's deliverables. Pure — no I/O, no side effects. Secure URL
  * minting still happens later via get-document-signed-url keyed on the returned id.
  */
@@ -97,21 +173,49 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
   const letterTitle = psd ? "Signed PSD Letter" : "Signed ESA Letter";
   const letterKind: CustomerDocKind = psd ? "psd_letter" : "esa_letter";
 
-  // 1) FINALIZED ESA/PSD letter — the footer-injected artifact only. Never the raw
-  //    provider original (footer_injected=false). Shown once the letter is delivered.
+  // 1) The delivered ESA/PSD letter. ONE card, TWO independent artifacts
+  //    (CUSTOMER-DUAL-LETTER-DOWNLOADS-001). Shown once the letter is delivered.
   if (letterDelivered(order)) {
-    // NEWEST finalized letter wins. `docs` arrives in ascending uploaded_at
-    // order, so the previous `.find()` returned the OLDEST — after a revision
-    // the customer was resolved to the letter that had just been superseded.
-    // Under the approval gate a superseded letter deliberately stays visible
-    // (a delivered document is never taken away), so picking the newest is what
-    // makes "expose only the approved version" true
-    // (PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §10).
-    const finalLetters = docs.filter(
-      (d) => LETTER_DOC_TYPES.includes(d.doc_type) && d.footer_injected && !!d.processed_file_url,
-    );
-    const finalLetter = finalLetters.length > 0 ? finalLetters[finalLetters.length - 1] : undefined;
+    // NEWEST letter row wins, and a FINALIZED (stamped) row always outranks an
+    // un-stamped one. `docs` arrives in ascending uploaded_at order, so the
+    // original `.find()` returned the OLDEST — after a revision the customer was
+    // resolved to the letter that had just been superseded. Under the approval
+    // gate a superseded letter deliberately stays visible (a delivered document
+    // is never taken away), so picking the newest is what makes "expose only the
+    // approved version" true (PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001
+    // §10). Both artifacts are read off that ONE row, so the pair is always the
+    // matched original+verification of a single submission — a revision can never
+    // pair v2's stamped copy with v1's original.
+    const letterDocs = docs
+      .filter((d) => LETTER_DOC_TYPES.includes(d.doc_type))
+      .slice()
+      .sort(byUploadedAtAsc);
+    const stamped = letterDocs.filter((d) => d.footer_injected && !!d.processed_file_url);
+    // Ranking a stamped row above a newer un-stamped one preserves the previous
+    // contract exactly: an order that resolves to a verification PDF today can
+    // never be demoted to an original-only card by this change.
+    const finalLetter = stamped.length > 0
+      ? stamped[stamped.length - 1]
+      : letterDocs.length > 0
+        ? letterDocs[letterDocs.length - 1]
+        : undefined;
     if (finalLetter) {
+      const originalKey = storageObjectKey(finalLetter.file_url);
+      const verificationKey = storageObjectKey(finalLetter.processed_file_url);
+      // Defensive: if injection had ever written back over its own source, the two
+      // pointers would name ONE object and the two buttons would be a lie. Census
+      // on TEST and LIVE finds zero such rows; if one ever appears we surface the
+      // stamped copy alone and report the original as missing rather than
+      // offering the same file twice.
+      const collides = !!originalKey && originalKey === verificationKey;
+
+      const hasVerification = !!finalLetter.footer_injected && !!finalLetter.processed_file_url;
+      const hasOriginal = !!finalLetter.file_url && !collides;
+
+      const missingArtifacts: DeliverableVariant[] = [];
+      if (!hasOriginal) missingArtifacts.push("original");
+      if (!hasVerification) missingArtifacts.push("verification");
+
       deliverables.push({
         id: finalLetter.id,
         kind: letterKind,
@@ -120,9 +224,29 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
         date: finalLetter.uploaded_at,
         dateVerb: "Delivered",
         verificationId: order.letter_id ?? undefined,
+        originalDownload: hasOriginal
+          ? {
+            variant: "original",
+            documentId: finalLetter.id,
+            filename: letterDownloadFilename(psd, order.confirmation_id, "original"),
+          }
+          : undefined,
+        verificationDownload: hasVerification
+          ? {
+            variant: "verification",
+            documentId: finalLetter.id,
+            filename: letterDownloadFilename(psd, order.confirmation_id, "verification"),
+          }
+          : undefined,
+        missingArtifacts,
       });
     } else if (order.signed_letter_url) {
-      // Legacy delivered order with no finalized doc row — direct stored URL fallback.
+      // Legacy delivered order with NO order_documents row at all (5 such orders on
+      // LIVE). There is exactly one stored pointer and nothing that distinguishes
+      // an original from a stamped copy, so neither labelled button can be offered
+      // honestly — the card falls back to its single direct action. Splitting this
+      // into two buttons would mean pointing both at the same URL, which is the one
+      // thing this task forbids.
       deliverables.push({
         kind: letterKind,
         title: letterTitle,
@@ -131,6 +255,7 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
         verificationId: order.letter_id ?? undefined,
         isLegacyDirect: true,
         fallbackUrl: order.signed_letter_url,
+        missingArtifacts: ["original", "verification"],
       });
     }
   }

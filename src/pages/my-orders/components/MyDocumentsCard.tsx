@@ -3,10 +3,17 @@
 //
 // Shows ONLY true customer deliverables, resolved by the shared
 // resolveCustomerDocuments():
-//   • the FINALIZED (footer-injected) ESA/PSD letter — with its Verification ID,
+//   • the delivered ESA/PSD letter — with its Verification ID,
 //   • the provider-COMPLETED Housing Accommodation form — with NO Verification ID.
 // It never shows the customer's own SOURCE upload (that stays in the Housing
-// workflow section) and never shows the provider's raw un-stamped original.
+// workflow section).
+//
+// CUSTOMER-DUAL-LETTER-DOWNLOADS-001: the letter card offers BOTH stored
+// artifacts — "Download Original" (the provider's exact submitted file) then
+// "Download Verification ID PDF" (the separate generated copy carrying the
+// Verification ID + QR) — in that fixed order. They are two different storage
+// objects in two different buckets; neither is ever derived from or substituted
+// for the other. The Housing form has only one file and keeps Open/Download.
 //
 // Every open/download mints a fresh short-lived signed URL via the shared
 // openSecureDocument/downloadSecureDocument helper (get-document-signed-url →
@@ -24,7 +31,17 @@ import {
 import { openSecureDocument, downloadSecureDocument } from "@/lib/openSecureDocument";
 import MyDocumentVersionHistory from "./MyDocumentVersionHistory";
 
-type RowBusy = "view" | "download" | null;
+type RowBusy = "view" | "download" | "original" | "verification" | null;
+
+/** Shared button chrome. `flex-1 basis-[9.5rem]` is what makes the pair sit
+ *  side-by-side from ~390px up and stack cleanly at 375px, and the label is
+ *  never truncated — no `truncate`, no fixed width, `whitespace-nowrap` so the
+ *  text sets the minimum and the BUTTON wraps instead of the words. */
+const BTN_BASE =
+  "inline-flex flex-1 basis-[9.5rem] items-center justify-center gap-1.5 whitespace-nowrap " +
+  "px-3 py-2 text-xs font-bold rounded-lg disabled:opacity-60 cursor-pointer transition-colors";
+const BTN_NEUTRAL = `${BTN_BASE} bg-gray-100 text-gray-700 hover:bg-gray-200`;
+const BTN_PRIMARY = `${BTN_BASE} bg-[#3b6ea5] text-white hover:bg-[#1e3a5f]`;
 
 function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
   const [busy, setBusy] = useState<RowBusy>(null);
@@ -50,7 +67,30 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
     setBusy(null);
   };
 
+  // CUSTOMER-DUAL-LETTER-DOWNLOADS-001 — one artifact, named strictly. The
+  // variant is sent to the edge function, which resolves THAT stored object or
+  // fails; it never quietly serves the other one.
+  const download = async (target: NonNullable<CustomerDeliverable["originalDownload"]>) => {
+    setErr("");
+    setBusy(target.variant);
+    const r = await downloadSecureDocument(target.documentId, target.filename, {
+      variant: target.variant,
+      downloadFilename: target.filename,
+    });
+    if (!r.ok) {
+      setErr(
+        r.code === "verification_unavailable"
+          ? "The Verification ID copy isn't available for this letter. Please contact support."
+          : r.code === "original_unavailable"
+            ? "The original letter file isn't available. Please contact support."
+            : r.error ?? "Couldn't download this document. Please try again.",
+      );
+    }
+    setBusy(null);
+  };
+
   const dateLine = doc.date ? `${doc.dateVerb} ${formatDeliverableDate(doc.date)}` : doc.dateVerb;
+  const dualDownloads = doc.originalDownload || doc.verificationDownload;
 
   return (
     <li className="rounded-xl border border-[#e2e8f0] bg-white px-3.5 py-3">
@@ -71,26 +111,62 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mt-2.5">
-        <button
-          type="button"
-          onClick={() => act("view")}
-          disabled={busy !== null}
-          className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-200 disabled:opacity-60 cursor-pointer transition-colors"
-        >
-          {busy === "view" ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-eye-line"></i>}
-          Open
-        </button>
-        <button
-          type="button"
-          onClick={() => act("download")}
-          disabled={busy !== null}
-          className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#1e3a5f] disabled:opacity-60 cursor-pointer transition-colors"
-        >
-          {busy === "download" ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-download-line"></i>}
-          Download
-        </button>
-      </div>
+      {dualDownloads ? (
+        // The two required choices, in the owner-mandated DOM and visual order:
+        // 1. Download Original  2. Download Verification ID PDF.
+        // The generic "Open"/"Download" pair is deliberately GONE from this card —
+        // it was the ambiguity being fixed. A variant with no genuine stored file
+        // renders no button at all rather than aliasing the other one.
+        <div className="flex flex-wrap items-stretch gap-2 mt-2.5">
+          {doc.originalDownload && (
+            <button
+              type="button"
+              onClick={() => download(doc.originalDownload!)}
+              disabled={busy !== null}
+              className={BTN_NEUTRAL}
+            >
+              {busy === "original"
+                ? <i className="ri-loader-4-line animate-spin"></i>
+                : <i className="ri-file-text-line"></i>}
+              Download Original
+            </button>
+          )}
+          {doc.verificationDownload && (
+            <button
+              type="button"
+              onClick={() => download(doc.verificationDownload!)}
+              disabled={busy !== null}
+              className={BTN_PRIMARY}
+            >
+              {busy === "verification"
+                ? <i className="ri-loader-4-line animate-spin"></i>
+                : <i className="ri-shield-check-line"></i>}
+              Download Verification ID PDF
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-stretch gap-2 mt-2.5">
+          <button
+            type="button"
+            onClick={() => act("view")}
+            disabled={busy !== null}
+            className={BTN_NEUTRAL}
+          >
+            {busy === "view" ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-eye-line"></i>}
+            Open
+          </button>
+          <button
+            type="button"
+            onClick={() => act("download")}
+            disabled={busy !== null}
+            className={BTN_PRIMARY}
+          >
+            {busy === "download" ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-download-line"></i>}
+            Download
+          </button>
+        </div>
+      )}
 
       {err && (
         <p className="text-[11px] text-red-600 mt-2 flex items-center gap-1">

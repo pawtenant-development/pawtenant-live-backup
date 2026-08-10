@@ -17,25 +17,52 @@ import { supabase } from "./supabaseClient";
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_ANON = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
+/** CUSTOMER-DUAL-LETTER-DOWNLOADS-001 — names ONE of the two stored letter
+ *  artifacts. Strict server-side: a named variant is never substituted. */
+export type SecureDocVariant = "original" | "verification";
+
 export interface SecureDocResult {
   ok: boolean;
   error?: string;
   signedUrl?: string;
   source?: string; // "processed" (finalized) | "original"
+  /** Machine-readable failure reason, e.g. "verification_unavailable". */
+  code?: string;
 }
 
-async function signDocument(documentId: string, preferOriginal: boolean): Promise<SecureDocResult> {
+export interface SecureDocOpts {
+  /** Loose form, kept for the admin "Open Original" call site. */
+  preferOriginal?: boolean;
+  /** Strict form — resolves that artifact or fails. */
+  variant?: SecureDocVariant;
+  /** Suggested filename; the function sets Content-Disposition from it (the
+   *  <a download> attribute is ignored cross-origin and cannot do this). */
+  downloadFilename?: string;
+}
+
+async function signDocument(documentId: string, opts: SecureDocOpts): Promise<SecureDocResult> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token ?? SUPABASE_ANON;
     const res = await fetch(`${SUPABASE_URL}/functions/v1/get-document-signed-url`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON },
-      body: JSON.stringify({ documentId, ...(preferOriginal ? { preferOriginal: true } : {}) }),
+      body: JSON.stringify({
+        documentId,
+        ...(opts.preferOriginal ? { preferOriginal: true } : {}),
+        ...(opts.variant ? { variant: opts.variant } : {}),
+        ...(opts.downloadFilename ? { downloadFilename: opts.downloadFilename } : {}),
+      }),
     });
-    const data = await res.json().catch(() => ({})) as { ok?: boolean; signedUrl?: string; source?: string; error?: string };
+    const data = await res.json().catch(() => ({})) as {
+      ok?: boolean; signedUrl?: string; source?: string; error?: string; code?: string;
+    };
     if (res.ok && data?.ok && data.signedUrl) return { ok: true, signedUrl: data.signedUrl, source: data.source };
-    return { ok: false, error: data?.error ?? `Could not open document (HTTP ${res.status})` };
+    return {
+      ok: false,
+      code: data?.code,
+      error: data?.error ?? `Could not open document (HTTP ${res.status})`,
+    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Network error opening document" };
   }
@@ -44,10 +71,10 @@ async function signDocument(documentId: string, preferOriginal: boolean): Promis
 /** Popup-safe open in a new tab. Returns the result so the caller can toast on failure. */
 export async function openSecureDocument(
   documentId: string,
-  opts: { preferOriginal?: boolean } = {},
+  opts: SecureDocOpts = {},
 ): Promise<SecureDocResult> {
   const win = window.open("about:blank", "_blank");
-  const result = await signDocument(documentId, opts.preferOriginal ?? false);
+  const result = await signDocument(documentId, opts);
   if (result.ok && result.signedUrl) {
     if (win) win.location.href = result.signedUrl;
     else window.location.href = result.signedUrl; // popup blocked → same-tab fallback
@@ -61,9 +88,14 @@ export async function openSecureDocument(
 export async function downloadSecureDocument(
   documentId: string,
   filename?: string,
-  opts: { preferOriginal?: boolean } = {},
+  opts: SecureDocOpts = {},
 ): Promise<SecureDocResult> {
-  const result = await signDocument(documentId, opts.preferOriginal ?? false);
+  // The signed URL is cross-origin, so `a.download` below cannot name the file.
+  // `downloadFilename` is what actually does it, via Content-Disposition.
+  const result = await signDocument(documentId, {
+    ...opts,
+    downloadFilename: opts.downloadFilename ?? filename,
+  });
   if (result.ok && result.signedUrl) {
     const a = document.createElement("a");
     a.href = result.signedUrl;

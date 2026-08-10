@@ -35,9 +35,24 @@
 //   { documentId, preferOriginal: true } → forces file_url over
 //                                          processed_file_url (admin
 //                                          "Open Original" link path)
+//   { documentId, variant: "original" | "verification" }
+//                                        → CUSTOMER-DUAL-LETTER-DOWNLOADS-001.
+//                                          STRICT: names one of the two stored
+//                                          artifacts and NEVER substitutes the
+//                                          other. A missing artifact is a 404
+//                                          with `code`, not a silent fallback —
+//                                          the fallback is exactly what would
+//                                          make the portal's two buttons return
+//                                          one identical file.
+//   { documentId, downloadFilename: "PawTenant-ESA-Letter-Original-PT-X.pdf" }
+//                                        → sets Content-Disposition on the
+//                                          signed URL. Needed because the
+//                                          <a download> attribute is IGNORED
+//                                          cross-origin, so it cannot name a
+//                                          file served from storage.
 //
 // Output:
-//   { signedUrl: "<https...>", expiresIn: 31536000, source: "processed"|"original" }
+//   { signedUrl, expiresIn, source: "processed"|"original", variant, filename }
 //
 // All operations idempotent. Generating a signed URL never mutates the row.
 
@@ -86,6 +101,24 @@ interface OrderDocRow {
  * URL is not a Supabase storage URL (e.g. an external CDN), in which case
  * the caller should return the URL unchanged.
  */
+/**
+ * CUSTOMER-DUAL-LETTER-DOWNLOADS-001 — sanitize a caller-supplied download name.
+ *
+ * The value ends up in a Content-Disposition header, so it is reduced to a safe
+ * basename charset, stripped of any path segments, and length-capped. The real
+ * extension is then taken from the STORED OBJECT rather than the caller: a few
+ * legacy provider originals are .jpeg/.png, and naming one of those ".pdf" would
+ * hand the customer a file their viewer refuses to open.
+ */
+function safeDownloadFilename(requested: string, storagePath: string): string | null {
+  const base = requested.split(/[\\/]/).pop() ?? "";
+  const cleaned = base.replace(/[^A-Za-z0-9._-]/g, "").replace(/^\.+/, "").slice(0, 120);
+  if (!cleaned) return null;
+  const realExt = (storagePath.split("/").pop() ?? "").match(/\.([A-Za-z0-9]{1,8})$/)?.[1] ?? "";
+  const stem = cleaned.replace(/\.[A-Za-z0-9]{1,8}$/, "") || cleaned;
+  return realExt ? `${stem}.${realExt.toLowerCase()}` : cleaned;
+}
+
 function parseStorageUrl(rawUrl: string | null | undefined): { bucket: string; path: string } | null {
   if (!rawUrl) return null;
   try {
@@ -144,7 +177,12 @@ Deno.serve(async (req: Request) => {
     isAdmin = !!(profile && (profile as { is_admin?: boolean }).is_admin);
   }
 
-  let body: { documentId?: string; preferOriginal?: boolean };
+  let body: {
+    documentId?: string;
+    preferOriginal?: boolean;
+    variant?: string;
+    downloadFilename?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -154,6 +192,15 @@ Deno.serve(async (req: Request) => {
   const documentId = (body.documentId ?? "").trim();
   if (!documentId) return json(400, { ok: false, error: "documentId is required" });
 
+  const rawVariant = (body.variant ?? "").trim().toLowerCase();
+  if (rawVariant && rawVariant !== "original" && rawVariant !== "verification") {
+    return json(400, { ok: false, error: `Unknown variant: ${rawVariant}` });
+  }
+  const variant = (rawVariant || null) as "original" | "verification" | null;
+
+  // `preferOriginal` predates `variant` and is still what the admin
+  // OrderDetailModal sends. Treated as the loose form of variant:"original" so
+  // that call site keeps its existing fall-through behaviour untouched.
   const preferOriginal = body.preferOriginal === true;
 
   // ── Look up the document row ──────────────────────────────────────────
@@ -202,28 +249,71 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── Resolve the source URL → bucket + path → signed URL ───────────────
-  const preferProcessed = !preferOriginal && row.footer_injected && row.processed_file_url;
-  const candidateUrl = preferProcessed ? row.processed_file_url : row.file_url;
-  if (!candidateUrl) {
-    return json(404, { ok: false, error: "No URL on document row" });
+  //
+  // STRICT MODE (`variant` given): the caller has named ONE of the two stored
+  // artifacts and gets that artifact or an error. There is deliberately no
+  // cross-substitution here. The customer portal renders "Download Original" and
+  // "Download Verification ID PDF" from the SAME document row, so a fallback
+  // would silently make both buttons return identical bytes — and the customer
+  // would have no way to tell that the file they are handing a landlord is not
+  // the one the button promised.
+  //
+  // LOOSE MODE (no `variant`): unchanged legacy behaviour for every existing
+  // caller — processed when stamped, otherwise the original.
+  let candidateUrl: string | null;
+  let resolvedSource: "processed" | "original";
+
+  if (variant === "original") {
+    if (!row.file_url) {
+      return json(404, {
+        ok: false,
+        code: "original_unavailable",
+        error: "No provider original is stored for this document",
+      });
+    }
+    candidateUrl = row.file_url;
+    resolvedSource = "original";
+  } else if (variant === "verification") {
+    if (!row.footer_injected || !row.processed_file_url) {
+      return json(404, {
+        ok: false,
+        code: "verification_unavailable",
+        error: "No Verification ID copy has been generated for this document",
+      });
+    }
+    candidateUrl = row.processed_file_url;
+    resolvedSource = "processed";
+  } else {
+    const preferProcessed = !preferOriginal && !!row.footer_injected && !!row.processed_file_url;
+    candidateUrl = preferProcessed ? row.processed_file_url : row.file_url;
+    resolvedSource = preferProcessed ? "processed" : "original";
+    if (!candidateUrl) {
+      return json(404, { ok: false, error: "No URL on document row" });
+    }
   }
 
   const parsed = parseStorageUrl(candidateUrl);
   if (!parsed) {
-    // External CDN URL — pass it through unchanged.
+    // External CDN URL — pass it through unchanged. Content-Disposition is not
+    // ours to set on someone else's host, so no filename is claimed.
     return json(200, {
       ok: true,
       signedUrl: candidateUrl,
       expiresIn: null,
-      source: preferProcessed ? "processed" : "original",
+      source: resolvedSource,
+      variant,
       external: true,
     });
   }
 
   const { bucket, path } = parsed;
+  const filename = body.downloadFilename
+    ? safeDownloadFilename(String(body.downloadFilename), path)
+    : null;
+
   const { data: signed, error: signErr } = await admin.storage
     .from(bucket)
-    .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
+    .createSignedUrl(path, SIGNED_URL_TTL_SECONDS, filename ? { download: filename } : undefined);
 
   if (signErr || !signed?.signedUrl) {
     console.error("[get-document-signed-url] createSignedUrl failed:", signErr?.message ?? "no url");
@@ -237,7 +327,9 @@ Deno.serve(async (req: Request) => {
     ok: true,
     signedUrl: signed.signedUrl,
     expiresIn: SIGNED_URL_TTL_SECONDS,
-    source: preferProcessed ? "processed" : "original",
+    source: resolvedSource,
+    variant,
+    filename,
     bucket,
     path,
   });
