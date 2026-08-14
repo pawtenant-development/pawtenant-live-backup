@@ -17,7 +17,7 @@
 //   D1  the resolver models BOTH artifacts (original + verification).
 //   D2  the resolver only offers a variant whose file genuinely exists.
 //   D3  the resolver refuses to offer two buttons for ONE storage object.
-//   D4  the card renders "Download Original" BEFORE "Download Verification ID PDF".
+//   D4  the card renders "Download Original" BEFORE "Download QR-verified copy".
 //   D5  the card no longer renders the ambiguous generic Open/Download for a
 //       letter that has the two labelled actions.
 //   D6  each button sends its own strict `variant`.
@@ -147,8 +147,8 @@ function runChecks(o) {
 
   // ── D4 ── DOM order (user-visible copy, literals kept)
   const iOrig = cardCopy.indexOf("Download Original");
-  const iVer = cardCopy.indexOf("Download Verification ID PDF");
-  add("D4", "card renders Download Original BEFORE Download Verification ID PDF",
+  const iVer = cardCopy.indexOf("Download QR-verified copy");
+  add("D4", "card renders Download Original BEFORE Download QR-verified copy",
     iOrig !== -1 && iVer !== -1 && iOrig < iVer);
 
   // ── D5 ── generic actions removed from the dual-download branch
@@ -225,8 +225,8 @@ const CONTROLS = [
     (b) => ({
       card: b.card
         .replace(/Download Original/g, "__A__")
-        .replace(/Download Verification ID PDF/g, "Download Original")
-        .replace(/__A__/g, "Download Verification ID PDF"),
+        .replace(/Download QR-verified copy/g, "Download Original")
+        .replace(/__A__/g, "Download QR-verified copy"),
     })],
   ["D5", "card falls back to the ambiguous generic pair for letters",
     (b) => ({ card: b.card.replace(/dualDownloads/g, "xxFlat") })],

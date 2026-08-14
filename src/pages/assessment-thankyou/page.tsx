@@ -150,7 +150,7 @@ function HelpfulInfoCard({ email, confirmationId }: { email: string; confirmatio
     {
       icon: "ri-question-answer-line",
       title: "What if my landlord has questions?",
-      desc: "Your letter includes a unique QR verification ID so landlords can confirm authenticity directly — no health information is disclosed.",
+      desc: "Your letter carries a discreet verification QR code so landlords can scan it and confirm authenticity directly — no health information is disclosed.",
     },
     {
       icon: "ri-customer-service-2-line",

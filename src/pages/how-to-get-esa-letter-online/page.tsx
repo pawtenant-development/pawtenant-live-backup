@@ -63,7 +63,7 @@ const steps = [
   {
     icon: "ri-home-heart-line",
     title: "Step 4 — Use it for a housing accommodation",
-    desc: "Submit your letter with a reasonable-accommodation request to your landlord or property manager. Keep a dated copy. A PawTenant letter also includes a Verification ID a landlord can confirm online.",
+    desc: "Submit your letter with a reasonable-accommodation request to your landlord or property manager. Keep a dated copy. A PawTenant letter also carries a verification QR code a landlord can scan online.",
   },
 ];
 
@@ -71,7 +71,7 @@ const landlordsLookFor = [
   "A letter from a provider licensed in your state, with their license number and signature.",
   "Confirmation that you have a disability-related need the animal helps with — without requiring your full medical records.",
   "A current letter (most landlords expect documentation issued within the past 12 months).",
-  "A way to confirm the letter is authentic, such as a verification ID or the provider's license on a public registry.",
+  "A way to confirm the letter is authentic, such as a scannable verification QR code or the provider's license on a public registry.",
 ];
 
 const invalidSigns = [
@@ -271,7 +271,7 @@ export default function HowToGetESALetterOnlinePage() {
         bullets={[
           "Use the letter for a Fair Housing Act accommodation request.",
           "Keep a dated copy for your records.",
-          "Your PawTenant letter includes a Verification ID landlords can confirm.",
+          "Your PawTenant letter carries a verification QR code landlords can scan.",
         ]}
       />
 

@@ -88,7 +88,7 @@ const pawtenantPoints = [
   {
     icon: "ri-shield-check-line",
     title: "Verifiable documentation",
-    desc: "Each finalized letter carries a unique Verification ID and the provider's license details so a landlord can confirm it's genuine.",
+    desc: "Each finalized letter carries a discreet verification QR code and the provider's license details so a landlord can confirm it's genuine.",
   },
   {
     icon: "ri-refund-2-line",

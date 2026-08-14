@@ -17,14 +17,14 @@ const steps = [
   {
     number: "02",
     icon: "ri-qr-code-line",
-    title: "Unique Verification ID Is Issued",
-    desc: "Our system automatically generates a unique Verification ID (e.g. ESA-CA-8F3K92) and stamps it directly onto your letter document.",
+    title: "Scan-To-Verify QR Code Is Added",
+    desc: "Our system records the letter and places a discreet verification QR code on the letter document. Scanning it opens the verification result — no ID is printed on the letter.",
   },
   {
     number: "03",
     icon: "ri-send-plane-line",
     title: "You Receive Your Verified Letter",
-    desc: "Your letter — with the Verification ID printed on it — is delivered to you. You share it with your landlord or housing provider as needed.",
+    desc: "Your letter — carrying a discreet verification QR code — is delivered to you. You share it with your landlord or housing provider as needed.",
   },
   {
     number: "04",
@@ -73,11 +73,11 @@ const faqs = [
   },
   {
     q: "What if my landlord says the ID doesn't work?",
-    a: "Verification IDs are only issued for letters finalized through our provider portal. If you received your letter recently, the ID should be active. Contact our support team if you experience any issues.",
+    a: "Verification records are only created for letters finalized through our provider portal. If you received your letter recently, scanning its QR code should return an active result. Contact our support team if you experience any issues.",
   },
   {
-    q: "Does the verification ID expire?",
-    a: "Verification IDs remain valid as long as your letter is in good standing. If a letter is revoked or superseded, the ID will reflect that status — but your health information is still never disclosed.",
+    q: "Does the verification result expire?",
+    a: "A verification result stays valid as long as your letter is in good standing. If a letter is revoked or superseded, the result reflects that status — but your health information is still never disclosed.",
   },
   {
     q: "Is this accepted under the Fair Housing Act?",
@@ -88,12 +88,12 @@ const faqs = [
     a: "No. The verification tool is read-only and returns only what is described above. It cannot be used to request, access, or retrieve any medical records.",
   },
   {
-    q: "How does my landlord use the Verification ID?",
-    a: "Your landlord visits pawtenant.com/verify, types in the Verification ID printed on your letter, and sees the letter status plus the provider's licensed credentials — name, NPI number, state license, letter type, and issue date. The whole confirmation takes a few seconds and never exposes your health information, diagnosis, or contact details.",
+    q: "How does my landlord verify my letter?",
+    a: "Your landlord scans the discreet QR code on your letter, lands on pawtenant.com/verify, and sees the letter status plus the provider's licensed credentials — name, NPI number, state license, letter type, and issue date. The whole confirmation takes a few seconds and never exposes your health information, diagnosis, or contact details.",
   },
   {
-    q: "Why does PawTenant use a Verification ID instead of just a printed letter?",
-    a: "A printed letter alone cannot prove on its own that the provider is real, that the license is active, or that the letter has not been altered. The Verification ID gives landlords a privacy-respecting way to confirm those things directly from PawTenant's records, which makes a valid ESA letter easier to trust and harder to fake — protecting both legitimate tenants and the property owner.",
+    q: "Why does PawTenant use a scan-to-verify QR code instead of just a printed letter?",
+    a: "A printed letter alone cannot prove on its own that the provider is real, that the license is active, or that the letter has not been altered. The QR code gives landlords a privacy-respecting way to confirm those things directly from PawTenant's records, which makes a valid ESA letter easier to trust and harder to fake — protecting both legitimate tenants and the property owner.",
   },
 ];
 
@@ -127,10 +127,10 @@ export default function ESALetterVerificationPage() {
         <PublicPageHero
           eyebrow="Landlord Verification System"
           heading="Check That an ESA Letter Is Real"
-          subheading="Every ESA and PSD letter issued through PawTenant carries a unique Verification ID. Landlords and tenants can confirm the document and the issuing provider's credentials in seconds — without any private health information being shown."
+          subheading="Every ESA and PSD letter issued through PawTenant carries a discreet verification QR code. Landlords and tenants scan it to confirm the document and the issuing provider's credentials in seconds — without any private health information being shown."
           trustPoints={[
             "Licensed clinicians",
-            "Unique verification ID",
+            "Discreet verification QR code",
             "No health information disclosed",
           ]}
         >
@@ -138,7 +138,7 @@ export default function ESALetterVerificationPage() {
             variant="card"
             className="shadow-[0_10px_40px_-24px_rgba(15,23,42,0.28)]"
             heading="Verify a letter now"
-            copy="Enter the Verification ID printed on the document."
+            copy="Scan the QR code on the document, or enter a supplied Verification ID."
           />
         </PublicPageHero>
 
@@ -188,7 +188,7 @@ export default function ESALetterVerificationPage() {
                   Only Public Professional Credentials
                 </h2>
                 <p className="text-gray-500 text-sm md:text-base leading-relaxed mb-6">
-                  When a landlord enters a Verification ID at pawtenant.com/verify, they see exactly the following — and nothing else. No patient data. No health information. No diagnosis.
+                  When a landlord scans the QR code and lands on pawtenant.com/verify, they see exactly the following — and nothing else. No patient data. No health information. No diagnosis.
                 </p>
                 <ul className="space-y-3">
                   {providerFields.map((f) => (
@@ -351,7 +351,7 @@ export default function ESALetterVerificationPage() {
               Ready to Get a Verified ESA Letter?
             </h2>
             <p className="text-white/70 text-sm md:text-base leading-relaxed mb-8 max-w-xl mx-auto">
-              Every letter we issue includes a Verification ID automatically. Start your assessment today and receive a letter your landlord can verify in seconds.
+              Every letter we issue carries a verification QR code automatically. Start your assessment today and receive a letter your landlord can verify in seconds.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link
@@ -409,7 +409,7 @@ export default function ESALetterVerificationPage() {
                 { i: "ri-user-star-line", t: "Licensed professional review", d: "Every letter is reviewed and signed by a state-licensed mental health professional after an individual evaluation." },
                 { i: "ri-id-card-line", t: "Named provider and credentials", d: "The provider's name, credential and license state appear on the document — not a company signature." },
                 { i: "ri-medal-line", t: "NPI lookup where available", d: "Where a provider has a National Provider Identifier, it can be looked up in the public CMS NPPES registry." },
-                { i: "ri-qr-code-line", t: "Unique verification ID", d: "A single ID tied to your document, checkable at pawtenant.com/verify." },
+                { i: "ri-qr-code-line", t: "Discreet verification QR code", d: "A QR code tied to your document — scanning it opens the result at pawtenant.com/verify." },
                 { i: "ri-calendar-check-line", t: "Issuance date on the letter", d: "The date the provider issued the document is printed on it, so currency can be confirmed." },
                 { i: "ri-lock-line", t: "Secure portal access", d: "Your documents stay available in your account portal, which you can reach at any time." },
               ].map((c) => (

@@ -486,16 +486,11 @@ function SecurePaymentCard({
 // playlist URL that frequently rendered as "This video is unavailable" — bad
 // last impression right before checkout. Now mirrors the ESA Step 3 sample
 // letter card (`src/pages/assessment/components/Step3Checkout.tsx` ~line 1512)
-// but with the PSD sample SVG, PSD wording, and a PSD-prefixed verification ID
-// (PSD-XX-XXXXXX). Trust strip below replaces the rating row from the old card.
+// but with the PSD sample SVG and PSD wording. Letters carry a discreet
+// scan-to-verify QR code and no printed ID, so this card must never show an ID
+// or an ID format. Trust strip below replaces the rating row from the old card.
 
-function PSDSampleLetterCard({ state }: { state?: string }) {
-  // State-aware PSD verification ID example: PSD-{STATE}-XXXXXX. Falls back
-  // to PSD-NY-XXXXXX so the layout is identical regardless of whether
-  // step2.state has been filled in.
-  const stateCode = (state ?? "").toUpperCase().trim().slice(0, 2);
-  const exampleVerificationId = `PSD-${stateCode.length === 2 ? stateCode : "NY"}-XXXXXX`;
-
+function PSDSampleLetterCard() {
   return (
     <div className={CARD_SHELL}>
       <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3 border-b border-slate-100">
@@ -510,20 +505,19 @@ function PSDSampleLetterCard({ state }: { state?: string }) {
         </span>
       </div>
 
-      {/* Verification-ID example chip — prominent so customers see the PSD-
-          prefixed format before they even open the PDF. The actual letter ID
-          is generated post-submission; this is purely the format preview. */}
+      {/* Landlord/business verification chip — QR-only. Letters carry a discreet
+          QR code and no printed ID, so nothing here may show an ID format. */}
       <div className="px-5 pt-3 pb-1 flex items-center gap-2 flex-wrap">
         <span
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full"
           style={{ backgroundColor: BRAND_GREEN_SOFT }}
         >
-          <i className="ri-shield-check-line text-xs" style={{ color: BRAND_GREEN }}></i>
+          <i className="ri-qr-code-line text-xs" style={{ color: BRAND_GREEN }}></i>
           <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: BRAND_GREEN }}>
-            Verification ID format
+            Scan-to-verify QR
           </span>
         </span>
-        <span className="text-xs font-mono font-bold text-slate-800 tracking-wider">{exampleVerificationId}</span>
+        <span className="text-xs font-semibold text-slate-700">Included on every letter</span>
       </div>
 
       {/* Sample image area: on mobile the SVG fills the card; on desktop it's
@@ -534,7 +528,7 @@ function PSDSampleLetterCard({ state }: { state?: string }) {
         <div className="rounded-lg overflow-hidden shadow-[0_16px_40px_-18px_rgba(15,23,42,0.25)] ring-1 ring-slate-200 bg-white relative w-full lg:max-w-sm lg:mx-auto">
           <img
             src="/images/checkout/psd-sample-letter.svg"
-            alt="Sample PawTenant Psychiatric Service Dog (PSD) letter showing verification ID, handler info, trained-task description, and licensed provider signature"
+            alt="Sample PawTenant Psychiatric Service Dog (PSD) letter showing handler information, trained-task description, and licensed provider signature"
             className="w-full h-auto block max-w-full"
             loading="lazy"
           />
@@ -549,9 +543,9 @@ function PSDSampleLetterCard({ state }: { state?: string }) {
           <i className="ri-service-line text-sm flex-shrink-0 mt-0.5" style={{ color: BRAND_GREEN }}></i>
           <span>
             A <strong>Psychiatric Service Dog</strong> performs specific disability-related tasks under the
-            ADA &mdash; distinct from an Emotional Support Animal. Each letter includes a
-            unique <span className="font-mono font-semibold text-slate-700">PSD-XX-XXXXXX</span> ID
-            so businesses and public-access venues can confirm authenticity. No health information is disclosed.
+            ADA &mdash; distinct from an Emotional Support Animal. Each letter carries a discreet
+            verification QR code, so businesses and public-access venues can scan it to confirm
+            authenticity. No health information is disclosed.
           </span>
         </p>
       </div>
@@ -1349,7 +1343,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
               <SectionLabel>Public-Access Verification Included</SectionLabel>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {[
-                  { icon: "ri-qr-code-line", text: "Unique PSD verification ID on every letter" },
+                  { icon: "ri-qr-code-line", text: "Discreet verification QR code on every letter" },
                   { icon: "ri-eye-off-line", text: "Businesses verify — no health info disclosed" },
                   { icon: "ri-user-star-line", text: "Signed by a state-licensed provider" },
                   { icon: "ri-service-line", text: "Documents ADA-recognized task training" },
@@ -1396,7 +1390,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
           </div>
 
           {/* 2 ── PSD Sample Letter card ── */}
-          <PSDSampleLetterCard state={step2.state} />
+          <PSDSampleLetterCard />
 
           {/* 3 ── ADA notice — kept as a smaller card because it's a real legal
                   distinction unique to PSD that ESA doesn't have. Styled as a

@@ -216,7 +216,7 @@ export default function PricingSection() {
             className="whitespace-nowrap inline-flex items-center gap-2 px-4 py-2 bg-[#FFF7ED] border border-orange-200 text-[#92400e] text-sm font-bold rounded-full hover:bg-orange-100 transition-colors cursor-pointer"
           >
             <i className="ri-qr-code-line text-base"></i>
-            Landlord-Verifiable Letters — Unique QR &amp; Verification ID
+            Landlord-Verifiable Letters — Discreet Scan-to-Verify QR Code
           </a>
         </div>
       </div>

@@ -594,7 +594,7 @@ export default function EverythingEsaOnlinePage() {
                   <div className="px-5 py-3.5 border-t border-slate-100 flex items-start gap-2.5">
                     <i className="ri-information-line text-sm flex-shrink-0 mt-0.5 text-[#4A8472]"></i>
                     <p className="text-xs text-slate-600 leading-relaxed">
-                      Each PawTenant letter includes a unique <span className="font-mono font-semibold text-slate-700">ESA-XX-XXXXXX</span> verification ID. Landlords can confirm authenticity without seeing any medical detail.
+                      Each PawTenant letter carries a discreet verification QR code. Landlords can confirm authenticity without seeing any medical detail.
                     </p>
                   </div>
                 </div>
@@ -871,7 +871,7 @@ export default function EverythingEsaOnlinePage() {
               The previous external Supabase verification screenshot was
               missing/broken in production. Rebuilt as a pure HTML/CSS
               verification card mockup. Shows everything a real landlord
-              would see — verification ID format, provider license badge,
+              would see — scan-to-verify result, provider license badge,
               clinic state, status pill — and explicitly calls out
               "no medical detail" so the privacy story reads at a glance.
               No external image dependency. */}
@@ -883,7 +883,7 @@ export default function EverythingEsaOnlinePage() {
                 When a housing provider asks to confirm an ESA letter, they can verify the licensed clinician&apos;s credentials through our secure verification page — without seeing any of your medical information. The clinician&apos;s name, license number, state, and license status are surfaced; nothing more.
               </p>
               <ul className="space-y-2 mb-5 text-[13px] text-slate-600">
-                <li className="flex items-start gap-2"><i className="ri-checkbox-circle-line text-[#4A8472] text-sm flex-shrink-0 mt-0.5"></i>Unique verification ID on every letter</li>
+                <li className="flex items-start gap-2"><i className="ri-checkbox-circle-line text-[#4A8472] text-sm flex-shrink-0 mt-0.5"></i>Discreet verification QR code on every letter</li>
                 <li className="flex items-start gap-2"><i className="ri-checkbox-circle-line text-[#4A8472] text-sm flex-shrink-0 mt-0.5"></i>Provider license confirmed by state board</li>
                 <li className="flex items-start gap-2"><i className="ri-checkbox-circle-line text-[#4A8472] text-sm flex-shrink-0 mt-0.5"></i><strong>No medical details</strong> ever disclosed</li>
               </ul>
@@ -908,7 +908,7 @@ export default function EverythingEsaOnlinePage() {
                   • Hero status panel (big sage check + "Letter Verified"
                     + sub-label) — communicates the result at a glance,
                     not just a row of fields.
-                  • Clean two-row data block (Verification ID + Issued by)
+                  • Clean two-row data block (verification result + Issued by)
                     with calm uppercase eyebrows and proper hierarchy.
                   • Bottom privacy strip with a lock icon — reads as a
                     real "No medical info disclosed" guarantee, not a
@@ -947,7 +947,7 @@ export default function EverythingEsaOnlinePage() {
                   {/* Data rows — illustrative sample only (not a real letter, provider, or license) */}
                   <div className="px-5 py-4 space-y-3.5">
                     <div>
-                      <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-400 mb-1">Sample Verification ID</p>
+                      <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-slate-400 mb-1">Sample verification result</p>
                       <p className="text-[15px] font-mono font-bold text-slate-900 tracking-wider">ESA-SAMPLE-0000</p>
                     </div>
                     <div className="h-px bg-slate-100"></div>

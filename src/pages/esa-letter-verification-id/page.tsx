@@ -36,18 +36,18 @@ const UPDATED_HUMAN = "June 17, 2026";
 const UPDATED_ISO = "2026-06-17";
 
 const heroBadges = [
-  { icon: "ri-qr-code-line", label: "Verification ID" },
+  { icon: "ri-qr-code-line", label: "Scan-to-verify QR" },
   { icon: "ri-lock-2-line", label: "Privacy-safe" },
   { icon: "ri-user-star-line", label: "Licensed provider" },
   { icon: "ri-refund-2-line", label: "Refund if you don't qualify" },
 ];
 
-// ── What a verification ID is / does
+// ── What letter verification is / does
 const whatItIs = [
   {
     icon: "ri-fingerprint-line",
-    title: "A unique code on the letter",
-    desc: "A Verification ID is a unique reference printed on a PawTenant ESA letter that ties the document to a real, provider-issued record.",
+    title: "A discreet QR code on the letter",
+    desc: "A PawTenant ESA letter carries a discreet verification QR code. Scanning it opens the verification result for that letter — no reference code is printed on the page.",
   },
   {
     icon: "ri-shield-check-line",
@@ -62,7 +62,7 @@ const whatItIs = [
   {
     icon: "ri-links-line",
     title: "Pairs with the provider license",
-    desc: "Alongside the provider's license number and the public NPI registry, a Verification ID gives a landlord a fast, reliable check.",
+    desc: "Alongside the provider's license number and the public NPI registry, the QR code gives a landlord a fast, reliable check.",
   },
 ];
 
@@ -70,13 +70,13 @@ const whatItIs = [
 const landlordSteps = [
   {
     icon: "ri-file-text-line",
-    title: "Find the ID on the letter",
-    desc: "The Verification ID appears on the PawTenant ESA letter itself, usually near the footer with the provider's details.",
+    title: "Scan the QR code on the letter",
+    desc: "The discreet QR code sits on the PawTenant ESA letter itself, near the footer with the provider's details. A phone camera is all a landlord needs.",
   },
   {
     icon: "ri-global-line",
     title: "Confirm it's genuine",
-    desc: "The landlord uses the ID to confirm the letter is authentic — proof it was issued, not fabricated or altered.",
+    desc: "The scan opens PawTenant's verification result, confirming the letter was issued — not fabricated or altered.",
   },
   {
     icon: "ri-user-star-line",
@@ -93,35 +93,35 @@ const landlordSteps = [
 const faqs: FaqItem[] = [
   {
     q: "Do ESA letters need a verification ID?",
-    a: "A verification ID isn't legally required for an ESA letter to be valid — validity comes from a licensed provider evaluation. But a Verification ID is very helpful: it lets a landlord confirm the letter is genuine quickly, which reduces back-and-forth and doubt. PawTenant includes a unique Verification ID on its letters for exactly this reason.",
+    a: "A verification feature isn't legally required for an ESA letter to be valid — validity comes from a licensed provider evaluation. But it is very helpful: it lets a landlord confirm the letter is genuine quickly, which reduces back-and-forth and doubt. PawTenant puts a discreet verification QR code on its letters for exactly this reason.",
   },
   {
     q: "What is an ESA letter verification ID?",
-    a: "It's a unique reference code printed on a PawTenant ESA letter that ties the document to a real, provider-issued record. A landlord can use it to confirm the letter is authentic — that it was actually issued and hasn't been edited or copied — without ever seeing your diagnosis or medical records.",
+    a: "It is the reference PawTenant holds for a provider-issued letter. On the letter itself you will not see a printed code — you will see a discreet QR code that opens the verification result. A landlord can use it to confirm the letter is authentic — that it was actually issued and hasn't been edited or copied — without ever seeing your diagnosis or medical records.",
   },
   {
     q: "How do I verify a PawTenant ESA letter?",
-    a: "Use the Verification ID printed on the letter to confirm it's genuine, and confirm the named provider is licensed via their license number or the public NPI registry. Verification proves the letter is authentic; it does not expose your clinical details. See our how-to-verify-an-ESA-letter guide for the full steps.",
+    a: "Scan the discreet QR code on the letter to confirm it's genuine, and confirm the named provider is licensed via their license number or the public NPI registry. Verification proves the letter is authentic; it does not expose your clinical details. See our how-to-verify-an-ESA-letter guide for the full steps.",
   },
   {
     q: "Can my landlord call the provider to verify my ESA letter?",
-    a: "A landlord may seek to confirm a letter is authentic and the provider is licensed, but they are not entitled to discuss your diagnosis or care. A Verification ID and the provider's license number let them confirm authenticity without contacting your provider about clinical matters.",
+    a: "A landlord may seek to confirm a letter is authentic and the provider is licensed, but they are not entitled to discuss your diagnosis or care. The letter's QR code and the provider's license number let them confirm authenticity without contacting your provider about clinical matters.",
   },
   {
-    q: "Does a verification ID reveal my diagnosis or medical records?",
-    a: "No. A Verification ID confirms only that the letter is genuine and provider-issued. It does not reveal your diagnosis, treatment, or any clinical detail — verification is about authenticity, not access to your health information.",
+    q: "Does verification reveal my diagnosis or medical records?",
+    a: "No. Verification confirms only that the letter is genuine and provider-issued. It does not reveal your diagnosis, treatment, or any clinical detail — verification is about authenticity, not access to your health information.",
   },
   {
-    q: "Is an ESA letter without a verification ID still valid?",
-    a: "It can be. Validity comes from a licensed provider evaluation, a disability-related need statement, and verifiable provider license details — not specifically from a Verification ID. A Verification ID simply makes confirming authenticity faster and easier, which can help a landlord accept the letter with less friction.",
+    q: "Is an ESA letter without a verification feature still valid?",
+    a: "It can be. Validity comes from a licensed provider evaluation, a disability-related need statement, and verifiable provider license details — not specifically from a verification feature. Scan-to-verify simply makes confirming authenticity faster and easier, which can help a landlord accept the letter with less friction.",
   },
   {
-    q: "Where is the verification ID on my ESA letter?",
-    a: "On a PawTenant letter, the Verification ID is printed on the document itself, typically near the provider's signature and license details in the footer. If you can't find it, contact support and we can help you locate or confirm it.",
+    q: "Where is the verification feature on my ESA letter?",
+    a: "On a PawTenant letter it is a discreet QR code near the provider's signature and license details in the footer. No reference code is printed on the page. If you can't find the QR code, contact support and we can help you confirm the letter.",
   },
   {
-    q: "Can a landlord trust a verification ID over an online registration?",
-    a: "Yes — they're very different. An online \"registration\" or certificate has no legal weight and proves nothing. A Verification ID, paired with a licensed provider's name and license number, lets a landlord confirm the letter is a genuine, provider-issued document. Real verification beats a bought registration every time.",
+    q: "Can a landlord trust scan-to-verify over an online registration?",
+    a: "Yes — they're very different. An online \"registration\" or certificate has no legal weight and proves nothing. A scan-to-verify QR code, paired with a licensed provider's name and license number, lets a landlord confirm the letter is a genuine, provider-issued document. Real verification beats a bought registration every time.",
   },
 ];
 
@@ -171,8 +171,8 @@ export default function ESALetterVerificationIdPage() {
                 ESA Letter Verification ID: What It Is and How It Works
               </h1>
               <p className="text-gray-600 text-[15px] sm:text-lg leading-relaxed mb-6 max-w-xl mx-auto lg:mx-0">
-                A Verification ID is what turns "is this letter real?" into a quick, factual check. It
-                lets a landlord confirm your ESA letter is genuine — without ever seeing your medical
+                Verification is what turns "is this letter real?" into a quick, factual check. A discreet
+                QR code on the letter lets a landlord confirm your ESA letter is genuine — without ever seeing your medical
                 details. Here's what it is, whether you need one, and how it's used.
               </p>
               <div className="flex justify-center lg:justify-start mb-6">
@@ -199,7 +199,7 @@ export default function ESALetterVerificationIdPage() {
               <div className="rounded-2xl overflow-hidden ring-1 ring-black/5 shadow-[0_16px_40px_-18px_rgba(15,23,42,0.25)] aspect-[4/3]">
                 <img
                   src="/assets/lifestyle/owner-with-dog-laptop.jpg"
-                  alt="A renter locating the verification ID on their ESA letter with their dog nearby"
+                  alt="A renter checking the verification QR code on their ESA letter with their dog nearby"
                   width={1000}
                   height={750}
                   loading="eager"
@@ -220,18 +220,18 @@ export default function ESALetterVerificationIdPage() {
       {/* DIRECT ANSWER */}
       <section className="py-12 sm:py-14 bg-white">
         <div className="max-w-3xl mx-auto px-5 sm:px-6">
-          <AIAnswerBox question="Do ESA letters need a verification ID?">
+          <AIAnswerBox question="Do ESA letters need a way to be verified?">
             <p>
-              A Verification ID <strong>isn't legally required</strong> for an ESA letter to be valid —
+              A verification feature <strong>isn't legally required</strong> for an ESA letter to be valid —
               validity comes from a <strong>licensed provider evaluation</strong>. But it's very
               helpful: it lets a landlord <strong>confirm the letter is genuine</strong> quickly,
               which cuts down doubt and back-and-forth.
             </p>
             <p>
-              A Verification ID is a <strong>unique code on the letter</strong> that confirms it was
+              PawTenant letters carry a <strong>discreet QR code</strong> that confirms the letter was
               actually issued by the provider. It proves <strong>authenticity only</strong> — it does{" "}
-              <strong>not reveal your diagnosis or medical records</strong>. PawTenant includes one on
-              every letter, alongside the provider's verifiable license details.
+              <strong>not reveal your diagnosis or medical records</strong>. Every letter carries one,
+              alongside the provider's verifiable license details.
             </p>
           </AIAnswerBox>
         </div>
@@ -245,7 +245,7 @@ export default function ESALetterVerificationIdPage() {
               The basics
             </p>
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">
-              What an ESA letter verification ID is
+              What ESA letter verification is
             </h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -266,12 +266,12 @@ export default function ESALetterVerificationIdPage() {
               </div>
               <div className="text-center sm:text-left">
                 <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2 leading-snug">
-                  Where your Verification ID appears
+                  Where the verification QR code appears
                 </h3>
                 <p className="text-gray-600 text-sm leading-relaxed mb-4">
-                  On a PawTenant ESA letter, the Verification ID sits alongside the licensed
-                  provider's name, license number, and signature — so a landlord can confirm it at a
-                  glance.
+                  On a PawTenant ESA letter, the discreet QR code sits alongside the licensed
+                  provider's name, license number, and signature — so a landlord can scan and confirm
+                  it at a glance.
                 </p>
                 <ul className="space-y-2.5 text-left">
                   <li className="flex items-start gap-2.5">
@@ -304,7 +304,7 @@ export default function ESALetterVerificationIdPage() {
               In practice
             </p>
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">
-              How a landlord uses your verification ID
+              How a landlord verifies your letter
             </h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -340,10 +340,10 @@ export default function ESALetterVerificationIdPage() {
         reverse
         className="bg-[#fdf6ee]"
         image="/assets/lifestyle/woman-laptop-home.jpg"
-        alt="A renter confirming the verification details on their ESA letter at home with their dog"
+        alt="A renter confirming the verification QR code on their ESA letter at home with their dog"
         eyebrow="Trust, verified"
-        heading="A Verification ID makes a landlord's check effortless"
-        body="When a landlord can confirm your letter with a single reference code, you skip the suspicion and the document requests. A Verification ID — paired with a licensed provider's name and license number — proves the letter is real while keeping your health information completely private."
+        heading="A scannable QR code makes a landlord's check effortless"
+        body="When a landlord can confirm your letter with a single scan, you skip the suspicion and the document requests. The QR code — paired with a licensed provider's name and license number — proves the letter is real while keeping your health information completely private."
         bullets={[
           "Confirms the letter is genuine and provider-issued.",
           "Never reveals your diagnosis, treatment, or records.",
@@ -369,11 +369,11 @@ export default function ESALetterVerificationIdPage() {
       <section className="py-14 sm:py-16 bg-white border-t border-gray-100">
         <div className="max-w-2xl mx-auto px-5 sm:px-6 text-center">
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 leading-tight">
-            Get a letter with a Verification ID
+            Get a letter a landlord can verify
           </h2>
           <p className="text-gray-500 text-sm sm:text-base mb-7">
             Connect with a licensed provider. If you qualify, your housing-focused ESA letter includes
-            a Verification ID a landlord can confirm — with a refund if you don't qualify.
+            a discreet verification QR code a landlord can scan — with a refund if you don't qualify.
           </p>
           <Link
             to={withAttribution("/assessment")}
@@ -394,7 +394,7 @@ export default function ESALetterVerificationIdPage() {
           <RelatedResources
             links={[
               { to: "/how-to-verify-esa-letter", title: "How to verify an ESA letter", desc: "Step-by-step verification for tenants and landlords." },
-              { to: "/landlord-says-esa-letter-is-fake", title: "Landlord says it's fake?", desc: "Use your Verification ID to prove it's genuine." },
+              { to: "/landlord-says-esa-letter-is-fake", title: "Landlord says it's fake?", desc: "Use the QR code on your letter to prove it's genuine." },
               { to: "/what-makes-esa-letter-valid", title: "What makes an ESA letter valid?", desc: "The elements a housing letter must include." },
               { to: "/what-documents-can-landlord-ask-for-esa", title: "What documents can a landlord ask for?", desc: "What a landlord can reasonably request — and can't." },
               { to: "/landlord-esa-documentation-checklist", title: "Landlord documentation checklist", desc: "The landlord's side: what to review and verify." },

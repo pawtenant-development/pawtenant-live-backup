@@ -235,7 +235,7 @@ function OrderCard({
   const isCancelled = isOperationallyCancelled(order) && !isRefunded;
   const isPartialRefunded = isPartialRefund(order) && !isRefunded && !isCancelled;
   const delivered = order.doctor_status === "patient_notified" || !!order.letter_id;
-  // Landlord-verifiable card is ESA-specific copy; PSD verification IDs still show
+  // Landlord-verifiable card is ESA-specific copy; PSD verification records still show
   // inline on the My Documents letter row.
   const showVerify = delivered && !isPSDOrder(order);
 
@@ -439,7 +439,7 @@ function OrderCard({
       {showVerify && (
         <CustomerPortalSection title="Verification" icon="ri-shield-check-line" tone="blue">
           <p className="text-xs text-gray-600 leading-relaxed">
-            Your ESA letter includes a unique <strong>Verification ID</strong> and QR code. Landlords can instantly
+            Your ESA letter carries a discreet <strong>verification QR code</strong>. Landlords can instantly
             confirm its authenticity at{" "}
             <a href="/esa-letter-verification" className="underline underline-offset-2 font-bold text-[#3b6ea5] hover:text-[#1e3a5f] cursor-pointer">pawtenant.com/esa-letter-verification</a>{" "}
             — zero health info disclosed.

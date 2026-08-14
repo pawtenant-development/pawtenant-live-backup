@@ -71,7 +71,7 @@ const checklist = [
   {
     icon: "ri-qr-code-line",
     title: "A way to verify",
-    desc: "A real way to confirm the provider — an NPI, license lookup, or a Verification ID on a PawTenant letter.",
+    desc: "A real way to confirm the provider — an NPI, license lookup, or the verification QR code on a PawTenant letter.",
   },
 ];
 
@@ -100,8 +100,8 @@ const verifySteps = [
   },
   {
     icon: "ri-qr-code-line",
-    title: "Use the Verification ID if present",
-    desc: "If the letter is from PawTenant, the Verification ID lets you confirm authenticity in minutes — no medical detail exposed.",
+    title: "Scan the verification QR code if present",
+    desc: "If the letter is from PawTenant, the discreet QR code lets you confirm authenticity in minutes — no medical detail exposed.",
   },
   {
     icon: "ri-customer-service-2-line",
@@ -125,7 +125,7 @@ const faqs: FaqItem[] = [
   },
   {
     q: "How can a landlord verify an ESA letter?",
-    a: "Confirm the letter names a provider with a license type and state, and use a real verification path — for example, checking the provider on the public NPPES NPI registry or using a Verification ID on a PawTenant letter. Verification confirms authenticity only; it does not require the resident to disclose medical details.",
+    a: "Confirm the letter names a provider with a license type and state, and use a real verification path — for example, checking the provider on the public NPPES NPI registry or scanning the verification QR code on a PawTenant letter. Verification confirms authenticity only; it does not require the resident to disclose medical details.",
   },
   {
     q: "Can a landlord charge a pet deposit for an ESA?",
@@ -389,7 +389,7 @@ export default function LandlordESADocumentationChecklistPage() {
         bullets={[
           "Confirm the provider is licensed and the letter is authentic.",
           "Keep the review privacy-respecting and Fair-Housing aligned.",
-          "A Verification ID confirms authenticity in minutes.",
+          "A scannable QR code confirms authenticity in minutes.",
         ]}
       />
 

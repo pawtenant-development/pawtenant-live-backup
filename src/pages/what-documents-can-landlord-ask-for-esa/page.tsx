@@ -46,7 +46,7 @@ const heroBadges = [
 const canAsk = [
   "A letter from a licensed provider confirming you have a disability-related need for the animal — when the disability isn't obvious.",
   "Reliable documentation that reasonably supports the need for a reasonable accommodation.",
-  "Confirmation that the letter is authentic and the provider is licensed (for example, license number or a Verification ID).",
+  "Confirmation that the letter is authentic and the provider is licensed (for example, license number or the letter's verification QR code).",
   "Basic, non-medical details to process the request — like the animal and your contact information.",
 ];
 const cannotAsk = [
@@ -71,7 +71,7 @@ const prepare = [
   {
     icon: "ri-qr-code-line",
     title: "A verification path",
-    desc: "Offer the provider's license details or, on a PawTenant letter, a Verification ID so the landlord can confirm authenticity without seeing your records.",
+    desc: "Offer the provider's license details or, on a PawTenant letter, the discreet verification QR code so the landlord can scan and confirm authenticity without seeing your records.",
   },
   {
     icon: "ri-folder-line",
@@ -94,8 +94,8 @@ const faqs: FaqItem[] = [
     a: "Generally no. Under the Fair Housing Act, a housing provider may request documentation that reasonably supports the need for an accommodation, but not your specific diagnosis or full medical records. A provider's letter confirming the need protects your privacy while still meeting the documentation standard.",
   },
   {
-    q: "Do ESA letters need a verification ID?",
-    a: "A verification ID isn't legally required, but it helps. A landlord may want to confirm a letter is genuine, and a clear way to verify — such as a provider's license number or a PawTenant Verification ID — makes that fast. Verification confirms authenticity only; it does not expose your diagnosis or clinical detail.",
+    q: "Do ESA letters need a way to be verified?",
+    a: "A verification feature isn't legally required, but it helps. A landlord may want to confirm a letter is genuine, and a clear way to verify — such as a provider's license number or the discreet QR code on a PawTenant letter — makes that fast. Verification confirms authenticity only; it does not expose your diagnosis or clinical detail.",
   },
   {
     q: "Can a landlord contact my therapist or provider?",
@@ -139,7 +139,7 @@ export default function WhatDocumentsCanLandlordAskForESAPage() {
     <main>
       <meta
         name="keywords"
-        content="what documents can a landlord ask for an ESA, can a landlord ask for proof of disability for ESA, can a landlord ask for my diagnosis ESA, do ESA letters need verification ID, landlord wants to verify my ESA letter, ESA documentation for housing"
+        content="what documents can a landlord ask for an ESA, can a landlord ask for proof of disability for ESA, can a landlord ask for my diagnosis ESA, how to verify an ESA letter, landlord wants to verify my ESA letter, ESA documentation for housing"
       />
       <meta property="og:type" content="article" />
       <meta property="og:image" content="https://pawtenant.com/assets/brand/og-default.jpg" />
@@ -334,7 +334,7 @@ export default function WhatDocumentsCanLandlordAskForESAPage() {
               </li>
               <li className="flex items-start gap-3">
                 <i className="ri-check-line text-emerald-500 mt-0.5 flex-shrink-0"></i>
-                <span className="text-gray-700 text-sm leading-relaxed">A PawTenant letter includes a unique Verification ID a landlord can confirm — it proves the letter is genuine, nothing more.</span>
+                <span className="text-gray-700 text-sm leading-relaxed">A PawTenant letter carries a discreet verification QR code a landlord can scan — it proves the letter is genuine, nothing more.</span>
               </li>
               <li className="flex items-start gap-3">
                 <i className="ri-check-line text-emerald-500 mt-0.5 flex-shrink-0"></i>

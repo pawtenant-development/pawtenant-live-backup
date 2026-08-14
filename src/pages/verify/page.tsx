@@ -70,8 +70,9 @@ export default function VerifyEntryPage() {
                 Letter Verification
               </h1>
               <p className="text-sm text-gray-500 leading-relaxed max-w-sm mx-auto">
-                This page verifies the authenticity and status of a Pawtenant-issued verification ID.
-                Enter the ID exactly as it appears on the letter.
+                Scan the discreet QR code on the letter to confirm it — that opens the result page
+                directly. This manual form is a fallback for when a Verification ID has been supplied
+                to you by the letter holder or by PawTenant support.
               </p>
             </div>
 
@@ -107,7 +108,7 @@ export default function VerifyEntryPage() {
                   className="whitespace-nowrap w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-orange-500 text-white text-sm font-bold rounded-xl hover:bg-orange-600 cursor-pointer transition-colors"
                 >
                   <i className="ri-search-line"></i>
-                  Verify Letter ID
+                  Verify letter
                 </button>
               </form>
             </div>
@@ -118,7 +119,7 @@ export default function VerifyEntryPage() {
                 <i className="ri-lock-line text-gray-400 text-sm"></i>
               </div>
               <p className="text-xs text-gray-500 leading-relaxed">
-                This verification confirms the authenticity of the letter ID only. No patient health information, diagnosis, or personal details are displayed on this page.
+                This verification confirms the authenticity of the letter only. No patient health information, diagnosis, or personal details are displayed on this page.
               </p>
             </div>
 

@@ -19,7 +19,7 @@ const CALLOUTS = [
   {
     num: 4,
     label: "Verification included",
-    desc: "Each completed letter includes a unique verification ID so housing offices can confirm authenticity when needed.",
+    desc: "Each completed letter carries a discreet verification QR code so housing offices can scan it and confirm authenticity when needed.",
   },
   {
     num: 5,

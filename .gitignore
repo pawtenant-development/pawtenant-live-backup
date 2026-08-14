@@ -67,3 +67,5 @@ graphify-out/graph.html
 .claude/launch.json
 .claude/scheduled_tasks.lock
 .vercel
+# QR sample-letter demo tokens (never committed; see scripts/sample-letter-demos.json)
+scripts/.sample-letter-tokens.local.json

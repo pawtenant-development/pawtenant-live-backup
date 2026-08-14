@@ -592,7 +592,7 @@ export default function AdditionalPetRequest({
                 {r.status === "completed" && (
                   <p className="text-xs text-gray-600 leading-relaxed">
                     Your updated document is shown first in <strong>My Documents</strong>.
-                    Your original letter and its verification ID remain available and
+                    Your original letter and its verification record remain available and
                     continue to verify unchanged.
                   </p>
                 )}

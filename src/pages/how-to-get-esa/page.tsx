@@ -154,7 +154,7 @@ const faqs = [
   { q: "Can my landlord refuse my ESA?", a: "Under the Fair Housing Act, landlords must make reasonable accommodations for tenants with ESAs. They can only refuse if the animal poses a direct safety threat or would cause undue hardship to the property." },
   { q: "What are the requirements for a valid ESA letter?", a: "A valid ESA letter is issued on the licensed mental health professional's letterhead and includes their full name, signature, license type, license number, the state they are licensed in, and the issue date. It confirms that you have a mental or emotional health condition recognized in clinical practice and that an emotional support animal is part of your treatment plan. Letters issued without an actual evaluation by a licensed provider are not considered valid ESA letter documentation." },
   { q: "Can I get an ESA letter for anxiety or depression?", a: "Anxiety, depression, PTSD, panic disorder, and other DSM-recognized conditions are among the most common reasons people qualify for an ESA letter. Eligibility is determined by a licensed mental health professional after a clinical evaluation — no service can promise you will qualify in advance. If you do not qualify after the review, PawTenant refunds your fee." },
-  { q: "What are the steps to obtain an ESA letter online?", a: "The ESA letter application process has three steps. First, complete a short online assessment about your situation and your support animal. Second, a licensed mental health professional reviews your responses and conducts a telehealth evaluation to determine clinical appropriateness. Third, if you qualify, your signed ESA letter is delivered digitally, typically within 24 hours, with a Verification ID your landlord can confirm online." },
+  { q: "What are the steps to obtain an ESA letter online?", a: "The ESA letter application process has three steps. First, complete a short online assessment about your situation and your support animal. Second, a licensed mental health professional reviews your responses and conducts a telehealth evaluation to determine clinical appropriateness. Third, if you qualify, your signed ESA letter is delivered digitally, typically within 24 hours, with a verification QR code your landlord can scan online." },
 ];
 
 export default function HowToGetESAPage() {
@@ -795,7 +795,7 @@ export default function HowToGetESAPage() {
                 Landlord Verification
               </div>
               <p className="text-[12.5px] text-slate-600 leading-relaxed">
-                How landlords confirm an ESA letter&rsquo;s authenticity using its unique verification ID.
+                How landlords confirm an ESA letter&rsquo;s authenticity using its discreet verification QR code.
               </p>
               <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
                 Read more <i className="ri-arrow-right-line" />

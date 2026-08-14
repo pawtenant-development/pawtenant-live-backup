@@ -76,7 +76,7 @@ const strongLetter = [
   {
     icon: "ri-qr-code-line",
     title: "A way to verify",
-    desc: "Provider license details and, on PawTenant letters, a Verification ID so a landlord can confirm the letter is genuine.",
+    desc: "Provider license details and, on PawTenant letters, a discreet verification QR code so a landlord can confirm the letter is genuine.",
   },
 ];
 
@@ -115,7 +115,7 @@ const faqs: FaqItem[] = [
   },
   {
     q: "My landlord says my ESA letter is fake — what now?",
-    a: "Stay calm and offer a way to verify it. A genuine ESA letter names a licensed mental health professional with their license type and number, and a PawTenant letter includes a Verification ID a landlord can confirm. Ask, in writing, what specifically concerns them, then re-send a verifiable letter. If a valid request is still refused, landlord denial support can help you respond.",
+    a: "Stay calm and offer a way to verify it. A genuine ESA letter names a licensed mental health professional with their license type and number, and a PawTenant letter carries a verification QR code a landlord can scan. Ask, in writing, what specifically concerns them, then re-send a verifiable letter. If a valid request is still refused, landlord denial support can help you respond.",
   },
   {
     q: "What makes an ESA letter valid for housing?",
@@ -387,7 +387,7 @@ export default function CanLandlordRejectESALetterPage() {
         body="The strongest response to a landlord's pushback is a recent letter from a licensed provider that names them, supports a disability-related need, and can be verified — paired with a short written accommodation request. That gives a housing provider a request they're required to consider."
         bullets={[
           "Letter from a provider licensed in your state, after a real evaluation.",
-          "A Verification ID a landlord can confirm — no medical details exposed.",
+          "A verification QR code a landlord can scan — no medical details exposed.",
           "Landlord denial support if a valid request is refused.",
         ]}
       />

@@ -3,15 +3,15 @@
 //
 // Shows ONLY true customer deliverables, resolved by the shared
 // resolveCustomerDocuments():
-//   • the delivered ESA/PSD letter — with its Verification ID,
-//   • the provider-COMPLETED Housing Accommodation form — with NO Verification ID.
+//   • the delivered ESA/PSD letter — with its verification QR code,
+//   • the provider-COMPLETED Housing Accommodation form — with NO verification QR code.
 // It never shows the customer's own SOURCE upload (that stays in the Housing
 // workflow section).
 //
 // CUSTOMER-DUAL-LETTER-DOWNLOADS-001: the letter card offers BOTH stored
 // artifacts — "Download Original" (the provider's exact submitted file) then
-// "Download Verification ID PDF" (the separate generated copy carrying the
-// Verification ID + QR) — in that fixed order. They are two different storage
+// "Download QR-verified copy" (the separate generated copy carrying the
+// verification QR code) — in that fixed order. They are two different storage
 // objects in two different buckets; neither is ever derived from or substituted
 // for the other. The Housing form has only one file and keeps Open/Download.
 //
@@ -80,7 +80,7 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
     if (!r.ok) {
       setErr(
         r.code === "verification_unavailable"
-          ? "The Verification ID copy isn't available for this letter. Please contact support."
+          ? "The QR-verified copy isn't available for this letter. Please contact support."
           : r.code === "original_unavailable"
             ? "The original letter file isn't available. Please contact support."
             : r.error ?? "Couldn't download this document. Please try again.",
@@ -104,7 +104,7 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
           </p>
           {doc.verificationId && (
             <p className="text-[11px] text-[#5F6B7A] mt-0.5">
-              Verification ID <span className="font-mono font-semibold text-[#1e3a5f]">{doc.verificationId}</span>
+              Verification reference <span className="font-mono font-semibold text-[#1e3a5f]">{doc.verificationId}</span>
             </p>
           )}
           <p className="text-[11px] text-[#64748b] mt-0.5">{dateLine}</p>
@@ -113,7 +113,7 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
 
       {dualDownloads ? (
         // The two required choices, in the owner-mandated DOM and visual order:
-        // 1. Download Original  2. Download Verification ID PDF.
+        // 1. Download Original  2. Download QR-verified copy.
         // The generic "Open"/"Download" pair is deliberately GONE from this card —
         // it was the ambiguity being fixed. A variant with no genuine stored file
         // renders no button at all rather than aliasing the other one.
@@ -141,7 +141,7 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
               {busy === "verification"
                 ? <i className="ri-loader-4-line animate-spin"></i>
                 : <i className="ri-shield-check-line"></i>}
-              Download Verification ID PDF
+              Download QR-verified copy
             </button>
           )}
         </div>

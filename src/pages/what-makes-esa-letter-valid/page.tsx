@@ -67,7 +67,7 @@ const mustInclude = [
   {
     icon: "ri-qr-code-line",
     title: "A way to verify",
-    desc: "Provider license details and, on PawTenant letters, a Verification ID so a landlord can confirm the letter is genuine.",
+    desc: "Provider license details and, on PawTenant letters, a discreet verification QR code so a landlord can confirm the letter is genuine.",
   },
   {
     icon: "ri-quill-pen-line",
@@ -105,7 +105,7 @@ const selfCheck = [
   {
     icon: "ri-qr-code-line",
     title: "Look for a verification path",
-    desc: "A verifiable letter offers a way to confirm it — a license number or a Verification ID. If there's no way to verify, that's a red flag.",
+    desc: "A verifiable letter offers a way to confirm it — a license number or a scannable verification QR code. If there's no way to verify, that's a red flag.",
   },
   {
     icon: "ri-home-heart-line",
@@ -121,7 +121,7 @@ const faqs: FaqItem[] = [
   },
   {
     q: "How do I know if my ESA letter is valid?",
-    a: "Check that it names a provider licensed in your state with a license number, is dated within about the last 12 months, states a disability-related need, and offers a way to verify it (a license number or Verification ID). If it was issued instantly with no evaluation, or it's just a \"registration\" or certificate, it likely won't hold up for housing.",
+    a: "Check that it names a provider licensed in your state with a license number, is dated within about the last 12 months, states a disability-related need, and offers a way to verify it (a license number or a scannable verification QR code). If it was issued instantly with no evaluation, or it's just a \"registration\" or certificate, it likely won't hold up for housing.",
   },
   {
     q: "Are online ESA letters valid if they come from a licensed provider?",
@@ -444,7 +444,7 @@ export default function WhatMakesESALetterValidPage() {
         <div className="px-5 sm:px-6">
           <RelatedResources
             links={[
-              { to: "/esa-letter-verification-id", title: "ESA letter verification ID", desc: "What it is and how a landlord uses it to confirm a letter." },
+              { to: "/esa-letter-verification-id", title: "How ESA letter verification works", desc: "How a landlord confirms a letter by scanning its QR code." },
               { to: "/landlord-says-esa-letter-is-fake", title: "Landlord says it's fake?", desc: "How to prove a genuine letter and spot real fakes." },
               { to: "/how-to-verify-esa-letter", title: "How to verify an ESA letter", desc: "Step-by-step verification for tenants and landlords." },
               { to: "/what-documents-can-landlord-ask-for-esa", title: "What documents can a landlord ask for?", desc: "What a landlord can reasonably request — and can't." },

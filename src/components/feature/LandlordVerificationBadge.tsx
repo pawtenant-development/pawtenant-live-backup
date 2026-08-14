@@ -37,7 +37,7 @@ export default function LandlordVerificationBadge({
         <div className="min-w-0">
           <p className="text-sm font-extrabold text-gray-900">Landlord Verification Included</p>
           <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-            Every finalized letter includes a unique Verification ID landlords can check online.
+            Every finalized letter carries a discreet verification QR code landlords can scan to check it online.
           </p>
         </div>
       </div>

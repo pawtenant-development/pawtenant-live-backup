@@ -292,7 +292,7 @@ export default function LandlordDeniedESALetterPage() {
       <EsaLetterVerificationWidget
         className="bg-[#FFF7ED] border-y border-orange-100"
         heading="Verify your letter before you escalate"
-        copy="Enter the Verification ID printed on your document to confirm it is genuine and current. Verification never reveals health information."
+        copy="Scan the discreet QR code on your document to confirm it is genuine and current, or enter a supplied Verification ID here. Verification never reveals health information."
       />
 
       {/* ===== QUICK ACTION STEPS ===== */}

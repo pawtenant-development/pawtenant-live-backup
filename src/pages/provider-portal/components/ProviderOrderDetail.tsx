@@ -16,6 +16,7 @@ import {
 import PSDAssessmentView from "../../admin-orders/components/PSDAssessmentView";
 
 import ProviderAdditionalPetReview from "./ProviderAdditionalPetReview";
+import MissingProfessionalContactNotice from "@/components/feature/MissingProfessionalContactNotice";
 
 interface Order {
   id: string;
@@ -1344,6 +1345,12 @@ export default function ProviderOrderDetail({
           {/* ── UPLOAD ── */}
           {section === "upload" && (
             <div className="p-6 space-y-5">
+
+              {/* PROVIDER-PROFESSIONAL-CONTACT-PUBLIC-CONSENT-001 — informational
+                  only. This is the eligible final ESA/PSD letter surface, so the
+                  provider learns here (not after issuance) that a verification
+                  result will omit a contact row. It blocks nothing. */}
+              <MissingProfessionalContactNotice providerUserId={providerUserId} />
 
               {/* ── READ-ONLY PREVIEW MODE ── */}
               {readOnly && (

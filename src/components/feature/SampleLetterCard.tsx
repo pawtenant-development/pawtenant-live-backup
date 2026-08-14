@@ -27,7 +27,7 @@ interface SampleLetterCardProps {
  */
 export default function SampleLetterCard({
   size = "default",
-  alt = "Sample PawTenant ESA letter showing verification ID, patient info, and licensed provider signature. Names and details are placeholders.",
+  alt = "Sample ESA letter showing the recipient information table and provider signature area, with a discreet verification QR code. Names and details are placeholders.",
   eager = false,
   showSampleBadge = true,
   className = "",

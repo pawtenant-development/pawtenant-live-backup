@@ -38,7 +38,7 @@ function normalizeId(raw: string): string {
 
 export default function EsaLetterVerificationWidget({
   heading = "Verify an ESA letter",
-  copy = "Landlords, property managers and tenants can confirm a PawTenant letter is genuine. Enter the Verification ID printed on the document.",
+  copy = "Landlords, property managers and tenants can confirm a PawTenant letter is genuine. Scan the discreet QR code on the letter — this form is a fallback for when a Verification ID has been supplied to you.",
   className,
   variant = "section",
   id = "verify-letter",

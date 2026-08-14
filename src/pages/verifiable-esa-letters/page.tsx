@@ -4,11 +4,11 @@ import SharedNavbar from "@/components/feature/SharedNavbar";
 import SharedFooter from "@/pages/home/components/Footer";
 
 const faqItems = [
-  { q: "What is the Verification ID and QR code on my letter?", a: "Every PawTenant ESA letter includes a unique Verification ID and QR code that allows any landlord to instantly confirm your letter's authenticity. The ID is a short alphanumeric code that is cryptographically unique and cannot be duplicated or forged. The QR code encodes the same information and can be scanned with any smartphone camera for instant verification at pawtenant.com/ESA-letter-verification." },
-  { q: "How do landlords verify my letter?", a: "Landlords can verify your letter in under 30 seconds by visiting pawtenant.com/ESA-letter-verification and either scanning the QR code with their phone or entering the Verification ID manually. The system instantly displays confirmation that the letter is valid, when it was issued, and the type of letter (ESA or PSD). No account or login is required." },
+  { q: "What is the QR code on my letter?", a: "Every PawTenant ESA letter carries a discreet verification QR code that allows any landlord to instantly confirm your letter's authenticity. It can be scanned with any smartphone camera and opens the verification result at pawtenant.com/ESA-letter-verification. No identifying code is printed on the letter itself." },
+  { q: "How do landlords verify my letter?", a: "Landlords can verify your letter in under 30 seconds by scanning the discreet QR code on the letter with their phone. The system instantly displays confirmation that the letter is valid, when it was issued, and the type of letter (ESA or PSD). No account or login is required." },
   { q: "What information do landlords see when they verify my letter?", a: "Landlords see only: confirmation that the letter is valid, the date it was issued, the type of letter (ESA or PSD), and that it was issued by a licensed professional through PawTenant. They do NOT see your name, diagnosis, treatment history, provider name, or any other health information. The verification confirms authenticity while protecting your privacy." },
   { q: "Why is a verifiable letter better than a regular ESA letter?", a: "A verifiable letter eliminates landlord skepticism by giving them an objective way to confirm authenticity instantly. Without verification, landlords often delay processing while they investigate whether your letter is legitimate — or reject it outright if they have encountered fraudulent letters before. PawTenant's verification system shifts the conversation from 'is this real?' to 'your accommodation is approved.'" },
-  { q: "Is there an extra charge for the verification feature?", a: "No. Every ESA and PSD letter issued through PawTenant automatically includes the Verification ID and QR code at no additional cost. This is a core feature of our service, not an add-on. We believe every ESA owner deserves documentation that landlords can verify with confidence." },
+  { q: "Is there an extra charge for the verification feature?", a: "No. Every ESA and PSD letter issued through PawTenant automatically carries the discreet verification QR code at no additional cost. This is a core feature of our service, not an add-on. We believe every ESA owner deserves documentation that landlords can verify with confidence." },
   { q: "What if a landlord still refuses my verified letter?", a: "A landlord who denies your accommodation after verifying that your letter is legitimate has a much harder time justifying that denial. This strengthens your position in any fair housing complaint. PawTenant's 100% money-back guarantee applies: if a housing provider unlawfully refuses to honor your verified letter, we will refund your fee in full." },
 ];
 
@@ -54,7 +54,7 @@ export default function VerifiableESALettersPage() {
             <span className="text-orange-300">Landlords Can Instantly Confirm</span>
           </h1>
           <p className="text-lg text-white/80 max-w-2xl mx-auto leading-relaxed mb-8">
-            Every ESA letter from PawTenant includes a unique Verification ID and QR code. Landlords can verify authenticity in seconds — no phone calls, no delays, no privacy violations.
+            Every ESA letter from PawTenant carries a discreet verification QR code. Landlords can verify authenticity in seconds — no phone calls, no delays, no privacy violations.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link to="/assessment"
@@ -78,7 +78,7 @@ export default function VerifiableESALettersPage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {[
-            { num: "01", icon: "ri-file-text-line", color: "bg-orange-500", title: "You Get Your Letter", desc: "Your signed ESA letter includes a unique Verification ID and QR code stamped directly on the document by your licensed provider." },
+            { num: "01", icon: "ri-file-text-line", color: "bg-orange-500", title: "You Get Your Letter", desc: "Your signed ESA letter carries a discreet verification QR code placed on the document alongside your licensed provider's details." },
             { num: "02", icon: "ri-qr-code-line", color: "bg-amber-500", title: "Landlord Scans or Visits", desc: "Your landlord scans the QR code or visits pawtenant.com/verify/[ID] — no account needed, completely free." },
             { num: "03", icon: "ri-shield-check-line", color: "bg-emerald-500", title: "Instant Confirmation", desc: "They see: letter is valid, issued by a licensed professional, and active. Zero health information is ever disclosed." },
           ].map((step) => (

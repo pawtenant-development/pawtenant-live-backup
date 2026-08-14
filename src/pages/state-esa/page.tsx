@@ -457,7 +457,7 @@ const COMMON_HOUSING_FAQS: { q: string; a: string }[] = [
   },
   {
     q: "How do landlords in {state} verify an ESA letter?",
-    a: "Every finalized PawTenant letter includes a unique Verification ID along with the provider's full name, license number, and NPI. A {state} landlord can confirm authenticity at pawtenant.com/verify or independently check the provider's credentials on the public NPPES NPI registry. Verification confirms authenticity only — no diagnosis, treatment history, or clinical detail is ever exposed.",
+    a: "Every finalized PawTenant letter carries a discreet verification QR code along with the provider's full name, license number, and NPI. A {state} landlord can scan it to confirm authenticity at pawtenant.com/verify or independently check the provider's credentials on the public NPPES NPI registry. Verification confirms authenticity only — no diagnosis, treatment history, or clinical detail is ever exposed.",
   },
   {
     q: "How long does the ESA letter application process take in {state}?",
@@ -465,7 +465,7 @@ const COMMON_HOUSING_FAQS: { q: string; a: string }[] = [
   },
   {
     q: "What should a valid {state} ESA letter include?",
-    a: "A valid {state} ESA letter is signed by a Licensed Mental Health Practitioner credentialed in your state and prints the provider's full name, license number, NPI, signature, and the issue and expiration dates. PawTenant letters also carry a unique Verification ID landlords can confirm directly. Services that promise instant approval, guaranteed letters, or skip the clinical review are not legitimate — and landlords have learned to spot them.",
+    a: "A valid {state} ESA letter is signed by a Licensed Mental Health Practitioner credentialed in your state and prints the provider's full name, license number, NPI, signature, and the issue and expiration dates. PawTenant letters also carry a discreet verification QR code landlords can scan to confirm directly. Services that promise instant approval, guaranteed letters, or skip the clinical review are not legitimate — and landlords have learned to spot them.",
   },
   {
     q: "Can I renew my ESA letter for housing in {state}?",
@@ -522,7 +522,7 @@ function pickFallbackHero(slug: string): string {
 const LANDLORDS_SEE_ITEMS = [
   {
     icon: "ri-shield-check-line",
-    label: "Verification ID",
+    label: "Scan-to-verify QR",
     body: "Unique ID landlords confirm at pawtenant.com/verify.",
   },
   {
@@ -905,7 +905,7 @@ export default function StateESAPage() {
           what a {state} ESA letter actually surfaces during landlord
           verification. Different surface from the existing Verification
           Trust Strip below (a single horizontal CTA bar): this is a
-          scannable visual grid that reinforces the Verification ID +
+          scannable visual grid that reinforces the verification QR +
           provider-license + housing-focus + privacy-safe quartet without
           duplicating the Google LP's larger verification section. */}
       <section className="py-12 md:py-14 bg-[#fafafa] border-y border-orange-100">
@@ -1087,7 +1087,7 @@ export default function StateESAPage() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-extrabold text-orange-600 mb-1">Landlord Verification Included</p>
               <p className="text-xs text-gray-600 leading-relaxed">
-                Every finalized {stateData.name} ESA letter includes a unique Verification ID. Landlords can confirm authenticity at pawtenant.com/verify — your health information is never disclosed.
+                Every finalized {stateData.name} ESA letter carries a discreet verification QR code. Landlords scan it to confirm authenticity at pawtenant.com/verify — your health information is never disclosed.
               </p>
               {/* Three concise trust bullets — expands the verification copy
                   with state-aware specifics without adding a new section.

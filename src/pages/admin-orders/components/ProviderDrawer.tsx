@@ -7,6 +7,7 @@ import ProviderInternalRecords from "./ProviderInternalRecords";
 import { normalizeStateToCode, normalizeStateListForDisplay, normalizeLicenseMapForDisplay, US_STATE_CODE_TO_NAME } from "../../../lib/usStates";
 import { resolveProviderUploadUrl, resolveProviderUploadUrls } from "../../../lib/providerUploads";
 import { buildProviderHeadshotKey, isHeadshotKeyFailure, PROVIDER_HEADSHOT_BUCKET } from "../../../lib/providerHeadshotKey";
+import AdminProviderContactPanel from "./AdminProviderContactPanel";
 
 // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-B: helper used by every
 // outbound call in this drawer that re-saves an existing licensed_states
@@ -751,6 +752,17 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                           placeholder="e.g. 1234567890"
                           className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                       </div>
+
+                      {/* PROVIDER-PROFESSIONAL-CONTACT-PUBLIC-CONSENT-001 —
+                          own component with its own save, because consent must
+                          not fan out to doctor_contacts with the rest of the
+                          drawer's edit. */}
+                      {doc.profile && (
+                        <AdminProviderContactPanel
+                          profileId={doc.profile.id}
+                          providerLabel={form.full_name || undefined}
+                        />
+                      )}
 
                       {/* State License Numbers — managed via Manage States */}
                       <div className="bg-[#e8f0f9] border border-[#b8cce4] rounded-xl px-4 py-3 flex items-start gap-2">

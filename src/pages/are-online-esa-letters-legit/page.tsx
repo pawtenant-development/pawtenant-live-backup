@@ -208,7 +208,7 @@ export default function AreOnlineESALettersLegitPage() {
         bullets={[
           "Reviewed by a Licensed Mental Health Practitioner credentialed in your state.",
           "Provider's name, license number, and NPI printed on the letter.",
-          "A unique Verification ID your landlord can confirm.",
+          "A discreet verification QR code your landlord can scan to confirm it.",
         ]}
       />
 

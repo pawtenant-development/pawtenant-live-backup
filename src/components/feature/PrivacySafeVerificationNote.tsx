@@ -38,7 +38,7 @@ export default function PrivacySafeVerificationNote({
       <div className="min-w-0">
         <p className="text-xs font-extrabold text-[#2c5282] mb-0.5">Privacy-Safe Verification</p>
         <p className="text-xs text-[#2c5282]/75 leading-relaxed">
-          Your finalized letter includes a Verification ID. Landlords can confirm authenticity online — your diagnosis and health details are never shared.{" "}
+          Your finalized letter carries a discreet verification QR code. Landlords scan it to confirm authenticity online — your diagnosis and health details are never shared.{" "}
           <Link
             to="/esa-letter-verification"
             className="font-bold underline hover:no-underline cursor-pointer"

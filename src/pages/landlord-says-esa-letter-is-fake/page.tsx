@@ -37,7 +37,7 @@ const UPDATED_ISO = "2026-06-17";
 
 const heroBadges = [
   { icon: "ri-shield-check-line", label: "Prove it's genuine" },
-  { icon: "ri-qr-code-line", label: "Verification ID" },
+  { icon: "ri-qr-code-line", label: "Scan-to-verify QR" },
   { icon: "ri-user-star-line", label: "Licensed provider" },
   { icon: "ri-refund-2-line", label: "Refund if you don't qualify" },
 ];
@@ -52,7 +52,7 @@ const proveSteps = [
   {
     icon: "ri-qr-code-line",
     title: "Offer the verification path",
-    desc: "Share the provider's license number or the Verification ID on a PawTenant letter so they can confirm it's authentic — without seeing your medical records.",
+    desc: "Share the provider's license number or point to the discreet QR code on a PawTenant letter so they can scan and confirm it's authentic — without seeing your medical records.",
   },
   {
     icon: "ri-search-eye-line",
@@ -77,18 +77,18 @@ const fakeSigns = [
   "Issued instantly with no evaluation, questionnaire, or provider contact.",
   "Sold as a \"registration,\" certificate, ID card, or vest — none of which are valid documentation.",
   "Claims to guarantee landlord approval or to make an animal an \"official\" ESA.",
-  "No way to verify it — no license number, no Verification ID, no contactable provider.",
+  "No way to verify it — no license number, no scannable verification code, no contactable provider.",
   "Generic template language with no signature or letterhead.",
 ];
 
 const faqs: FaqItem[] = [
   {
     q: "My landlord says my ESA letter is fake — what should I do?",
-    a: "Stay calm and ask, in writing, what specifically concerns them. Then prove it's genuine: share the provider's license number or the Verification ID on your letter so they can confirm authenticity, point them to the public NPI registry or state licensing board, and re-send the letter with a short reasonable-accommodation request. If a genuine, valid request is still refused, use landlord denial support and, where appropriate, fair-housing avenues.",
+    a: "Stay calm and ask, in writing, what specifically concerns them. Then prove it's genuine: share the provider's license number or point to the QR code on your letter so they can scan and confirm authenticity, point them to the public NPI registry or state licensing board, and re-send the letter with a short reasonable-accommodation request. If a genuine, valid request is still refused, use landlord denial support and, where appropriate, fair-housing avenues.",
   },
   {
     q: "How do I prove my ESA letter is real?",
-    a: "A genuine ESA letter names a mental health professional with their license type, number, and state, is dated recently, and offers a way to verify it. You can prove it by sharing the license number (which a landlord can check on the public NPI registry or state board) and, on a PawTenant letter, the Verification ID. Verification confirms the letter is authentic without revealing your diagnosis.",
+    a: "A genuine ESA letter names a mental health professional with their license type, number, and state, is dated recently, and offers a way to verify it. You can prove it by sharing the license number (which a landlord can check on the public NPI registry or state board) and, on a PawTenant letter, the QR code. Verification confirms the letter is authentic without revealing your diagnosis.",
   },
   {
     q: "Can a landlord reject an ESA letter from an online provider?",
@@ -100,7 +100,7 @@ const faqs: FaqItem[] = [
   },
   {
     q: "Can my landlord call the provider to verify my ESA letter?",
-    a: "A landlord may seek to confirm that the letter is authentic and the provider is licensed, but they are not entitled to discuss your diagnosis or clinical care. The purpose of verification is to confirm the letter is genuine — for example via a license number, the public NPI registry, or a Verification ID — not to access your medical information.",
+    a: "A landlord may seek to confirm that the letter is authentic and the provider is licensed, but they are not entitled to discuss your diagnosis or clinical care. The purpose of verification is to confirm the letter is genuine — for example via a license number, the public NPI registry, or the QR code on the letter — not to access your medical information.",
   },
   {
     q: "What if my ESA letter actually was issued without an evaluation?",
@@ -215,7 +215,7 @@ export default function LandlordSaysESALetterIsFakePage() {
             <p>
               Stay calm and <strong>ask, in writing, what specifically concerns them</strong>. Then{" "}
               <strong>prove it's genuine</strong>: share the provider's{" "}
-              <strong>license number</strong> or the <strong>Verification ID</strong> on your letter,
+              <strong>license number</strong> or the <strong>verification QR code</strong> on your letter,
               and point them to the <strong>public NPI registry</strong> or state licensing board.
             </p>
             <p>
@@ -311,10 +311,10 @@ export default function LandlordSaysESALetterIsFakePage() {
         alt="A renter on a telehealth evaluation at home with their emotional support dog"
         eyebrow="Doubt, meet proof"
         heading="A verifiable letter answers 'is this fake?' instantly"
-        body="The reason a genuine PawTenant letter holds up is simple: it names a provider licensed in your state, it's dated, and it carries a Verification ID a landlord can confirm. That turns a vague accusation into a quick, factual check — with your private details kept private."
+        body="The reason a genuine PawTenant letter holds up is simple: it names a provider licensed in your state, it's dated, and it carries a verification QR code a landlord can scan. That turns a vague accusation into a quick, factual check — with your private details kept private."
         bullets={[
           "Provider license number a landlord can confirm publicly.",
-          "A Verification ID that proves authenticity, not your diagnosis.",
+          "A scannable QR code that proves authenticity, not your diagnosis.",
           "Landlord denial support if a valid request is refused.",
         ]}
       />
@@ -341,7 +341,7 @@ export default function LandlordSaysESALetterIsFakePage() {
           </h2>
           <p className="text-gray-500 text-sm sm:text-base mb-7">
             Connect with a licensed provider. If you qualify, you'll receive a genuine, verifiable
-            ESA letter with a Verification ID a landlord can confirm — with a refund if you don't
+            ESA letter with a verification QR code a landlord can scan — with a refund if you don't
             qualify.
           </p>
           <Link
@@ -363,7 +363,7 @@ export default function LandlordSaysESALetterIsFakePage() {
           <RelatedResources
             links={[
               { to: "/how-to-verify-esa-letter", title: "How to verify an ESA letter", desc: "Step-by-step verification for tenants and landlords." },
-              { to: "/esa-letter-verification-id", title: "ESA letter verification ID", desc: "What it is and how a landlord uses it." },
+              { to: "/esa-letter-verification-id", title: "How ESA letter verification works", desc: "How a landlord confirms a letter by scanning its QR code." },
               { to: "/what-makes-esa-letter-valid", title: "What makes an ESA letter valid?", desc: "The elements a housing letter must include." },
               { to: "/how-to-respond-to-esa-letter-denial", title: "How to respond to a denial", desc: "Calm steps for any landlord pushback." },
               { to: "/landlord-denied-esa-letter", title: "Landlord denied your ESA?", desc: "Your rights and denial support, by state." },

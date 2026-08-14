@@ -166,7 +166,7 @@ export default function QuestionRouter({ data, onChange, onNext }: QuestionRoute
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-extrabold text-[#2c5282]">Landlord-Verifiable Letter Included</p>
-            <p className="text-xs text-[#2c5282]/70 mt-0.5">Every PawTenant letter includes a unique verification ID — landlords can confirm authenticity instantly, no health information disclosed.</p>
+            <p className="text-xs text-[#2c5282]/70 mt-0.5">Every PawTenant letter carries a discreet verification QR code — landlords scan it to confirm authenticity instantly, no health information disclosed.</p>
           </div>
           <a
             href="/esa-letter-verification"

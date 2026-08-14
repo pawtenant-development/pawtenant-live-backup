@@ -381,6 +381,14 @@ const routes: RouteObject[] = [
   { path: "/psd-letter/:state", element: <P C={StatePSDPage} /> },
   { path: "/resource-center", element: <P C={ResourceCenterPage} /> },
   { path: "/verify", element: <P C={VerifyEntryPage} /> },
+  // QR-LETTER-VERIFICATION-AND-SAMPLE-PARITY-001 · Stage 3.
+  // Token routes are declared BEFORE /verify/:letterId so the literal "t"
+  // segment wins over the wildcard — otherwise a scan would be read as a
+  // Verification ID lookup for the id "t".
+  { path: "/verify/t/:token", element: <P C={VerifyResultPage} /> },
+  // Short alias carried in the QR payload. Same page, same service; it exists
+  // only to shrink the encoded URL (37 -> 33 modules on the TEST origin).
+  { path: "/v/t/:token", element: <P C={VerifyResultPage} /> },
   { path: "/verify/:letterId", element: <P C={VerifyResultPage} /> },
   // Canonical landlord verification info page. caseSensitive so legacy
   // uppercase paths fall through to the explicit Navigate redirect below.

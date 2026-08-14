@@ -30,7 +30,7 @@ const OBJECTIONS = [
     q: "How would they know it’s real?",
     a: (
       <>
-        They scan the QR or enter the verification ID —{" "}
+        They scan the discreet QR code on the letter —{" "}
         <b className="text-[#3F7061]">instant confirmation</b>, any time, without contacting us.
       </>
     ),
@@ -55,7 +55,7 @@ export default function LetterProofSection() {
           <div className="max-w-[420px] sm:max-w-[460px] lg:max-w-[500px] mx-auto bg-white rounded-2xl p-3.5 sm:p-4 shadow-[0_2px_6px_rgba(35,31,26,0.08),0_20px_50px_-20px_rgba(35,31,26,0.28)]">
             <img
               src="/images/checkout/esa-sample-letter.svg"
-              alt="Sample PawTenant ESA letter showing provider license details, signature and verification ID"
+              alt="Sample ESA letter showing provider details, the signature area and a discreet verification QR code"
               width={800}
               height={1035}
               loading="lazy"
@@ -78,8 +78,8 @@ export default function LetterProofSection() {
           </h2>
           <p className="text-[#6B6359] text-[15.5px] sm:text-base leading-relaxed max-w-xl">
             Most ESA letters get questioned. Ours get verified. Every PawTenant letter carries the
-            details landlords and property managers actually check — and a verification ID they can
-            confirm themselves.
+            details landlords and property managers actually check — and a discreet QR code they can
+            scan to confirm it themselves.
           </p>
 
           {/* Verify band */}
@@ -92,7 +92,7 @@ export default function LetterProofSection() {
                 Landlords verify in under a minute
               </h3>
               <p className="text-[13px] text-[#4A443C] leading-relaxed">
-                They scan the QR or enter the letter ID at <b>pawtenant.com/verify</b>. No health
+                They scan the discreet QR code printed on the letter. No health
                 information is ever shown.{" "}
                 <Link
                   to="/esa-letter-verification"

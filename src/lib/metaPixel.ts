@@ -81,6 +81,31 @@ export function buildMetaInitiateCheckoutEventId(sessionId: string): string {
 }
 
 // ── Phase-1: read _fbp cookie (Meta browser pixel cookie) ───────────────────
+/**
+ * QR-LETTER-VERIFICATION-AND-SAMPLE-PARITY-001 · Stage 3 audit fix.
+ *
+ * A scanned letter lands on /v/t/<opaque-token> (or /verify/t/<token>). That
+ * token is the scannable verification credential, and every Meta event carries
+ * `event_source_url: window.location.href` — so without this the token was
+ * being transmitted to a third-party ad network on the very first page view,
+ * before the page could scrub it from the address bar.
+ *
+ * Anything under a token path is reduced to a bare marker. No token, no
+ * Verification ID — a landlord verifying a letter is not an ad audience.
+ */
+export function sanitizeAnalyticsUrl(href: string | null | undefined): string | null {
+  if (!href) return null;
+  try {
+    const u = new URL(href);
+    if (/^\/(?:verify\/t|v\/t)\//.test(u.pathname)) {
+      return `${u.origin}/verify/t/[redacted]`;
+    }
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
 // Set by fbevents.js on first PageView. Format: fb.1.<ms_timestamp>.<random>.
 // Read-only — never written or modified by us. Safe to call from any page.
 export function getFbp(): string | null {
@@ -126,7 +151,7 @@ function dispatchCapiMirror(opts: {
       currency: opts.currency ?? "USD",
       content_name: opts.content_name ?? null,
       fbp: getFbp(),
-      event_source_url: typeof window !== "undefined" && window.location ? window.location.href : null,
+      event_source_url: sanitizeAnalyticsUrl(typeof window !== "undefined" && window.location ? window.location.href : null),
     });
 
     // Prefer sendBeacon for reliability across navigations; fall back to fetch.
@@ -167,6 +192,14 @@ async function sha256Hex(message: string): Promise<string> {
  */
 export function firePageView(): void {
   if (typeof window.fbq !== 'function') return;
+  // fbevents.js reads window.location itself, so sanitizing our own payload is
+  // not enough on a token route — the pixel would still ship the URL. The only
+  // complete mitigation is not to fire at all there. A landlord scanning a QR
+  // is not a marketing audience, so nothing of value is lost.
+  if (/^\/(?:verify\/t|v\/t)\//.test(window.location.pathname)) {
+    if (import.meta.env.DEV) console.log('[Meta Pixel] PageView SUPPRESSED on token route');
+    return;
+  }
   if (import.meta.env.DEV) console.log('[Meta Pixel] PageView firing', window.location.pathname);
   window.fbq('track', 'PageView');
 }
@@ -332,7 +365,7 @@ export async function fireMetaPurchase(opts: {
     const anonKey = (import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY ?? "") as string;
     if (!supaUrl || !anonKey) return;
     const fbp = getFbp();
-    const eventSourceUrl = typeof window !== "undefined" && window.location ? window.location.href : null;
+    const eventSourceUrl = sanitizeAnalyticsUrl(typeof window !== "undefined" && window.location ? window.location.href : null);
     if (!fbp && !eventSourceUrl) return;
 
     const url = `${supaUrl.replace(/\/+$/, "")}/functions/v1/send-meta-capi-event`;

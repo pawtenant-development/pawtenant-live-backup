@@ -43,7 +43,7 @@ const PROVIDERS = [
 const FAQ_ITEMS = [
   {
     q: "Are online ESA letters legit?",
-    a: "Yes — when issued by a Licensed Mental Health Practitioner after a real clinical review. PawTenant ESA letters are reviewed by providers licensed in your state, and every letter prints the provider's name, license number, and NPI. The unique Verification ID on each letter lets your landlord confirm authenticity at pawtenant.com/verify. Auto-approval services that issue letters without a real review are not legitimate.",
+    a: "Yes — when issued by a Licensed Mental Health Practitioner after a real clinical review. PawTenant ESA letters are reviewed by providers licensed in your state, and every letter prints the provider's name, license number, and NPI. The discreet verification QR code on each letter lets your landlord scan and confirm authenticity at pawtenant.com/verify. Auto-approval services that issue letters without a real review are not legitimate.",
   },
   {
     q: "I need an ESA letter for my dog — how does it work?",
@@ -63,15 +63,15 @@ const FAQ_ITEMS = [
   },
   {
     q: "How do I know if an online ESA letter provider is legitimate?",
-    a: "A legitimate online ESA letter provider connects you with a Licensed Mental Health Practitioner credentialed in your state, who reviews your case and signs the letter when an ESA is clinically appropriate. The letter should print the provider's full name, license number, and NPI — and ideally include a unique Verification ID landlords can confirm directly. Avoid services that promise instant approval, guaranteed letters, or skip the clinical review.",
+    a: "A legitimate online ESA letter provider connects you with a Licensed Mental Health Practitioner credentialed in your state, who reviews your case and signs the letter when an ESA is clinically appropriate. The letter should print the provider's full name, license number, and NPI — and ideally include a discreet verification QR code landlords can scan to confirm directly. Avoid services that promise instant approval, guaranteed letters, or skip the clinical review.",
   },
   {
     q: "Will my landlord accept this documentation?",
-    a: "Most landlords subject to the federal Fair Housing Act must consider reasonable accommodation requests for tenants with a qualifying ESA. PawTenant documentation is written to align with FHA standards and includes the provider's credentials, license number, and NPI — plus a unique Verification ID your landlord can confirm in seconds.",
+    a: "Most landlords subject to the federal Fair Housing Act must consider reasonable accommodation requests for tenants with a qualifying ESA. PawTenant documentation is written to align with FHA standards and includes the provider's credentials, license number, and NPI — plus a discreet verification QR code your landlord can scan in seconds.",
   },
   {
     q: "How does landlord verification work?",
-    a: "Every document carries a unique Verification ID (format ESA-XX-XXXXXXX). Your landlord enters the ID at pawtenant.com/verify and the page confirms the document is authentic and the provider is actively licensed — without showing any diagnosis or clinical detail. The provider's license can also be independently confirmed on the public NPPES NPI registry.",
+    a: "Every document carries a discreet verification QR code. Your landlord scans it, lands on pawtenant.com/verify, and the page confirms the document is authentic and the provider is actively licensed — without showing any diagnosis or clinical detail. The provider's license can also be independently confirmed on the public NPPES NPI registry.",
   },
   {
     q: "How fast is the process?",
@@ -280,7 +280,7 @@ export default function LpEsaHousingPage() {
               {[
                 { label: "Licensed clinicians" },
                 { label: "FHA-aligned" },
-                { label: "Verification ID" },
+                { label: "Scan-to-verify QR" },
               ].map((t) => (
                 <span
                   key={t.label}
@@ -490,7 +490,7 @@ export default function LpEsaHousingPage() {
               Your landlord can verify the documentation in under 60 seconds.
             </h2>
             <p className="text-[15px] text-slate-600 leading-relaxed mb-4">
-              Every document carries a unique <span className="font-medium text-slate-900">Verification ID</span> that confirms authenticity without exposing any clinical detail. Your landlord enters the ID at <span className="font-mono text-[#0E2A47]">pawtenant.com/verify</span> and the verification page returns the result instantly.
+              Every document carries a discreet <span className="font-medium text-slate-900">verification QR code</span> that confirms authenticity without exposing any clinical detail. Your landlord scans it, lands on <span className="font-mono text-[#0E2A47]">pawtenant.com/verify</span>, and the verification page returns the result instantly.
             </p>
             <p className="text-[15px] text-slate-600 leading-relaxed">
               Landlord verification is one of the strongest trust signals a housing accommodation request can carry. The reviewing provider's full credentials — name, license number, NPI — are printed on the document and independently checkable through the public NPPES NPI registry. Your privacy is protected: only authenticity is confirmed, never diagnosis or treatment.
@@ -500,7 +500,7 @@ export default function LpEsaHousingPage() {
           <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center">
             {/* Steps */}
             <div className="space-y-5">
-              <VerifyStep n={1} title="Landlord enters the Verification ID" tone="navy">
+              <VerifyStep n={1} title="Landlord scans the QR code" tone="navy">
                 Format <span className="font-mono text-[#0E2A47]">ESA-XX-XXXXXXX</span>, printed on every document.
               </VerifyStep>
               <VerifyStep n={2} title="Verification page returns the result" tone="green">
@@ -546,7 +546,7 @@ export default function LpEsaHousingPage() {
                 <div className="text-[14px] font-bold text-slate-900">What landlords can verify</div>
               </div>
               <ul className="space-y-2 text-[12.5px] text-slate-600 leading-relaxed">
-                <li className="flex items-start gap-2"><span className="text-emerald-600 font-bold flex-shrink-0">✓</span><span>The Verification ID is real and active</span></li>
+                <li className="flex items-start gap-2"><span className="text-emerald-600 font-bold flex-shrink-0">✓</span><span>The letter record is real and active</span></li>
                 <li className="flex items-start gap-2"><span className="text-emerald-600 font-bold flex-shrink-0">✓</span><span>The provider holds an active mental health license in your state</span></li>
                 <li className="flex items-start gap-2"><span className="text-emerald-600 font-bold flex-shrink-0">✓</span><span>Provider name, license number, and NPI shown</span></li>
                 <li className="flex items-start gap-2"><span className="text-emerald-600 font-bold flex-shrink-0">✓</span><span>Letter type, state, issue and expiration dates</span></li>
@@ -654,7 +654,7 @@ export default function LpEsaHousingPage() {
       {/* Section 4c removed — its 4 trust booster cards duplicated the
           main Verification section (4), the new privacy-split callout, and
           the Why-PawTenant comparison table. The strongest unique points
-          (Licensed providers, License printed, Verification ID, HIPAA-
+          (Licensed providers, License printed, Scan-to-verify QR, HIPAA-
           aligned) already appear in section 2 (Trust Strip) and the
           privacy-split panel inside section 4. */}
 
@@ -785,7 +785,7 @@ export default function LpEsaHousingPage() {
                 <PriceFeat>Reviewed by a Licensed Mental Health Practitioner in your state</PriceFeat>
                 <PriceFeat>FHA-aligned housing-related ESA documentation</PriceFeat>
                 <PriceFeat>Provider's credentials, license #, and NPI printed on the document</PriceFeat>
-                <PriceFeat>Unique Verification ID with landlord verification support</PriceFeat>
+                <PriceFeat>Scan-to-verify QR code with landlord verification support</PriceFeat>
                 <PriceFeat>Secure PDF delivery — typically within 24 hours</PriceFeat>
                 <PriceFeat>Refund if you do not qualify after clinical review</PriceFeat>
                 <PriceFeat>Covers 2 or 3 pets at a fixed $149 total</PriceFeat>
@@ -1094,7 +1094,7 @@ export default function LpEsaHousingPage() {
               them: string;
               done?: true;
             }> = [
-              { feature: "Unique Verification ID landlords can confirm", us: true, done: true, them: "Rare or absent" },
+              { feature: "Discreet verification QR code landlords can scan", us: true, done: true, them: "Rare or absent" },
               { feature: "Real provider names + license # + NPI on letter", us: true, done: true, them: "Often hidden" },
               { feature: "Reviewed by clinician licensed in your state", us: true, done: true, them: "Sometimes" },
               { feature: "Refund if you don't qualify after review", us: true, done: true, them: "Sometimes" },
@@ -1230,7 +1230,7 @@ export default function LpEsaHousingPage() {
             Start your assessment in about five minutes.
           </h2>
           <p className="text-[14px] text-slate-300 leading-relaxed mb-6 max-w-xl mx-auto">
-            Reviewed by a licensed mental health provider in your state. Documentation issued only if you qualify. Unique Verification ID on every document.
+            Reviewed by a licensed mental health provider in your state. Documentation issued only if you qualify. Discreet verification QR code on every document.
           </p>
           <Link
             to={ASSESSMENT_HREF}
@@ -1241,7 +1241,7 @@ export default function LpEsaHousingPage() {
           </Link>
           <div className="mt-9 grid sm:grid-cols-3 gap-4 text-left max-w-xl mx-auto">
             <FinalTrust>Refund if you don't qualify after review</FinalTrust>
-            <FinalTrust>Verification ID on every document</FinalTrust>
+            <FinalTrust>Scan-to-verify QR on every document</FinalTrust>
             <FinalTrust>License # and NPI on every document</FinalTrust>
           </div>
         </div>
@@ -1276,7 +1276,7 @@ function LetterPreviewCard() {
       <div className="bg-white p-3 md:p-4">
         <img
           src="/images/checkout/esa-sample-letter.svg"
-          alt="Sample PawTenant ESA letter showing the verification ID, provider credentials, and housing-accommodation language. Names and details are placeholders."
+          alt="Sample PawTenant ESA letter showing provider credentials, and housing-accommodation language. Names and details are placeholders."
           width={800}
           height={1035}
           loading="lazy"
@@ -1294,7 +1294,7 @@ function LetterPreviewCard() {
           </svg>
         </span>
         <div className="min-w-0">
-          <div className="text-[12px] font-medium text-emerald-900 leading-tight">Every letter carries a Verification ID</div>
+          <div className="text-[12px] font-medium text-emerald-900 leading-tight">Every letter carries a verification QR code</div>
           <div className="text-[11px] text-emerald-800/80 leading-snug font-mono">pawtenant.com/verify · landlords confirm in seconds</div>
         </div>
       </div>
@@ -1403,7 +1403,7 @@ function VerifyMock() {
 
       <img
         src="/assets/ui/verification-cropped.png"
-        alt="PawTenant verification result confirming a letter ID is authentic. Shows letter type, state, issue and expiration dates, issuing provider, NPI, and license. No patient health information is displayed."
+        alt="PawTenant verification result confirming a letter is authentic. Shows letter type, state, issue and expiration dates, issuing provider, NPI, and license. No patient health information is displayed."
         width={820}
         height={1110}
         loading="lazy"

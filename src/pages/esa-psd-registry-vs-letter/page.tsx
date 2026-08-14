@@ -149,7 +149,7 @@ const pawtenantProvides = [
   {
     icon: "ri-qr-code-line",
     title: "Verification support",
-    desc: "PawTenant letters include a Verification ID so a landlord can confirm authenticity without seeing any medical detail.",
+    desc: "PawTenant letters carry a discreet verification QR code so a landlord can confirm authenticity without seeing any medical detail.",
   },
   {
     icon: "ri-lock-2-line",
@@ -203,11 +203,11 @@ const faqs: FaqItem[] = [
   },
   {
     q: "Is PawTenant a registry?",
-    a: "No. PawTenant is not a registry and does not sell registrations, certificates, ID cards, or vests. We connect you with a licensed provider who evaluates you and, if appropriate, issues housing-focused ESA or PSD documentation — with a Verification ID a landlord can confirm and a refund if you don't qualify.",
+    a: "No. PawTenant is not a registry and does not sell registrations, certificates, ID cards, or vests. We connect you with a licensed provider who evaluates you and, if appropriate, issues housing-focused ESA or PSD documentation — with a verification QR code a landlord can scan and a refund if you don't qualify.",
   },
   {
     q: "Can PawTenant help if my landlord wants verification?",
-    a: "Yes. PawTenant letters include a Verification ID and provider license details, and our support team can help both sides confirm a letter is genuine — without exposing your diagnosis or medical records. Verification confirms authenticity only; it does not require sharing clinical detail. No service can guarantee a landlord's decision.",
+    a: "Yes. PawTenant letters carry a discreet verification QR code and provider license details, and our support team can help both sides confirm a letter is genuine — without exposing your diagnosis or medical records. Verification confirms authenticity only; it does not require sharing clinical detail. No service can guarantee a landlord's decision.",
   },
 ];
 
@@ -550,7 +550,7 @@ export default function EsaPsdRegistryVsLetterPage() {
         body="A landlord can say yes with more confidence when a letter names a licensed provider and can be verified — something a purchased registry ID simply can't offer. That's the difference PawTenant is built around."
         bullets={[
           "Reviewed by a provider licensed in your state.",
-          "Housing-focused, with a Verification ID landlords can confirm.",
+          "Housing-focused, with a verification QR code landlords can scan.",
           "Refund if a provider determines you don't qualify.",
         ]}
       />

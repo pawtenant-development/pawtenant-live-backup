@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1035" width="800" height="1035" role="img" aria-label="Sample PSD Letter">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1035" width="800" height="1035" role="img" aria-label="Sample PSD letter — demonstration only">
   <defs>
-    <linearGradient id="paperShadowPSD" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="paperShadow" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#ffffff"/>
       <stop offset="100%" stop-color="#f7f8fa"/>
     </linearGradient>
-    <filter id="softShadowPSD" x="-10%" y="-10%" width="120%" height="120%">
+    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="120%">
       <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
       <feOffset dx="0" dy="3" result="off"/>
       <feComponentTransfer><feFuncA type="linear" slope="0.15"/></feComponentTransfer>
@@ -13,26 +13,17 @@
   </defs>
 
   <!-- Page -->
-  <rect x="20" y="20" width="760" height="995" rx="10" ry="10" fill="url(#paperShadowPSD)" stroke="#e3e6ec" stroke-width="1" filter="url(#softShadowPSD)"/>
+  <rect x="20" y="20" width="760" height="995" rx="10" ry="10" fill="url(#paperShadow)" stroke="#e3e6ec" stroke-width="1" filter="url(#softShadow)"/>
 
-  <!-- Top accent bar (PSD blue) -->
-  <rect x="20" y="20" width="760" height="6" rx="3" ry="3" fill="#2c5282"/>
+  <!-- Top accent bar (PawTenant orange) -->
+  <rect x="20" y="20" width="760" height="6" rx="3" ry="3" fill="#F26A21"/>
 
-  <!-- Header: Provider (left) -->
+  <!-- Header: provider (left). The top-right corner is intentionally clean. -->
   <g font-family="Helvetica, Arial, sans-serif">
     <text x="56" y="78" font-size="19" font-weight="700" fill="#0f172a">Dr. Amelia Hart, PhD, LPC-S</text>
     <text x="56" y="100" font-size="12" fill="#475569">Licensed Professional Counselor, Licensed Therapist</text>
-    <text x="56" y="118" font-size="12" fill="#475569">Psychiatric Service Dog &amp; ADA Accommodation</text>
+    <text x="56" y="118" font-size="12" fill="#475569">Behavioral Health and Service Animal Assessment</text>
     <text x="56" y="136" font-size="12" fill="#475569">Specialist</text>
-  </g>
-
-  <!-- Verification ID box (top-right) -->
-  <g>
-    <rect x="484" y="48" width="280" height="100" rx="6" ry="6" fill="#eef2f9" stroke="#2c5282" stroke-width="1.5"/>
-    <text x="752" y="68" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#64748b">Verification ID:</text>
-    <text x="752" y="94" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="700" fill="#2c5282" letter-spacing="0.5">PSD-CA-XXXXXX</text>
-    <text x="752" y="116" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#334155">pawtenant.com/verify/PSD-CA-XXXXXX</text>
-    <text x="752" y="134" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#94a3b8" font-style="italic">Reserved injector-safe area</text>
   </g>
 
   <!-- Divider -->
@@ -41,93 +32,87 @@
   <!-- Letter meta block -->
   <g font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#1f2937">
     <text x="56" y="188">Dr. Amelia Hart</text>
-    <text x="56" y="206">License #LPC-204817-CA</text>
+    <text x="56" y="206">Licence #SAMPLE-NOT-ISSUABLE</text>
     <text x="56" y="224">April 10, 2026</text>
     <text x="56" y="242">To Whom It May Concern:</text>
   </g>
 
   <!-- Body paragraphs -->
   <g font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#1f2937">
-    <!-- Paragraph 1 -->
     <text x="56" y="276">
-      <tspan x="56" dy="0">I am a licensed clinician currently treating Jordan Bennett, born March 18, 1994. I have evaluated</tspan>
-      <tspan x="56" dy="17">Jordan and determined they meet the criteria for a disability under the Americans with Disabilities</tspan>
-      <tspan x="56" dy="17">Act (ADA) — a mental health condition that substantially limits one or more major life activities.</tspan>
+      <tspan x="56" dy="0">I am a licensed therapist currently providing behavioral health services to Jordan Bennett, born March 18,</tspan>
+      <tspan x="56" dy="17">1994. I have evaluated Jordan and determined that they have a mental health condition that substantially</tspan>
+      <tspan x="56" dy="17">limits one or more major life activities within the meaning of applicable guidance.</tspan>
     </text>
 
-    <!-- Paragraph 2 -->
     <text x="56" y="352">
-      <tspan x="56" dy="0">Based on my clinical evaluation, Jordan's psychiatric service dog, Atlas (Labrador Retriever), is</tspan>
-      <tspan x="56" dy="17">individually trained to perform specific tasks directly related to Jordan's disability. These trained</tspan>
-      <tspan x="56" dy="17">tasks include deep-pressure therapy during anxiety episodes, interrupting dissociative behaviors,</tspan>
-      <tspan x="56" dy="17">and guiding Jordan to a safe location when symptoms escalate.</tspan>
+      <tspan x="56" dy="0">Based on my clinical evaluation and ongoing therapeutic relationship, I have determined that Jordan benefits</tspan>
+      <tspan x="56" dy="17">from a Psychiatric Service Dog named Scout. The dog is trained to perform specific tasks that mitigate the</tspan>
+      <tspan x="56" dy="17">effects of the condition, including interruption of escalating symptoms and grounding assistance during</tspan>
+      <tspan x="56" dy="17">periods of acute distress.</tspan>
     </text>
 
-    <!-- Paragraph 3 -->
-    <text x="56" y="462">
-      <tspan x="56" dy="0">A Psychiatric Service Dog is distinct from an Emotional Support Animal: the dog must perform</tspan>
-      <tspan x="56" dy="17">disability-related work or tasks the handler cannot reliably perform without assistance. Under the</tspan>
-      <tspan x="56" dy="17">ADA, Jordan and Atlas are entitled to public-access rights in places of public accommodation.</tspan>
+    <text x="56" y="445">
+      <tspan x="56" dy="0">In my professional opinion, the trained tasks this dog performs are a necessary part of Jordan's treatment</tspan>
+      <tspan x="56" dy="17">plan and directly mitigate disability-related symptoms. The animal's presence is clinically appropriate in</tspan>
+      <tspan x="56" dy="17">the settings where those tasks are required.</tspan>
     </text>
 
-    <!-- Paragraph 4 -->
-    <text x="56" y="538">
-      <tspan x="56" dy="0">This letter is provided to confirm Jordan's qualifying disability and the trained-task relationship</tspan>
-      <tspan x="56" dy="17">with their psychiatric service dog. To protect patient confidentiality, detailed diagnostic information</tspan>
-      <tspan x="56" dy="17">is not included. Verification of my credentials may be provided as permitted by law.</tspan>
+    <text x="56" y="521">
+      <tspan x="56" dy="0">This letter is provided for accommodation purposes. To protect patient confidentiality, detailed</tspan>
+      <tspan x="56" dy="17">diagnostic information is not included here. Verification of my professional credentials may be</tspan>
+      <tspan x="56" dy="17">provided as permitted by law.</tspan>
     </text>
   </g>
 
-  <!-- Patient info table -->
+  <!-- Recipient information table -->
   <g font-family="Helvetica, Arial, sans-serif" font-size="12">
-    <!-- label column background -->
-    <rect x="56" y="606" width="220" height="120" fill="#eef2f9"/>
-    <!-- outer border -->
-    <rect x="56" y="606" width="688" height="120" fill="none" stroke="#cbd5e1" stroke-width="1"/>
-    <!-- column divider -->
-    <line x1="276" y1="606" x2="276" y2="726" stroke="#cbd5e1"/>
-    <!-- row dividers -->
-    <line x1="56" y1="636" x2="744" y2="636" stroke="#cbd5e1"/>
-    <line x1="56" y1="666" x2="744" y2="666" stroke="#cbd5e1"/>
-    <line x1="56" y1="696" x2="744" y2="696" stroke="#cbd5e1"/>
-
-    <!-- Labels -->
+    <rect x="56" y="590" width="220" height="120" fill="#f1f5f9"/>
+    <rect x="56" y="590" width="688" height="120" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+    <line x1="276" y1="590" x2="276" y2="710" stroke="#cbd5e1"/>
+    <line x1="56" y1="620" x2="744" y2="620" stroke="#cbd5e1"/>
+    <line x1="56" y1="650" x2="744" y2="650" stroke="#cbd5e1"/>
+    <line x1="56" y1="680" x2="744" y2="680" stroke="#cbd5e1"/>
     <g font-weight="700" fill="#0f172a">
-      <text x="70" y="626">Handler Name</text>
-      <text x="70" y="656">Date of Birth</text>
-      <text x="70" y="686">Service Dog</text>
-      <text x="70" y="716">Letter Purpose</text>
+      <text x="70" y="610">Patient Name</text>
+      <text x="70" y="640">Date of Birth</text>
+      <text x="70" y="670">Service Dog</text>
+      <text x="70" y="700">Letter Purpose</text>
     </g>
-    <!-- Values -->
     <g fill="#1f2937">
-      <text x="290" y="626">Jordan Bennett</text>
-      <text x="290" y="656">March 18, 1994</text>
-      <text x="290" y="686">Atlas - Labrador Retriever (Trained PSD)</text>
-      <text x="290" y="716">ADA accommodation &amp; public-access verification</text>
+      <text x="290" y="610">Jordan Bennett</text>
+      <text x="290" y="640">March 18, 1994</text>
+      <text x="290" y="670">Scout — Task-Trained Dog</text>
+      <text x="290" y="700">Psychiatric service dog (sample)</text>
     </g>
   </g>
 
-  <!-- Sincerely -->
+  <!-- Signature area -->
   <g font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#1f2937">
-    <text x="56" y="764">Sincerely,</text>
+    <text x="56" y="748">Sincerely,</text>
   </g>
-
-  <!-- Signature script -->
-  <text x="56" y="814" font-family="'Brush Script MT', 'Segoe Script', cursive" font-size="34" font-style="italic" fill="#0f172a">Amelia Hart, PhD, LPC-S</text>
-
-  <!-- Signature details -->
+  <text x="56" y="798" font-family="'Brush Script MT', 'Segoe Script', cursive" font-size="34" font-style="italic" fill="#334155">Amelia Hart, PhD, LPC-S</text>
   <g font-family="Helvetica, Arial, sans-serif" font-size="11.5" fill="#334155">
-    <text x="56" y="842" fill="#0f172a">Dr. Amelia Hart</text>
-    <text x="56" y="860">Licensed Professional Counselor - California</text>
-    <text x="56" y="878">License #LPC-204817-CA</text>
-    <text x="56" y="900">Phone: (555) 310-2048  |  Email: amelia.hart@exampleclinic.com</text>
-    <text x="56" y="918">Office: 2450 Harbor Avenue, Suite 210, San Diego, CA 92101</text>
+    <text x="56" y="826" fill="#0f172a">Dr. Amelia Hart</text>
+    <text x="56" y="844">Licensed Professional Counselor — Illustrative</text>
+    <text x="56" y="862">Licence #SAMPLE-NOT-ISSUABLE</text>
+    <text x="56" y="884">Phone: (555) 010-0000  |  Email: provider@example.com</text>
+    <text x="56" y="902">Example Behavioral Health, Suite 210</text>
   </g>
 
-  <!-- Footer note -->
-  <g font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#94a3b8" font-style="italic">
-    <line x1="56" y1="960" x2="744" y2="960" stroke="#e2e8f0"/>
-    <text x="56" y="982">Template note: top-right verification box is intentionally reserved as the injected verification ID area.</text>
-    <text x="744" y="982" text-anchor="end" font-style="normal" fill="#64748b">Page 1 of 1</text>
+  <!-- Verification QR — bare, uncaptioned, low on the right -->
+  <g><rect x="654.30" y="838.30" width="99.39" height="99.39" fill="#ffffff"/><rect x="664.00" y="848.00" width="16.97" height="2.42" fill="#000000"/><rect x="683.39" y="848.00" width="4.85" height="2.42" fill="#000000"/><rect x="690.67" y="848.00" width="7.27" height="2.42" fill="#000000"/><rect x="702.79" y="848.00" width="2.42" height="2.42" fill="#000000"/><rect x="707.64" y="848.00" width="2.42" height="2.42" fill="#000000"/><rect x="712.48" y="848.00" width="2.42" height="2.42" fill="#000000"/><rect x="719.76" y="848.00" width="2.42" height="2.42" fill="#000000"/><rect x="727.03" y="848.00" width="16.97" height="2.42" fill="#000000"/><rect x="664.00" y="850.42" width="2.42" height="2.42" fill="#000000"/><rect x="678.55" y="850.42" width="2.42" height="2.42" fill="#000000"/><rect x="685.82" y="850.42" width="2.42" height="2.42" fill="#000000"/><rect x="693.09" y="850.42" width="7.27" height="2.42" fill="#000000"/><rect x="702.79" y="850.42" width="2.42" height="2.42" fill="#000000"/><rect x="707.64" y="850.42" width="4.85" height="2.42" fill="#000000"/><rect x="727.03" y="850.42" width="2.42" height="2.42" fill="#000000"/><rect x="741.58" y="850.42" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="852.85" width="2.42" height="2.42" fill="#000000"/><rect x="668.85" y="852.85" width="7.27" height="2.42" fill="#000000"/><rect x="678.55" y="852.85" width="2.42" height="2.42" fill="#000000"/><rect x="685.82" y="852.85" width="2.42" height="2.42" fill="#000000"/><rect x="693.09" y="852.85" width="2.42" height="2.42" fill="#000000"/><rect x="697.94" y="852.85" width="2.42" height="2.42" fill="#000000"/><rect x="705.21" y="852.85" width="4.85" height="2.42" fill="#000000"/><rect x="712.48" y="852.85" width="4.85" height="2.42" fill="#000000"/><rect x="719.76" y="852.85" width="4.85" height="2.42" fill="#000000"/><rect x="727.03" y="852.85" width="2.42" height="2.42" fill="#000000"/><rect x="731.88" y="852.85" width="7.27" height="2.42" fill="#000000"/><rect x="741.58" y="852.85" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="855.27" width="2.42" height="2.42" fill="#000000"/><rect x="668.85" y="855.27" width="7.27" height="2.42" fill="#000000"/><rect x="678.55" y="855.27" width="2.42" height="2.42" fill="#000000"/><rect x="683.39" y="855.27" width="2.42" height="2.42" fill="#000000"/><rect x="688.24" y="855.27" width="4.85" height="2.42" fill="#000000"/><rect x="702.79" y="855.27" width="4.85" height="2.42" fill="#000000"/><rect x="710.06" y="855.27" width="2.42" height="2.42" fill="#000000"/><rect x="714.91" y="855.27" width="7.27" height="2.42" fill="#000000"/><rect x="727.03" y="855.27" width="2.42" height="2.42" fill="#000000"/><rect x="731.88" y="855.27" width="7.27" height="2.42" fill="#000000"/><rect x="741.58" y="855.27" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="857.70" width="2.42" height="2.42" fill="#000000"/><rect x="668.85" y="857.70" width="7.27" height="2.42" fill="#000000"/><rect x="678.55" y="857.70" width="2.42" height="2.42" fill="#000000"/><rect x="683.39" y="857.70" width="2.42" height="2.42" fill="#000000"/><rect x="693.09" y="857.70" width="4.85" height="2.42" fill="#000000"/><rect x="702.79" y="857.70" width="4.85" height="2.42" fill="#000000"/><rect x="710.06" y="857.70" width="2.42" height="2.42" fill="#000000"/><rect x="714.91" y="857.70" width="4.85" height="2.42" fill="#000000"/><rect x="727.03" y="857.70" width="2.42" height="2.42" fill="#000000"/><rect x="731.88" y="857.70" width="7.27" height="2.42" fill="#000000"/><rect x="741.58" y="857.70" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="860.12" width="2.42" height="2.42" fill="#000000"/><rect x="678.55" y="860.12" width="2.42" height="2.42" fill="#000000"/><rect x="683.39" y="860.12" width="7.27" height="2.42" fill="#000000"/><rect x="695.52" y="860.12" width="7.27" height="2.42" fill="#000000"/><rect x="705.21" y="860.12" width="2.42" height="2.42" fill="#000000"/><rect x="712.48" y="860.12" width="12.12" height="2.42" fill="#000000"/><rect x="727.03" y="860.12" width="2.42" height="2.42" fill="#000000"/><rect x="741.58" y="860.12" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="862.55" width="16.97" height="2.42" fill="#000000"/><rect x="683.39" y="862.55" width="2.42" height="2.42" fill="#000000"/><rect x="688.24" y="862.55" width="2.42" height="2.42" fill="#000000"/><rect x="693.09" y="862.55" width="2.42" height="2.42" fill="#000000"/><rect x="697.94" y="862.55" width="2.42" height="2.42" fill="#000000"/><rect x="702.79" y="862.55" width="2.42" height="2.42" fill="#000000"/><rect x="707.64" y="862.55" width="2.42" height="2.42" fill="#000000"/><rect x="712.48" y="862.55" width="2.42" height="2.42" fill="#000000"/><rect x="717.33" y="862.55" width="2.42" height="2.42" fill="#000000"/><rect x="722.18" y="862.55" width="2.42" height="2.42" fill="#000000"/><rect x="727.03" y="862.55" width="16.97" height="2.42" fill="#000000"/><rect x="683.39" y="864.97" width="2.42" height="2.42" fill="#000000"/><rect x="688.24" y="864.97" width="4.85" height="2.42" fill="#000000"/><rect x="705.21" y="864.97" width="14.55" height="2.42" fill="#000000"/><rect x="722.18" y="864.97" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="867.39" width="2.42" height="2.42" fill="#000000"/><rect x="673.70" y="867.39" width="2.42" height="2.42" fill="#000000"/><rect x="678.55" y="867.39" width="7.27" height="2.42" fill="#000000"/><rect x="690.67" y="867.39" width="2.42" height="2.42" fill="#000000"/><rect x="695.52" y="867.39" width="2.42" height="2.42" fill="#000000"/><rect x="700.36" y="867.39" width="2.42" height="2.42" fill="#000000"/><rect x="705.21" y="867.39" width="2.42" height="2.42" fill="#000000"/><rect x="712.48" y="867.39" width="24.24" height="2.42" fill="#000000"/><rect x="741.58" y="867.39" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="869.82" width="9.70" height="2.42" fill="#000000"/><rect x="685.82" y="869.82" width="7.27" height="2.42" fill="#000000"/><rect x="700.36" y="869.82" width="2.42" height="2.42" fill="#000000"/><rect x="705.21" y="869.82" width="2.42" height="2.42" fill="#000000"/><rect x="714.91" y="869.82" width="2.42" height="2.42" fill="#000000"/><rect x="719.76" y="869.82" width="2.42" height="2.42" fill="#000000"/><rect x="724.61" y="869.82" width="2.42" height="2.42" fill="#000000"/><rect x="734.30" y="869.82" width="4.85" height="2.42" fill="#000000"/><rect x="741.58" y="869.82" width="2.42" height="2.42" fill="#000000"/><rect x="668.85" y="872.24" width="4.85" height="2.42" fill="#000000"/><rect x="678.55" y="872.24" width="2.42" height="2.42" fill="#000000"/><rect x="683.39" y="872.24" width="2.42" height="2.42" fill="#000000"/><rect x="688.24" y="872.24" width="14.55" height="2.42" fill="#000000"/><rect x="707.64" y="872.24" width="2.42" height="2.42" fill="#000000"/><rect x="712.48" y="872.24" width="2.42" height="2.42" fill="#000000"/><rect x="719.76" y="872.24" width="2.42" height="2.42" fill="#000000"/><rect x="724.61" y="872.24" width="2.42" height="2.42" fill="#000000"/><rect x="734.30" y="872.24" width="2.42" height="2.42" fill="#000000"/><rect x="739.15" y="872.24" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="874.67" width="2.42" height="2.42" fill="#000000"/><rect x="668.85" y="874.67" width="9.70" height="2.42" fill="#000000"/><rect x="690.67" y="874.67" width="7.27" height="2.42" fill="#000000"/><rect x="700.36" y="874.67" width="4.85" height="2.42" fill="#000000"/><rect x="710.06" y="874.67" width="4.85" height="2.42" fill="#000000"/><rect x="717.33" y="874.67" width="7.27" height="2.42" fill="#000000"/><rect x="727.03" y="874.67" width="2.42" height="2.42" fill="#000000"/><rect x="739.15" y="874.67" width="2.42" height="2.42" fill="#000000"/><rect x="666.42" y="877.09" width="2.42" height="2.42" fill="#000000"/><rect x="673.70" y="877.09" width="2.42" height="2.42" fill="#000000"/><rect x="678.55" y="877.09" width="2.42" height="2.42" fill="#000000"/><rect x="683.39" y="877.09" width="4.85" height="2.42" fill="#000000"/><rect x="695.52" y="877.09" width="2.42" height="2.42" fill="#000000"/><rect x="700.36" y="877.09" width="4.85" height="2.42" fill="#000000"/><rect x="717.33" y="877.09" width="2.42" height="2.42" fill="#000000"/><rect x="722.18" y="877.09" width="2.42" height="2.42" fill="#000000"/><rect x="727.03" y="877.09" width="4.85" height="2.42" fill="#000000"/><rect x="734.30" y="877.09" width="2.42" height="2.42" fill="#000000"/><rect x="666.42" y="879.52" width="2.42" height="2.42" fill="#000000"/><rect x="671.27" y="879.52" width="7.27" height="2.42" fill="#000000"/><rect x="683.39" y="879.52" width="9.70" height="2.42" fill="#000000"/><rect x="695.52" y="879.52" width="4.85" height="2.42" fill="#000000"/><rect x="707.64" y="879.52" width="7.27" height="2.42" fill="#000000"/><rect x="722.18" y="879.52" width="9.70" height="2.42" fill="#000000"/><rect x="664.00" y="881.94" width="2.42" height="2.42" fill="#000000"/><rect x="676.12" y="881.94" width="9.70" height="2.42" fill="#000000"/><rect x="690.67" y="881.94" width="2.42" height="2.42" fill="#000000"/><rect x="695.52" y="881.94" width="7.27" height="2.42" fill="#000000"/><rect x="707.64" y="881.94" width="2.42" height="2.42" fill="#000000"/><rect x="712.48" y="881.94" width="9.70" height="2.42" fill="#000000"/><rect x="724.61" y="881.94" width="4.85" height="2.42" fill="#000000"/><rect x="731.88" y="881.94" width="9.70" height="2.42" fill="#000000"/><rect x="664.00" y="884.36" width="14.55" height="2.42" fill="#000000"/><rect x="683.39" y="884.36" width="2.42" height="2.42" fill="#000000"/><rect x="688.24" y="884.36" width="2.42" height="2.42" fill="#000000"/><rect x="693.09" y="884.36" width="4.85" height="2.42" fill="#000000"/><rect x="700.36" y="884.36" width="7.27" height="2.42" fill="#000000"/><rect x="714.91" y="884.36" width="2.42" height="2.42" fill="#000000"/><rect x="722.18" y="884.36" width="7.27" height="2.42" fill="#000000"/><rect x="731.88" y="884.36" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="886.79" width="2.42" height="2.42" fill="#000000"/><rect x="671.27" y="886.79" width="2.42" height="2.42" fill="#000000"/><rect x="678.55" y="886.79" width="2.42" height="2.42" fill="#000000"/><rect x="683.39" y="886.79" width="2.42" height="2.42" fill="#000000"/><rect x="688.24" y="886.79" width="7.27" height="2.42" fill="#000000"/><rect x="702.79" y="886.79" width="4.85" height="2.42" fill="#000000"/><rect x="710.06" y="886.79" width="12.12" height="2.42" fill="#000000"/><rect x="727.03" y="886.79" width="2.42" height="2.42" fill="#000000"/><rect x="731.88" y="886.79" width="9.70" height="2.42" fill="#000000"/><rect x="666.42" y="889.21" width="2.42" height="2.42" fill="#000000"/><rect x="676.12" y="889.21" width="2.42" height="2.42" fill="#000000"/><rect x="685.82" y="889.21" width="2.42" height="2.42" fill="#000000"/><rect x="690.67" y="889.21" width="4.85" height="2.42" fill="#000000"/><rect x="697.94" y="889.21" width="7.27" height="2.42" fill="#000000"/><rect x="707.64" y="889.21" width="2.42" height="2.42" fill="#000000"/><rect x="719.76" y="889.21" width="2.42" height="2.42" fill="#000000"/><rect x="734.30" y="889.21" width="7.27" height="2.42" fill="#000000"/><rect x="664.00" y="891.64" width="4.85" height="2.42" fill="#000000"/><rect x="673.70" y="891.64" width="2.42" height="2.42" fill="#000000"/><rect x="678.55" y="891.64" width="2.42" height="2.42" fill="#000000"/><rect x="683.39" y="891.64" width="2.42" height="2.42" fill="#000000"/><rect x="688.24" y="891.64" width="7.27" height="2.42" fill="#000000"/><rect x="697.94" y="891.64" width="9.70" height="2.42" fill="#000000"/><rect x="712.48" y="891.64" width="12.12" height="2.42" fill="#000000"/><rect x="729.45" y="891.64" width="2.42" height="2.42" fill="#000000"/><rect x="734.30" y="891.64" width="2.42" height="2.42" fill="#000000"/><rect x="671.27" y="894.06" width="2.42" height="2.42" fill="#000000"/><rect x="676.12" y="894.06" width="2.42" height="2.42" fill="#000000"/><rect x="683.39" y="894.06" width="4.85" height="2.42" fill="#000000"/><rect x="690.67" y="894.06" width="2.42" height="2.42" fill="#000000"/><rect x="697.94" y="894.06" width="2.42" height="2.42" fill="#000000"/><rect x="705.21" y="894.06" width="7.27" height="2.42" fill="#000000"/><rect x="714.91" y="894.06" width="2.42" height="2.42" fill="#000000"/><rect x="722.18" y="894.06" width="2.42" height="2.42" fill="#000000"/><rect x="727.03" y="894.06" width="4.85" height="2.42" fill="#000000"/><rect x="664.00" y="896.48" width="2.42" height="2.42" fill="#000000"/><rect x="671.27" y="896.48" width="4.85" height="2.42" fill="#000000"/><rect x="678.55" y="896.48" width="2.42" height="2.42" fill="#000000"/><rect x="683.39" y="896.48" width="9.70" height="2.42" fill="#000000"/><rect x="695.52" y="896.48" width="2.42" height="2.42" fill="#000000"/><rect x="707.64" y="896.48" width="7.27" height="2.42" fill="#000000"/><rect x="722.18" y="896.48" width="2.42" height="2.42" fill="#000000"/><rect x="727.03" y="896.48" width="2.42" height="2.42" fill="#000000"/><rect x="734.30" y="896.48" width="2.42" height="2.42" fill="#000000"/><rect x="741.58" y="896.48" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="898.91" width="4.85" height="2.42" fill="#000000"/><rect x="680.97" y="898.91" width="2.42" height="2.42" fill="#000000"/><rect x="688.24" y="898.91" width="9.70" height="2.42" fill="#000000"/><rect x="702.79" y="898.91" width="2.42" height="2.42" fill="#000000"/><rect x="710.06" y="898.91" width="2.42" height="2.42" fill="#000000"/><rect x="714.91" y="898.91" width="4.85" height="2.42" fill="#000000"/><rect x="727.03" y="898.91" width="4.85" height="2.42" fill="#000000"/><rect x="739.15" y="898.91" width="2.42" height="2.42" fill="#000000"/><rect x="673.70" y="901.33" width="9.70" height="2.42" fill="#000000"/><rect x="693.09" y="901.33" width="2.42" height="2.42" fill="#000000"/><rect x="697.94" y="901.33" width="2.42" height="2.42" fill="#000000"/><rect x="702.79" y="901.33" width="9.70" height="2.42" fill="#000000"/><rect x="719.76" y="901.33" width="4.85" height="2.42" fill="#000000"/><rect x="731.88" y="901.33" width="9.70" height="2.42" fill="#000000"/><rect x="671.27" y="903.76" width="7.27" height="2.42" fill="#000000"/><rect x="685.82" y="903.76" width="7.27" height="2.42" fill="#000000"/><rect x="697.94" y="903.76" width="2.42" height="2.42" fill="#000000"/><rect x="705.21" y="903.76" width="19.39" height="2.42" fill="#000000"/><rect x="731.88" y="903.76" width="4.85" height="2.42" fill="#000000"/><rect x="739.15" y="903.76" width="4.85" height="2.42" fill="#000000"/><rect x="664.00" y="906.18" width="7.27" height="2.42" fill="#000000"/><rect x="676.12" y="906.18" width="4.85" height="2.42" fill="#000000"/><rect x="685.82" y="906.18" width="2.42" height="2.42" fill="#000000"/><rect x="693.09" y="906.18" width="9.70" height="2.42" fill="#000000"/><rect x="705.21" y="906.18" width="2.42" height="2.42" fill="#000000"/><rect x="712.48" y="906.18" width="21.82" height="2.42" fill="#000000"/><rect x="739.15" y="906.18" width="2.42" height="2.42" fill="#000000"/><rect x="683.39" y="908.61" width="4.85" height="2.42" fill="#000000"/><rect x="690.67" y="908.61" width="2.42" height="2.42" fill="#000000"/><rect x="695.52" y="908.61" width="2.42" height="2.42" fill="#000000"/><rect x="700.36" y="908.61" width="7.27" height="2.42" fill="#000000"/><rect x="714.91" y="908.61" width="9.70" height="2.42" fill="#000000"/><rect x="731.88" y="908.61" width="2.42" height="2.42" fill="#000000"/><rect x="736.73" y="908.61" width="7.27" height="2.42" fill="#000000"/><rect x="664.00" y="911.03" width="16.97" height="2.42" fill="#000000"/><rect x="683.39" y="911.03" width="2.42" height="2.42" fill="#000000"/><rect x="688.24" y="911.03" width="2.42" height="2.42" fill="#000000"/><rect x="693.09" y="911.03" width="2.42" height="2.42" fill="#000000"/><rect x="697.94" y="911.03" width="4.85" height="2.42" fill="#000000"/><rect x="707.64" y="911.03" width="2.42" height="2.42" fill="#000000"/><rect x="722.18" y="911.03" width="2.42" height="2.42" fill="#000000"/><rect x="727.03" y="911.03" width="2.42" height="2.42" fill="#000000"/><rect x="731.88" y="911.03" width="4.85" height="2.42" fill="#000000"/><rect x="739.15" y="911.03" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="913.45" width="2.42" height="2.42" fill="#000000"/><rect x="678.55" y="913.45" width="2.42" height="2.42" fill="#000000"/><rect x="690.67" y="913.45" width="4.85" height="2.42" fill="#000000"/><rect x="697.94" y="913.45" width="7.27" height="2.42" fill="#000000"/><rect x="710.06" y="913.45" width="4.85" height="2.42" fill="#000000"/><rect x="717.33" y="913.45" width="2.42" height="2.42" fill="#000000"/><rect x="722.18" y="913.45" width="2.42" height="2.42" fill="#000000"/><rect x="731.88" y="913.45" width="2.42" height="2.42" fill="#000000"/><rect x="739.15" y="913.45" width="4.85" height="2.42" fill="#000000"/><rect x="664.00" y="915.88" width="2.42" height="2.42" fill="#000000"/><rect x="668.85" y="915.88" width="7.27" height="2.42" fill="#000000"/><rect x="678.55" y="915.88" width="2.42" height="2.42" fill="#000000"/><rect x="683.39" y="915.88" width="2.42" height="2.42" fill="#000000"/><rect x="688.24" y="915.88" width="4.85" height="2.42" fill="#000000"/><rect x="700.36" y="915.88" width="4.85" height="2.42" fill="#000000"/><rect x="717.33" y="915.88" width="2.42" height="2.42" fill="#000000"/><rect x="722.18" y="915.88" width="14.55" height="2.42" fill="#000000"/><rect x="739.15" y="915.88" width="4.85" height="2.42" fill="#000000"/><rect x="664.00" y="918.30" width="2.42" height="2.42" fill="#000000"/><rect x="668.85" y="918.30" width="7.27" height="2.42" fill="#000000"/><rect x="678.55" y="918.30" width="2.42" height="2.42" fill="#000000"/><rect x="688.24" y="918.30" width="2.42" height="2.42" fill="#000000"/><rect x="693.09" y="918.30" width="2.42" height="2.42" fill="#000000"/><rect x="697.94" y="918.30" width="2.42" height="2.42" fill="#000000"/><rect x="707.64" y="918.30" width="7.27" height="2.42" fill="#000000"/><rect x="719.76" y="918.30" width="4.85" height="2.42" fill="#000000"/><rect x="727.03" y="918.30" width="9.70" height="2.42" fill="#000000"/><rect x="739.15" y="918.30" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="920.73" width="2.42" height="2.42" fill="#000000"/><rect x="668.85" y="920.73" width="7.27" height="2.42" fill="#000000"/><rect x="678.55" y="920.73" width="2.42" height="2.42" fill="#000000"/><rect x="685.82" y="920.73" width="4.85" height="2.42" fill="#000000"/><rect x="700.36" y="920.73" width="2.42" height="2.42" fill="#000000"/><rect x="712.48" y="920.73" width="4.85" height="2.42" fill="#000000"/><rect x="719.76" y="920.73" width="2.42" height="2.42" fill="#000000"/><rect x="727.03" y="920.73" width="7.27" height="2.42" fill="#000000"/><rect x="664.00" y="923.15" width="2.42" height="2.42" fill="#000000"/><rect x="678.55" y="923.15" width="2.42" height="2.42" fill="#000000"/><rect x="690.67" y="923.15" width="2.42" height="2.42" fill="#000000"/><rect x="695.52" y="923.15" width="12.12" height="2.42" fill="#000000"/><rect x="714.91" y="923.15" width="7.27" height="2.42" fill="#000000"/><rect x="724.61" y="923.15" width="2.42" height="2.42" fill="#000000"/><rect x="664.00" y="925.58" width="16.97" height="2.42" fill="#000000"/><rect x="683.39" y="925.58" width="2.42" height="2.42" fill="#000000"/><rect x="690.67" y="925.58" width="4.85" height="2.42" fill="#000000"/><rect x="697.94" y="925.58" width="2.42" height="2.42" fill="#000000"/><rect x="705.21" y="925.58" width="2.42" height="2.42" fill="#000000"/><rect x="710.06" y="925.58" width="7.27" height="2.42" fill="#000000"/><rect x="719.76" y="925.58" width="9.70" height="2.42" fill="#000000"/><rect x="736.73" y="925.58" width="2.42" height="2.42" fill="#000000"/><rect x="741.58" y="925.58" width="2.42" height="2.42" fill="#000000"/></g>
+
+  <!-- Restrained SAMPLE mark -->
+  <g transform="rotate(-24 400 470)" opacity="0.085">
+    <text x="400" y="490" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="60" font-weight="700" letter-spacing="3" fill="#F26A21">SAMPLE</text>
+  </g>
+
+  <!-- Footer -->
+  <g font-family="Helvetica, Arial, sans-serif" font-size="10">
+    <line x1="56" y1="950" x2="744" y2="950" stroke="#e2e8f0"/>
+    <text x="56" y="972" font-weight="700" fill="#F26A21" letter-spacing="0.6">SAMPLE — DEMONSTRATION ONLY</text>
+    <text x="56" y="988" fill="#94a3b8">Illustrative document. No real patient, provider, licence or clinical assessment appears on this page.</text>
+    <text x="744" y="972" text-anchor="end" fill="#64748b">Page 1 of 1</text>
   </g>
 </svg>

@@ -156,7 +156,7 @@ const pawtenantSupport = [
   {
     icon: "ri-qr-code-line",
     title: "Verifiable ESA letter",
-    desc: "Every finalized letter carries a Verification ID and the provider's license details a landlord can confirm.",
+    desc: "Every finalized letter carries a verification QR code and the provider's license details a landlord can confirm.",
   },
   {
     icon: "ri-home-heart-line",

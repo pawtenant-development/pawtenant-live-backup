@@ -1,18 +1,90 @@
 /**
  * inject-pdf-footer
  *
- * Downloads a provider-uploaded PDF from Supabase Storage, injects a verification ID
- * stamp on the FIRST PAGE (top right corner) in ORANGE, and stores the processed copy.
+ * Downloads a provider-uploaded PDF from Supabase Storage, stamps a BARE QR CODE
+ * on it, and stores the processed copy at processed_file_url.
+ *
+ * THIS IS THE CUSTOMER-FACING LETTER. src/lib/customerDocuments.ts serves
+ * processed_file_url as "the verification copy"; the newer qr_file_url built by
+ * generate-qr-verification-pdf is not in the customer download path. So the
+ * QR-only presentation had to land HERE to reach a real recipient.
+ *
+ * WHAT WAS REMOVED (QR-LETTER-VERIFICATION-AND-SAMPLE-PARITY-001, final closure)
+ * The first page used to carry an orange-bordered box in the TOP-RIGHT corner
+ * printing three lines:
+ *     "Verification ID:"  /  <LETTER-ID>  /  pawtenant.com/verify/<LETTER-ID>
+ * A landlord could read the vendor's domain, the verification route and the
+ * identifier straight off a clinical letter. All three are gone. The
+ * verification destination now exists ONLY inside the QR module geometry.
+ *
+ * PLACEMENT. The box used to be stamped blindly at a fixed top-right position,
+ * which could land on provider content. The QR is placed by the shared module's
+ * content-bounds analysis instead: it prefers a bottom margin PROVEN empty
+ * (the footer/signature area the owner asked for), then a proven-empty top
+ * margin, and appends a page only when neither can be demonstrated safe. It
+ * therefore cannot cover a signature, provider credentials or letter text.
  *
  * Auth: accepts EITHER service-role key (server-to-server) OR a valid admin JWT.
  * Pass forceReInject: true to bypass idempotency cache (used by admin Re-inject button).
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
+// rgb/StandardFonts are gone with the text box: this function no longer draws
+// any text of its own, and PDFDocument is kept only to validate the upload.
+import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
+import { buildQrVerificationPdf } from "../_shared/qrVerificationPdf.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const VERIFY_BASE = Deno.env.get("PUBLIC_SITE_URL") ?? "https://pawtenant.com";
+
+/**
+ * Inflate a page's content stream so the placement analyzer can read it.
+ * Anything we cannot inflate returns null, and the shared module treats null as
+ * "unreadable" -> appended page. Guessing is never an option here.
+ */
+async function readPageContent(doc: PDFDocument, index: number): Promise<string | null> {
+  try {
+    const page = doc.getPage(index);
+    // deno-lint-ignore no-explicit-any
+    const contents = (page as any).node.Contents();
+    // NO /Contents key at all. The page draws nothing — that is proof of a
+    // blank page, not a failure to read one. Returning null here made the
+    // analyzer treat genuinely empty TEST letters as unreadable and refuse to
+    // place the QR on them. An empty string is the honest answer.
+    if (!contents) return "";
+    const list = contents.constructor?.name === "PDFArray"
+      // deno-lint-ignore no-explicit-any
+      ? contents.asArray().map((r: any) => (doc as any).context.lookup(r))
+      : [contents];
+    let out = "";
+    for (const s of list) {
+      if (!s?.getContents) return null;
+      const raw: Uint8Array = s.getContents();
+      // A content stream may be Flate-compressed (zlib or raw deflate) or
+      // stored verbatim. Try each before giving up — a stream we cannot inflate
+      // is "unknown", and unknown blocks placement, so a false negative here
+      // silently costs every letter its QR.
+      if (raw[0] === 0x78) {
+        out += await inflate(raw, "deflate");
+      } else {
+        const asText = new TextDecoder("latin1").decode(raw);
+        // Heuristic: real content streams are printable operators. If it does
+        // not look like one, try raw deflate before accepting it as text.
+        out += /[A-Za-z]/.test(asText.slice(0, 32)) ? asText : await inflate(raw, "deflate-raw");
+      }
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+async function inflate(raw: Uint8Array, format: "deflate" | "deflate-raw"): Promise<string> {
+  const ds = new DecompressionStream(format);
+  const buf = await new Response(new Blob([raw]).stream().pipeThrough(ds)).arrayBuffer();
+  return new TextDecoder("latin1").decode(new Uint8Array(buf));
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -120,84 +192,71 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, error: "PDF has no pages" }, 422);
     }
 
-    // ── Inject on FIRST PAGE — top right corner ───────────────────────────────
-    const firstPage = pdfDoc.getPage(0);
-    const { width, height } = firstPage.getSize();
+    // ── Resolve the QR destination ────────────────────────────────────────────
+    // Prefer the opaque 128-bit public_token: it is what the QR has encoded for
+    // genuine letters since Stage 1, and it is not enumerable. The Verification
+    // ID resolves the same record through /verify/:letterId and is the fallback
+    // for any row that predates the token backfill — never visible either way.
+    const { data: lv } = await supabase
+      .from("letter_verifications")
+      .select("public_token")
+      .eq("letter_id", letterId)
+      .maybeSingle();
+    const publicToken = (lv as { public_token?: string | null } | null)?.public_token ?? null;
+    const verifyUrl = publicToken
+      ? `${VERIFY_BASE}/v/t/${publicToken}`
+      : `${VERIFY_BASE}/verify/${letterId}`;
 
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-    const line1 = "Verification ID:";
-    const line2 = letterId;
-    const line3 = `pawtenant.com/verify/${letterId}`;
-
-    const sz1 = 8;
-    const sz2 = 11;
-    const sz3 = 7.5;
-
-    const w1 = font.widthOfTextAtSize(line1, sz1);
-    const w2 = fontBold.widthOfTextAtSize(line2, sz2);
-    const w3 = font.widthOfTextAtSize(line3, sz3);
-    const boxW = Math.max(w1, w2, w3) + 16;
-
-    const MARGIN_RIGHT = 20;
-    const MARGIN_TOP = 20;
-
-    const lineH1 = sz1 + 4;
-    const lineH2 = sz2 + 4;
-    const lineH3 = sz3 + 4;
-    const boxH = lineH1 + lineH2 + lineH3 + 8;
-
-    const boxX = width - MARGIN_RIGHT - boxW;
-    const boxY = height - MARGIN_TOP - boxH;
-
-    // White background box with orange border
-    firstPage.drawRectangle({
-      x: boxX,
-      y: boxY,
-      width: boxW,
-      height: boxH,
-      color: rgb(1, 1, 1),
-      borderColor: rgb(0.85, 0.45, 0.1),  // orange border
-      borderWidth: 1,
-      opacity: 0.97,
-    });
-
-    const y1 = boxY + boxH - 8 - sz1;
-    const y2 = y1 - lineH1 - 1;
-    const y3 = y2 - lineH2 + 2;
-
-    const textX1 = boxX + boxW - 8 - w1;
-    const textX2 = boxX + boxW - 8 - w2;
-    const textX3 = boxX + boxW - 8 - w3;
-
-    // Line 1: "Verification ID:" — gray label
-    firstPage.drawText(line1, {
-      x: textX1, y: y1, size: sz1, font,
-      color: rgb(0.4, 0.4, 0.4),
-    });
-
-    // Line 2: the ID itself — ORANGE, bold, prominent
-    firstPage.drawText(line2, {
-      x: textX2, y: y2, size: sz2, font: fontBold,
-      color: rgb(0.85, 0.35, 0.05),  // orange as requested
-    });
-
-    // Line 3: URL — small gray
-    firstPage.drawText(line3, {
-      x: textX3, y: y3, size: sz3, font,
-      color: rgb(0.35, 0.35, 0.35),
-    });
-
-    // ── Save PDF ──────────────────────────────────────────────────────────────
+    // ── Stamp the bare QR ─────────────────────────────────────────────────────
+    // buildQrVerificationPdf works from the ORIGINAL bytes, never mutates them,
+    // and refuses to place the code anywhere it cannot prove is empty.
     let processedBytes: Uint8Array;
+    let built: Awaited<ReturnType<typeof buildQrVerificationPdf>>;
     try {
-      processedBytes = await pdfDoc.save();
+      built = await buildQrVerificationPdf(pdfBytes, { letterId, verifyUrl }, readPageContent);
+      processedBytes = built.bytes;
     } catch (saveErr: unknown) {
       const msg = saveErr instanceof Error ? saveErr.message : "PDF save failed";
       await logInjection(supabase, { orderId, confirmationId, documentId, letterId, success: false, error: msg });
       return json({ ok: false, error: `PDF serialization failed: ${msg}` }, 500);
     }
+
+    // EXPLICIT SAFE FAILURE — FAIL CLOSED.
+    //
+    // The shared module refuses for a whole family of reasons, not just "no room
+    // for the code": a broken cross-reference table, trailing garbage after
+    // %%EOF, an encrypted or unparseable file, page geometry it cannot reason
+    // about, an output that will not reopen, or a drawn QR that does not match
+    // the matrix the URL should produce.
+    //
+    // A document we cannot verify is one we must not rewrite. Publishing a
+    // pdf-lib-REPAIRED copy of a clinical letter would republish something whose
+    // fidelity to the provider's original we cannot demonstrate, and overlaying
+    // or appending are both worse. So: nothing is uploaded, processed_file_url is
+    // left exactly as it was, the original and its row are untouched, and no
+    // notification is produced. `verified` must be explicitly true — an absent
+    // flag is treated as a refusal, not as consent.
+    const refused = built.placement.mode !== "inline" || built.verified !== true;
+    if (refused) {
+      const code = built.failure ?? "no_safe_qr_placement";
+      // Kept deliberately coarse: a layout/structure class, never document
+      // contents, storage paths, or library internals.
+      const detail = built.failureDetail ?? built.placement.reason;
+      console.error(`[inject-pdf-footer] refusing to publish ${documentId}: ${code} — ${detail}`);
+      await logInjection(supabase, {
+        orderId, confirmationId, documentId, letterId,
+        success: false, error: `refused (${code}): ${detail}`,
+      });
+      return json({
+        ok: false,
+        skipped: true,
+        reason: code,
+        detail,
+        documentId,
+        letterId,
+      }, 200);
+    }
+    console.log(`[inject-pdf-footer] QR placement: ${built.placement.mode} — ${built.placement.reason}`);
 
     // ── Upload to Storage ─────────────────────────────────────────────────────
     const processedFileName = `${confirmationId}-${documentId}-verified.pdf`;

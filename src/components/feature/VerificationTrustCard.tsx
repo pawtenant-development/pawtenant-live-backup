@@ -9,7 +9,7 @@ interface VerificationTrustCardProps {
 const points = [
   {
     icon: "ri-qr-code-line",
-    title: "Unique Verification ID",
+    title: "Scan-to-verify QR code",
     desc: "Every finalized ESA or PSD letter includes a unique ID that landlords can verify instantly at pawtenant.com/verify.",
   },
   {
@@ -46,7 +46,7 @@ export default function VerificationTrustCard({
               Your Letter Is Verifiable — Without Exposing Your Privacy
             </h2>
             <p className="text-gray-500 text-sm mt-3 max-w-xl mx-auto leading-relaxed">
-              Every letter issued through PawTenant includes a Verification ID. Landlords can confirm authenticity online in seconds — no health information is ever shared.
+              Every letter issued through PawTenant carries a discreet verification QR code. Landlords scan it to confirm authenticity online in seconds — no health information is ever shared.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">

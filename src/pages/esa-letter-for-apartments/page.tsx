@@ -88,7 +88,7 @@ const includes = [
   {
     icon: "ri-qr-code-line",
     title: "A way to verify",
-    desc: "Provider details and, on PawTenant letters, a Verification ID so a property manager can confirm the letter is genuine.",
+    desc: "Provider details and, on PawTenant letters, a discreet verification QR code so a property manager can confirm the letter is genuine.",
   },
 ];
 
@@ -157,7 +157,7 @@ const faqs: FaqItem[] = [
   },
   {
     q: "Can my apartment verify my ESA letter?",
-    a: "Yes. A property manager can confirm that the provider is licensed and that the letter is authentic — for example by checking the provider's license or NPI, or using a Verification ID on a PawTenant letter. Verification confirms authenticity only; it does not expose your diagnosis or medical records.",
+    a: "Yes. A property manager can confirm that the provider is licensed and that the letter is authentic — for example by checking the provider's license or NPI, or scanning the verification QR code on a PawTenant letter. Verification confirms authenticity only; it does not expose your diagnosis or medical records.",
   },
   {
     q: "Is an apartment ESA letter the same as a service dog?",

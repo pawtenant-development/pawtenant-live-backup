@@ -4,7 +4,7 @@ interface VerificationPillarsSectionProps {
   /** "full" = section header + intro + 4 large cards (used on /esa-letter-verification).
    *  "compact" = tighter section, smaller intro, no large eyebrow. Suitable for homepage/landing trust placement. */
   variant?: "full" | "compact";
-  /** Show the "Verify a Letter ID" CTA below the cards. */
+  /** Show the "See How Landlord Verification Works" CTA below the cards. */
   showCTA?: boolean;
   /** Show the small "no health information is ever shared" privacy note below. */
   showPrivacyNote?: boolean;
@@ -48,10 +48,10 @@ const pillars = [
   },
   {
     icon: "ri-shield-keyhole-line",
-    title: "Verification ID Authenticity",
-    desc: "Each finalized letter carries a unique Verification ID stamped on the document. Landlords confirm authenticity at /verify — no diagnosis, no health information shared.",
+    title: "Scan-to-verify authenticity",
+    desc: "Each finalized letter carries a discreet verification QR code. Landlords scan it to confirm authenticity at /verify — no diagnosis, no health information shared.",
     points: [
-      "Cryptographically unique ID",
+      "Discreet QR code on the letter",
       "Instant landlord lookup",
       "Privacy-safe by design",
     ],

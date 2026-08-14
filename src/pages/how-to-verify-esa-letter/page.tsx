@@ -91,8 +91,8 @@ const checklist = [
   },
   {
     icon: "ri-qr-code-line",
-    title: "PawTenant Verification ID (if applicable)",
-    desc: "PawTenant letters include a Verification ID so a landlord can confirm authenticity without seeing any clinical detail.",
+    title: "PawTenant verification QR code (if applicable)",
+    desc: "PawTenant letters carry a discreet verification QR code so a landlord can scan it and confirm authenticity without seeing any clinical detail.",
   },
 ];
 
@@ -161,16 +161,16 @@ const landlordSteps = [
   {
     icon: "ri-qr-code-line",
     title: "Use PawTenant verification where available",
-    desc: "If the letter is from PawTenant, the Verification ID and provider license details let you confirm authenticity in minutes — no medical information exposed.",
+    desc: "If the letter is from PawTenant, the verification QR code and provider license details let you confirm authenticity in minutes — no medical information exposed.",
   },
 ];
 
-// ── PawTenant Verification ID / approach
+// ── PawTenant verification QR / approach
 const verificationApproach = [
   {
     icon: "ri-qr-code-line",
     title: "Verification details on every letter",
-    desc: "Where applicable, finalized PawTenant letters carry a Verification ID and the provider's license details so authenticity can be confirmed.",
+    desc: "Where applicable, finalized PawTenant letters carry a discreet verification QR code and the provider's license details so authenticity can be confirmed.",
   },
   {
     icon: "ri-customer-service-2-line",
@@ -218,7 +218,7 @@ const comparisonRows: { item: string; real: string; redFlag: string }[] = [
   },
   {
     item: "Verification support",
-    real: "Verification ID and a way to confirm the provider.",
+    real: "A scannable verification QR code and a way to confirm the provider.",
     redFlag: "No way to verify anything.",
   },
   {
@@ -236,11 +236,11 @@ const comparisonRows: { item: string; real: string; redFlag: string }[] = [
 const faqs: FaqItem[] = [
   {
     q: "How can I verify an ESA letter?",
-    a: "Check that the letter was written after a licensed provider evaluation and that it includes the provider's name, license type, and state, an issue date, your name, and housing-focused accommodation language. A real letter also offers a way to confirm the provider — such as an NPI or, for PawTenant letters, a Verification ID. Treat \"registration\" certificates, ID cards, and instant no-evaluation documents as red flags.",
+    a: "Check that the letter was written after a licensed provider evaluation and that it includes the provider's name, license type, and state, an issue date, your name, and housing-focused accommodation language. A real letter also offers a way to confirm the provider — such as an NPI or, for PawTenant letters, a scannable verification QR code. Treat \"registration\" certificates, ID cards, and instant no-evaluation documents as red flags.",
   },
   {
     q: "Can a landlord verify my ESA letter?",
-    a: "Yes. A landlord can confirm that the provider is licensed and that the letter is genuine — for example, by checking the provider's NPI or using a Verification ID on a PawTenant letter. Verification confirms authenticity only; it does not expose your diagnosis or medical records.",
+    a: "Yes. A landlord can confirm that the provider is licensed and that the letter is genuine — for example, by checking the provider's NPI or scanning the verification QR code on a PawTenant letter. Verification confirms authenticity only; it does not expose your diagnosis or medical records.",
   },
   {
     q: "Is an ESA registration certificate valid?",
@@ -256,7 +256,7 @@ const faqs: FaqItem[] = [
   },
   {
     q: "Can a landlord call the provider?",
-    a: "A landlord may take reasonable steps to confirm that the provider is licensed and that the letter is authentic. That can include checking license or NPI details or using a Verification ID. The goal is confirming the letter is genuine — not obtaining private clinical information.",
+    a: "A landlord may take reasonable steps to confirm that the provider is licensed and that the letter is authentic. That can include checking license or NPI details or scanning the verification QR code on the letter. The goal is confirming the letter is genuine — not obtaining private clinical information.",
   },
   {
     q: "What makes an online ESA letter suspicious?",
@@ -296,7 +296,7 @@ export default function HowToVerifyESALetterPage() {
     <main>
       <meta
         name="keywords"
-        content="how to verify ESA letter, verify ESA letter online, real ESA letter, fake ESA letter, ESA letter verification, is my ESA letter legit, ESA registration scam, ESA Verification ID, licensed provider ESA letter"
+        content="how to verify ESA letter, verify ESA letter online, real ESA letter, fake ESA letter, ESA letter verification, is my ESA letter legit, ESA registration scam, verify ESA letter QR code, licensed provider ESA letter"
       />
       <meta property="og:type" content="article" />
       <meta property="og:image" content="https://pawtenant.com/assets/brand/og-default.jpg" />
@@ -560,12 +560,12 @@ export default function HowToVerifyESALetterPage() {
         ]}
       />
 
-      {/* PAWTENANT VERIFICATION ID / APPROACH */}
+      {/* PAWTENANT VERIFICATION QR / APPROACH */}
       <section className="py-14 sm:py-16 bg-white border-t border-gray-100">
         <div className="max-w-4xl mx-auto px-5 sm:px-6">
           <div className="text-center mb-9">
             <p className="text-[11px] font-bold uppercase tracking-widest text-orange-500 mb-2">
-              PawTenant Verification ID
+              PawTenant scan-to-verify QR
             </p>
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">
               How PawTenant makes letters verifiable

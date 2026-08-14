@@ -79,7 +79,7 @@ const whatWeDo = [
   {
     icon: "ri-qr-code-line",
     title: "Make letters verifiable",
-    desc: "Each finalized letter carries a unique Verification ID. A landlord can confirm it's genuine — without ever seeing your diagnosis or clinical details.",
+    desc: "Each finalized letter carries a discreet verification QR code. A landlord can scan it and confirm the letter is genuine — without ever seeing your diagnosis or clinical details.",
   },
   {
     icon: "ri-customer-service-2-line",
@@ -114,15 +114,15 @@ const trustBlocks = [
   },
   {
     icon: "ri-shield-check-line",
-    title: "Verification ID for landlords",
-    desc: "Each finalized letter includes a unique Verification ID landlords can confirm at pawtenant.com/verify, so your documentation stands up to scrutiny.",
+    title: "Scan-to-verify QR for landlords",
+    desc: "Each finalized letter carries a discreet verification QR code landlords can scan to confirm at pawtenant.com/verify, so your documentation stands up to scrutiny.",
   },
 ];
 
 const faqs: FaqItem[] = [
   {
     q: "Is PawTenant legit?",
-    a: "Yes. PawTenant is an online service that connects you with mental health providers licensed in your state who evaluate you and, when clinically appropriate, issue an ESA or PSD letter for housing. Letters name the licensed provider and carry a unique Verification ID landlords can confirm. PawTenant does not guarantee approval and does not sell 'registrations' or certificates.",
+    a: "Yes. PawTenant is an online service that connects you with mental health providers licensed in your state who evaluate you and, when clinically appropriate, issue an ESA or PSD letter for housing. Letters name the licensed provider and carry a discreet verification QR code landlords can scan to confirm. PawTenant does not guarantee approval and does not sell 'registrations' or certificates.",
   },
   {
     q: "Is PawTenant a scam?",
@@ -225,7 +225,7 @@ export default function IsPawTenantLegitPage() {
               <div className="relative">
                 <SampleLetterCard size="default" eager />
                 <p className="text-center text-[11px] text-gray-400 mt-3 leading-relaxed">
-                  Every letter carries a Verification ID — names &amp; details are placeholders.
+                  Every letter carries a verification QR code — names &amp; details are placeholders.
                 </p>
               </div>
             </div>
@@ -241,7 +241,7 @@ export default function IsPawTenantLegitPage() {
               Yes. PawTenant is an online service that connects you with <strong>mental health
               providers licensed in your state</strong> who evaluate you and, when clinically
               appropriate, issue an <strong>ESA or PSD letter for housing</strong>. Every letter names
-              the licensed provider and carries a <strong>unique Verification ID</strong> a landlord
+              the licensed provider and carries a <strong>discreet verification QR code</strong> a landlord
               can confirm.
             </p>
             <p>

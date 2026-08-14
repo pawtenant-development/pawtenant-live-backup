@@ -123,7 +123,7 @@ const REQUIRED = [
   "No-pet buildings",        // housing problem framing
   "Not everyone qualifies",  // honest qualification section
   "Common questions",        // FAQ
-  "Verification ID",         // landlord verification story
+  "verification QR code",    // landlord verification story (QR-only letters)
   "Fair Housing Act",        // the legal basis this page sells on
 ];
 for (const r of REQUIRED) ok(src.includes(r), `required section marker missing: '${r}'`);

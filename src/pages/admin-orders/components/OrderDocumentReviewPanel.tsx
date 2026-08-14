@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import MissingProfessionalContactNotice from "@/components/feature/MissingProfessionalContactNotice";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
@@ -82,6 +83,7 @@ export default function OrderDocumentReviewPanel({
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<Set<string>>(new Set());
+  const [providerUserId, setProviderUserId] = useState<string | null>(null);
   const [correctionFor, setCorrectionFor] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -110,6 +112,21 @@ export default function OrderDocumentReviewPanel({
     } else {
       setVersions({});
     }
+
+    // PROVIDER-PROFESSIONAL-CONTACT-PUBLIC-CONSENT-001 — resolve the issuing
+    // provider only when an eligible FINAL ESA/PSD letter is actually in review.
+    // An RA, intake, notary or customer upload must not surface the notice.
+    if (rows.some((r) => r.doc_type === "esa_letter" || r.doc_type === "psd_letter")) {
+      const { data: ord } = await supabase
+        .from("orders")
+        .select("doctor_user_id")
+        .eq("id", orderId)
+        .maybeSingle();
+      setProviderUserId((ord as { doctor_user_id: string | null } | null)?.doctor_user_id ?? null);
+    } else {
+      setProviderUserId(null);
+    }
+
     setLoading(false);
   }, [orderId]);
 
@@ -170,6 +187,9 @@ export default function OrderDocumentReviewPanel({
 
   return (
     <div className="mb-4 space-y-3">
+      {/* Informational only — never blocks approve / request-correction. */}
+      <MissingProfessionalContactNotice providerUserId={providerUserId} />
+
       {docs.map((doc) => {
         const isPending = doc.review_status === "pending_admin_approval";
         const isBusy = busyId === doc.id;

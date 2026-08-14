@@ -223,9 +223,9 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
       "Landlord says your ESA letter is fake? How to prove it's genuine, the warning signs of an actually-fake letter, and how to respond with verification and support.",
   },
   "/esa-letter-verification-id": {
-    title: "ESA Letter Verification ID: What It Is & Why It Helps",
+    title: "ESA Letter Verification: What It Is & Why It Helps",
     description:
-      "What an ESA letter verification ID is, whether ESA letters need one, and how a landlord uses it to confirm a letter is genuine without seeing your medical details.",
+      "How ESA letter verification works, whether ESA letters need it, and how a landlord scans the QR code on a PawTenant letter to confirm it is genuine without seeing your medical details.",
   },
   // ── ESA housing SEO batch (apartments / accommodation request / landlord checklist) ──
   "/esa-letter-for-apartments": {

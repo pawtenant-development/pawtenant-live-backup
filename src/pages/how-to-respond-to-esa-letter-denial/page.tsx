@@ -57,7 +57,7 @@ const steps = [
   {
     icon: "ri-qr-code-line",
     title: "Offer a way to verify",
-    desc: "Share the provider's license details or a PawTenant Verification ID so the landlord can confirm the letter is genuine — without seeing your records.",
+    desc: "Share the provider's license details or point to the QR code on a PawTenant letter so the landlord can confirm it is genuine — without seeing your records.",
   },
   {
     icon: "ri-mail-send-line",
@@ -81,7 +81,7 @@ const reasons = [
   {
     icon: "ri-error-warning-line",
     title: "\"Your letter looks fake\"",
-    desc: "Offer verification. A genuine letter names a licensed provider with a license number, and a PawTenant letter has a Verification ID a landlord can confirm.",
+    desc: "Offer verification. A genuine letter names a licensed provider with a license number, and a PawTenant letter carries a QR code a landlord can scan to confirm it.",
   },
   {
     icon: "ri-calendar-close-line",
@@ -103,7 +103,7 @@ const reasons = [
 const faqs: FaqItem[] = [
   {
     q: "What should I do if my landlord says my ESA letter is not valid?",
-    a: "Stay calm and ask, in writing, for the specific reason. Then make sure your letter is recent, from a provider licensed in your state, supports a disability-related need, and is verifiable — and offer a way to confirm it (license details or a Verification ID). Re-send it with a short written reasonable-accommodation request. If a valid request is still refused, use landlord denial support and, where appropriate, state or federal fair-housing avenues.",
+    a: "Stay calm and ask, in writing, for the specific reason. Then make sure your letter is recent, from a provider licensed in your state, supports a disability-related need, and is verifiable — and offer a way to confirm it (license details or the QR code on the letter). Re-send it with a short written reasonable-accommodation request. If a valid request is still refused, use landlord denial support and, where appropriate, state or federal fair-housing avenues.",
   },
   {
     q: "How do I respond if my landlord denies my emotional support animal?",
@@ -111,11 +111,11 @@ const faqs: FaqItem[] = [
   },
   {
     q: "My landlord says my ESA letter is fake — how do I prove it's real?",
-    a: "Offer verification. A genuine ESA letter names a mental health professional with their license type and number, and a PawTenant letter includes a Verification ID a landlord can confirm. Verification proves the letter is authentic without revealing your diagnosis or medical records.",
+    a: "Offer verification. A genuine ESA letter names a mental health professional with their license type and number, and a PawTenant letter carries a verification QR code a landlord can scan. Verification proves the letter is authentic without revealing your diagnosis or medical records.",
   },
   {
     q: "Can my landlord contact PawTenant to verify my ESA letter?",
-    a: "A landlord can confirm a PawTenant letter is genuine using the Verification ID on the letter, and can confirm the provider is licensed via their license number or the public NPI registry. Verification confirms authenticity only — it does not disclose your diagnosis or clinical detail.",
+    a: "A landlord can confirm a PawTenant letter is genuine by scanning the QR code on the letter, and can confirm the provider is licensed via their license number or the public NPI registry. Verification confirms authenticity only — it does not disclose your diagnosis or clinical detail.",
   },
   {
     q: "Does my landlord have to accept my ESA after I respond?",
@@ -235,7 +235,7 @@ export default function HowToRespondToESALetterDenialPage() {
               Stay calm and <strong>ask for the reason in writing</strong>. Then make sure your
               letter is <strong>recent</strong>, from a <strong>provider licensed in your
               state</strong>, supports a disability-related need, and is <strong>verifiable</strong> —
-              and offer a way to confirm it (license details or a Verification ID).
+              and offer a way to confirm it (license details or the QR code on the letter).
             </p>
             <p>
               <strong>Re-send it with a short written reasonable-accommodation request</strong>, which
@@ -323,7 +323,7 @@ export default function HowToRespondToESALetterDenialPage() {
         body="Most denials are based on misunderstandings — a no-pet rule, a doubt about the letter, or a request for a pet deposit. A recent, verifiable letter plus a short written accommodation request answers those directly and puts a request in front of the landlord they're required to consider."
         bullets={[
           "Letter from a provider licensed in your state, after a real evaluation.",
-          "A Verification ID a landlord can confirm — no medical details exposed.",
+          "A verification QR code a landlord can scan — no medical details exposed.",
           "Landlord denial support if a valid request is refused.",
         ]}
       />

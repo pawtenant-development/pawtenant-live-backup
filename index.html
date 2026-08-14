@@ -219,6 +219,30 @@
       //
       // Scrubbing before the redirect also fixes the referrer: the /r/ bridge's
       // own URL is what the next page reports as `dr`.
+      // ── QR verification token — a PATH credential ────────────────────────
+      // QR-LETTER-VERIFICATION-AND-SAMPLE-PARITY-001.
+      //
+      // This must run BEFORE the landing_url capture below. The scrub beneath
+      // only removes QUERY params (rt/resume/token); the QR token lives in the
+      // PATH (/v/t/<token>), so it sails straight through into
+      // sessionStorage.landing_url and localStorage.pt_first_touch — durable
+      // first-touch attribution that is forwarded to the order row, GHL and
+      // conversion uploads. Measured on deployed TEST with cleared storage.
+      //
+      // Exactly the failure this file already documents for ?rt=: a credential
+      // in the PATH defeats every query-only scrub. Placing the same scrub
+      // later in the page (it was originally next to the gtag config) loses to
+      // this block, which is the first writer of landing_url.
+      (function () {
+        try {
+          var m = window.location.pathname.match(/^\/(?:verify\/t|v\/t)\/([A-Za-z0-9_-]{10,64})\/?$/);
+          if (m) {
+            window.__PT_VERIFY_TOKEN__ = m[1];
+            window.history.replaceState(null, '', '/verify/t/redacted');
+          }
+        } catch (e) { /* never block boot */ }
+      })();
+
       (function () {
         try {
           var cu = new URL(window.location.href);
@@ -355,11 +379,33 @@
         //     call gtag() or fbq() never NPE before the scripts arrive. ──
         window.dataLayer = window.dataLayer || [];
         window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
+
         window.gtag('js', new Date());
-        window.gtag('config', 'G-BYFK1LCQHL');
-        window.gtag('config', 'AW-11509262282');
-        window.gtag('config', 'GT-P3HVCLCL');
-        window.gtag('config', 'GT-55KSTVFH');
+
+        // ── QR-LETTER-VERIFICATION-AND-SAMPLE-PARITY-001 · token privacy ──
+        // gtag('config', ...) sends an AUTOMATIC page_view whose page_location
+        // is the full URL. A scanned letter lands on /v/t/<opaque-token>, so
+        // without this the verification credential is shipped to GA4 and Google
+        // Ads on the very first paint — before React can scrub the address bar.
+        // The Meta suppression in metaPixel.ts does not cover this path.
+        //
+        // Only the automatic page_view is suppressed, and only on token routes.
+        // Every other page behaves exactly as before, and the tags stay
+        // configured so conversion events still work.
+        // NOTE: the two branches are deliberately separate calls. Passing an
+        // explicit `undefined` third argument is NOT the same as omitting it —
+        // gtag pushes `arguments` verbatim, so arguments.length becomes 3 and
+        // the tag stack stopped sending page_view on EVERY page. Measured:
+        // TEST 0 analytics page_view requests vs LIVE 6 on the same URL under
+        // identical conditions. Normal pages must call the two-argument form.
+        var __ptTokenRoute = /^\/(?:verify\/t|v\/t)\//.test(window.location.pathname);
+        ['G-BYFK1LCQHL', 'AW-11509262282', 'GT-P3HVCLCL', 'GT-55KSTVFH'].forEach(function (id) {
+          if (__ptTokenRoute) {
+            window.gtag('config', id, { send_page_view: false });
+          } else {
+            window.gtag('config', id);
+          }
+        });
 
         if (!window.fbq) {
           var n = window.fbq = function () {

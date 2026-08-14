@@ -516,7 +516,7 @@ export default function HousingRightsPage() {
                 Landlord Verification
               </div>
               <p className="text-[12.5px] text-slate-600 leading-relaxed">
-                How landlords confirm an ESA letter&rsquo;s authenticity using its unique verification ID.
+                How landlords confirm an ESA letter&rsquo;s authenticity using its discreet verification QR code.
               </p>
               <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-orange-600 mt-3 group-hover:gap-1.5 transition-all">
                 Read more <i className="ri-arrow-right-line" />

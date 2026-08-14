@@ -15,8 +15,8 @@
 // `esa_letter`, `psd_letter`.
 //
 // "My Documents" shows ONLY:
-//   1. the delivered ESA/PSD letter — with its Verification ID,
-//   2. the provider-COMPLETED Housing Accommodation form — with NO Verification ID.
+//   1. the delivered ESA/PSD letter — with its verification QR code,
+//   2. the provider-COMPLETED Housing Accommodation form — with NO verification QR code.
 // It never shows the customer's source upload (that lives in the Housing workflow
 // section).
 //
@@ -28,7 +28,7 @@
 //   • the VERIFICATION  — order_documents.processed_file_url, a SEPARATE object
 //                         written to the private `letters` bucket by
 //                         injectPdfVerification(), carrying the PawTenant
-//                         Verification ID + verify URL.
+//                         verification QR code.
 // This resolver now exposes BOTH as independently retrievable downloads, in the
 // owner-mandated order (Original first, Verification second). A variant is only
 // offered when its file genuinely exists — the two buttons can never resolve to
@@ -95,7 +95,7 @@ export interface CustomerDeliverable {
    *  Letters only; absent when the row carries no original. */
   originalDownload?: DeliverableDownload;
   /** CUSTOMER-DUAL-LETTER-DOWNLOADS-001 — the separately generated copy carrying
-   *  the Verification ID + QR. Letters only; absent when injection never ran. */
+   *  the verification QR code. Letters only; absent when injection never ran. */
   verificationDownload?: DeliverableDownload;
   /** Artifacts that genuinely do not exist for this deliverable. Drives the
    *  "show only the valid action" rule and the operational shortfall report. */
@@ -261,7 +261,7 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
   }
 
   // 2) Provider-COMPLETED Housing Accommodation form — a real deliverable with NO
-  //    verification ID/footer. Independent of letter delivery (a housing follow-up
+  //    verification QR/footer. Independent of letter delivery (a housing follow-up
   //    can complete after the base letter is already delivered).
   const housingCompleted = docs.find((d) => d.doc_type === "housing_completed");
   if (housingCompleted) {

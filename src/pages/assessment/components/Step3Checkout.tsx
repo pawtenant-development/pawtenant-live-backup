@@ -1629,7 +1629,7 @@ export default function Step3Checkout({
                 <div className="rounded-lg overflow-hidden shadow-[0_16px_40px_-18px_rgba(15,23,42,0.25)] ring-1 ring-slate-200 bg-white relative">
                   <img
                     src="/images/checkout/esa-sample-letter.svg"
-                    alt="Sample PawTenant ESA letter showing verification ID, patient info, and licensed provider signature"
+                    alt="Sample ESA letter showing recipient information and the licensed provider signature area, with a discreet verification QR code"
                     className="w-full h-auto block"
                     loading="lazy"
                   />
@@ -1644,7 +1644,7 @@ export default function Step3Checkout({
                   style={{ color: BRAND_GREEN }}
                 ></i>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Each letter includes a unique verification ID. Landlords can confirm authenticity directly — no health information is disclosed.
+                  Each letter carries a discreet verification QR code. Landlords scan it to confirm authenticity directly — no health information is disclosed.
                 </p>
               </div>
             </div>
@@ -1721,7 +1721,7 @@ export default function Step3Checkout({
               <SectionLabel>Landlord Verification Included</SectionLabel>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {[
-                  { icon: "ri-shield-check-line", text: "Unique Verification ID on every letter" },
+                  { icon: "ri-qr-code-line", text: "Discreet verification QR code on every letter" },
                   { icon: "ri-eye-off-line", text: "Landlords verify — no health info disclosed" },
                   { icon: "ri-user-star-line", text: "Signed by a state-licensed provider" },
                   { icon: "ri-home-heart-line", text: "Compliant with the Fair Housing Act" },
@@ -1772,7 +1772,7 @@ export default function Step3Checkout({
               <div className="rounded-lg overflow-hidden shadow-[0_16px_40px_-18px_rgba(15,23,42,0.25)] ring-1 ring-slate-200 bg-white relative">
                 <img
                   src="/images/checkout/esa-sample-letter.svg"
-                  alt="Sample PawTenant ESA letter showing verification ID, patient info, and licensed provider signature"
+                  alt="Sample ESA letter showing recipient information and the licensed provider signature area, with a discreet verification QR code"
                   className="w-full h-auto block"
                   loading="lazy"
                 />
@@ -1787,7 +1787,7 @@ export default function Step3Checkout({
                 style={{ color: BRAND_GREEN }}
               ></i>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Each letter includes a unique verification ID. Landlords can confirm authenticity directly — no health information is disclosed.
+                Each letter carries a discreet verification QR code. Landlords scan it to confirm authenticity directly — no health information is disclosed.
               </p>
             </div>
           </div>

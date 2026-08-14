@@ -1,0 +1,7 @@
+{
+  "_comment": "Canonical demo verification records. `verifyBase` is the PRODUCTION target baked into the published samples; `testVerifyBase` is the TEST target used only by the owner's physical-scan QA artifacts under docs/qa-artifacts (never published). The QR encodes the Verification ID alone — no token is involved in either build, so no secret value exists in this repository, in a build environment, or in any generated file. The Verification IDs below are public demonstration records and appear only inside QR module geometry, never as visible page text.",
+  "verifyBase": "https://pawtenant.com/verify",
+  "testVerifyBase": "https://pawtenant-test.vercel.app/verify",
+  "esa": { "id": "ESA-ZZ-826EK9F" },
+  "psd": { "id": "PSD-ZZ-EEVBTMN" }
+}

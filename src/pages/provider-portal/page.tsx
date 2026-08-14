@@ -7,6 +7,7 @@ import ProviderOrderDetail from "./components/ProviderOrderDetail";
 import ProviderEarnings from "./components/ProviderEarnings";
 import ProviderLicensePanel from "./components/ProviderLicensePanel";
 import ProviderProfilePanel from "./components/ProviderProfilePanel";
+import ProviderPublicContactPanel from "./components/ProviderPublicContactPanel";
 import ProviderOnboardingGuide from "./components/ProviderOnboardingGuide";
 
 interface DoctorProfile {
@@ -984,7 +985,12 @@ export default function ProviderPortalPage({ previewContext }: { previewContext?
 
         {/* ── PROFILE TAB ── */}
         {activeTab === "profile" && profile && (
-          <ProviderProfilePanel userId={profile.user_id} providerName={profile.full_name} readOnly={readOnly} />
+          <div className="space-y-5">
+            <ProviderProfilePanel userId={profile.user_id} providerName={profile.full_name} readOnly={readOnly} />
+            {/* PROVIDER-PROFESSIONAL-CONTACT-PUBLIC-CONSENT-001 — the only
+                surface that can put contact details on a public verification. */}
+            <ProviderPublicContactPanel userId={profile.user_id} readOnly={readOnly} />
+          </div>
         )}
       </div>
 

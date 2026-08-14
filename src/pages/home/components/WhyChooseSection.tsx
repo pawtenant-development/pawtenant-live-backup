@@ -109,7 +109,7 @@ export default function WhyChooseSection() {
                 <h3 className="text-gray-900 font-bold text-[13.5px] sm:text-sm group-hover:text-[#92400e] transition-colors">Landlord-Verifiable Letters</h3>
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#92400e] bg-orange-100 px-2 py-0.5 rounded-full whitespace-nowrap">Unique</span>
               </div>
-              <p className="text-gray-500 text-[12.5px] sm:text-[13px] leading-relaxed">Unique Verification ID on every letter — landlords confirm in seconds.</p>
+              <p className="text-gray-500 text-[12.5px] sm:text-[13px] leading-relaxed">Discreet verification QR code on every letter — landlords confirm in seconds.</p>
               <span className="inline-flex items-center gap-1 text-[11.5px] sm:text-xs font-semibold text-[#92400e] mt-2 group-hover:underline">
                 How it works <i className="ri-arrow-right-line text-xs"></i>
               </span>

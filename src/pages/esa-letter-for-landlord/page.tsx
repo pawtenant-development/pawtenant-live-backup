@@ -61,7 +61,7 @@ const howItWorks = [
   {
     icon: "ri-shield-check-line",
     title: "They may verify the letter",
-    desc: "A landlord can confirm the letter is genuine and the provider is licensed — for example, with a PawTenant Verification ID — without seeing your diagnosis.",
+    desc: "A landlord can confirm the letter is genuine and the provider is licensed — for example, by scanning the QR code on a PawTenant letter — without seeing your diagnosis.",
   },
   {
     icon: "ri-home-smile-line",
@@ -94,7 +94,7 @@ const landlordQuestions = [
   },
   {
     q: "\"How do we know this letter is real?\"",
-    a: "A PawTenant letter includes a Verification ID and the provider's license details so the landlord can confirm authenticity — without exposing any clinical information.",
+    a: "A PawTenant letter carries a discreet verification QR code and the provider's license details so the landlord can confirm authenticity — without exposing any clinical information.",
   },
   {
     q: "\"We only accept service animals.\"",
@@ -121,7 +121,7 @@ const faqs: FaqItem[] = [
   },
   {
     q: "How can my landlord verify my ESA letter?",
-    a: "Every finalized PawTenant letter includes a unique Verification ID along with the provider's name, license number, and NPI. A landlord can confirm authenticity at pawtenant.com/verify or check the provider on the public NPI registry. Verification confirms authenticity only — no clinical detail is exposed.",
+    a: "Every finalized PawTenant letter includes a discreet verification QR code along with the provider's name, license number, and NPI. A landlord can confirm authenticity at pawtenant.com/verify or check the provider on the public NPI registry. Verification confirms authenticity only — no clinical detail is exposed.",
   },
   {
     q: "Does an ESA letter guarantee my landlord will say yes?",
@@ -332,7 +332,7 @@ export default function ESALetterForLandlordPage() {
       <EsaLetterVerificationWidget
         className="bg-[#FFF7ED] border-t border-orange-100"
         heading="Landlords: verify a letter you've received"
-        copy="Enter the Verification ID printed on the document. Verification confirms the letter is genuine and who issued it — no health information is shown."
+        copy="Scan the discreet QR code on the document, or enter a supplied Verification ID here. Verification confirms the letter is genuine and who issued it — no health information is shown."
       />
 
       {/* Notarization — INFORMATIONAL ONLY (owner-approved copy).

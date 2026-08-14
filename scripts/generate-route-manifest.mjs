@@ -43,7 +43,15 @@ const uniqSort = (a) => [...new Set(a)].sort();
 // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001: /checkout/<slug> is a
 // dynamic customer recovery route. The generator only records STATIC paths,
 // so without this prefix the soft-404 middleware rejects every real slug.
-const PASS_THROUGH_PREFIXES = ["/verify/", "/r/", "/checkout/", "/continue/"];
+// Dynamic runtime routes the SPA resolves at request time. Anything NOT listed
+// here is served from the prerendered route set and 404s on the platform even
+// though React Router knows it.
+//
+// `/v/t/` is the short alias encoded in every letter QR. `/verify/` already
+// covered `/verify/t/:token`, which is why that one worked and the alias did
+// not — a scan would have 404'd on the deployed site while passing every local
+// test (QR-LETTER-VERIFICATION-AND-SAMPLE-PARITY-001 · Stage 3).
+const PASS_THROUGH_PREFIXES = ["/verify/", "/v/t/", "/r/", "/checkout/", "/continue/"];
 
 // Retired WordPress / WooCommerce infrastructure — permanently gone → HTTP 410.
 // Matched on the FIRST path segment. None of these collide with a real route.
