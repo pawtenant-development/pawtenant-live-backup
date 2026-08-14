@@ -91,6 +91,13 @@ async function buildLetter(opts = {}) {
   const {
     pageSize = [612, 792], letterhead = false, signature = false,
     footerText = false, pages = 1, bodyLines = 12, clipFirst = false,
+    // Region fixtures. `blocks` are explicit painted rectangles in page space,
+    // used to occupy a chosen band of the right-hand column so the ladders can
+    // be driven deterministically. `whiteWash` paints a page-sized WHITE fill,
+    // which is invisible and must NOT count as occupancy. `strokeBlocks` are
+    // stroked (not filled) rectangles — a stroke is visible in any colour, so
+    // it must count even though a white FILL does not.
+    blocks = [], whiteWash = false, strokeBlocks = [],
   } = opts;
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -110,6 +117,11 @@ async function buildLetter(opts = {}) {
   for (let p = 0; p < pages; p++) {
     const page = doc.addPage(pageSize);
     const [w, h] = pageSize;
+    if (whiteWash) {
+      // Page-sized white background wash — the construct converted PDFs open
+      // with. Invisible, therefore not occupancy, therefore must not block.
+      page.drawRectangle({ x: 0, y: 0, width: w, height: h, color: rgb(1, 1, 1) });
+    }
     if (clipFirst) {
       // A page-sized clip path. It paints nothing, and must not be treated as
       // occupancy — this is the exact construct that used to blank the page.
@@ -143,6 +155,17 @@ async function buildLetter(opts = {}) {
       const pn = `${p + 1}/${pages}`;
       page.drawText(pn, { x: w - 60, y: 30, size: 9, font });
       TT(p, pn, w - 60, 30, 9, font);
+    }
+    for (const [x0, y0, x1, y1] of blocks) {
+      page.drawRectangle({ x: x0, y: y0, width: x1 - x0, height: y1 - y0, color: rgb(0.1, 0.1, 0.1) });
+      T(p, x0, y0, x1, y1);
+    }
+    for (const [x0, y0, x1, y1] of strokeBlocks) {
+      page.drawRectangle({
+        x: x0, y: y0, width: x1 - x0, height: y1 - y0,
+        borderColor: rgb(1, 1, 1), borderWidth: 1,
+      });
+      T(p, x0, y0, x1, y1);
     }
   }
   return { bytes: await doc.save({ updateMetadata: false }), truth };
@@ -219,6 +242,15 @@ async function verify(originalBytes, built, expectUrl = QR_URL, truth = null) {
   // Printed size inside the owner's band.
   const inches = M.qrInches(metrics);
   if (inches < 0.75 || inches > 0.9) v.push("QR_SIZE_OUT_OF_RANGE");
+
+  // The whole plate — code AND its 4-module quiet zone — must sit inside the
+  // page box. A code that runs off the trimmed edge cannot be scanned, and the
+  // upper-right ladder is the path most likely to push against the top edge.
+  if (placement.x < 0 || placement.y < 0 ||
+      placement.x + metrics.width > b.width + 0.01 ||
+      placement.y + metrics.height > b.height + 0.01) {
+    v.push("QR_OUTSIDE_PAGE_BOX");
+  }
 
   // Decodes, and to the right destination.
   const decoded = await decodeQrFromPdf(built.bytes, metrics, pi);
@@ -301,6 +333,106 @@ if (!SELF) {
   const same = Buffer.from(a1.bytes).equals(Buffer.from(a2.bytes));
   same ? ok("F9  re-running on the same original is byte-identical")
        : bad("F9  re-running on the same original is byte-identical", "bytes differ");
+
+  // ── Region fixtures ───────────────────────────────────────────────────────
+  //
+  // The approved order is LOWER-RIGHT (climbing) then UPPER-RIGHT (descending),
+  // then refuse. These drive both ladders deterministically by painting an
+  // explicit blocker across the right-hand column.
+  //
+  // "Climbs only as far as necessary" is judged by recomputing the FIRST free
+  // candidate from GROUND TRUTH — the exact rectangles the builder painted —
+  // and requiring the module to have chosen precisely that one. Comparing
+  // against the analyzer's own opinion would be circular and would pass even
+  // when both are wrong together.
+  //
+  // TWO independent judgements, because they answer different questions:
+  //
+  //   • SAFETY is judged against GROUND TRUTH (exact font metrics and image
+  //     boxes from the builder). verify() raises QR_OVERLAPS_CONTENT if the
+  //     chosen spot touches anything really drawn. Non-circular by construction.
+  //   • "ONLY AS FAR AS NECESSARY" is judged against the analyzer's own bounds,
+  //     because that is the model the placement logic is entitled to use — and
+  //     it is deliberately MORE pessimistic than ground truth about text extent.
+  //     Requiring it to match ground truth exactly would be demanding that the
+  //     conservative model stop being conservative.
+  //
+  // Together: the module may not skip a rung its own model calls free, and may
+  // not land on one that ground truth calls occupied.
+  const firstFree = (pageW, pageH, metrics, rects) => {
+    for (const c of M.candidates(pageW, pageH, metrics)) {
+      const g = {
+        x0: c.x - M.CLEARANCE_PT, y0: c.y - M.CLEARANCE_PT,
+        x1: c.x + metrics.width + M.CLEARANCE_PT, y1: c.y + metrics.height + M.CLEARANCE_PT,
+      };
+      if (!rects.some((r) => r.x0 < g.x1 && r.x1 > g.x0 && r.y0 < g.y1 && r.y1 > g.y0)) return c;
+    }
+    return null;
+  };
+  const analyzerRects = async (bytes) => {
+    const d = await PDFDocument.load(bytes, { updateMetadata: false });
+    const raw = await readPageContent(d, 0);
+    const sz = d.getPage(0).getSize();
+    const b = M.analyzePageContent(raw ?? "", sz.width, sz.height, M.readXObjectBoxes(d, 0));
+    return b.understood && b.rects ? b.rects : null;
+  };
+
+  // x-span of the right-hand column, widened past the clearance guard so a
+  // blocker reliably occupies it.
+  const COL = [497, 595];
+  const REGION = [
+    ["R1  lower-right clear -> lower-right, lowest rung", {}, "lower-right"],
+    ["R2  lowest lower-right rung blocked -> climbs only as far as needed",
+      { blocks: [[COL[0], 12, COL[1], 40]] }, "lower-right"],
+    ["R3  every lower-right rung blocked, upper-right clear -> upper-right",
+      { blocks: [[COL[0], 0, COL[1], 290]] }, "upper-right"],
+    // bodyLines:0 — the analyzer models a text line pessimistically wide, so a
+    // full body block would (correctly) close the whole upper ladder and this
+    // fixture would only re-prove the safe-fail that R5 already covers.
+    ["R4  upper-right top rung blocked too -> descends only as far as needed",
+      { bodyLines: 0, blocks: [[COL[0], 0, COL[1], 290], [COL[0], 690, COL[1], 700]] }, "upper-right"],
+    ["R5  lower AND upper right both occupied -> safe-fail",
+      { blocks: [[COL[0], 0, COL[1], 290], [COL[0], 500, COL[1], 792]] }, null],
+    ["R6  full-page white background wash does not block placement",
+      { whiteWash: true }, "lower-right"],
+    ["R7  a WHITE STROKE still blocks (a stroke is visible in any colour)",
+      { strokeBlocks: [[COL[0], 12, COL[1], 40]] }, "lower-right"],
+  ];
+
+  for (const [name, opts, expectRegion] of REGION) {
+    const { bytes: rb, truth: rt } = await buildLetter(opts);
+    const rBuilt = await M.buildQrVerificationPdf(rb, { letterId: LETTER_ID, verifyUrl: QR_URL }, readPageContent);
+    const viol = await verify(rb, rBuilt, QR_URL, rt);
+    const aRects = await analyzerRects(rb);
+    const want = aRects ? firstFree(612, 792, rBuilt.metrics, aRects) : null;
+
+    if (expectRegion === null) {
+      (rBuilt.placement.mode === "none" && want === null && viol.length === 0)
+        ? ok(`${name} -> ${rBuilt.placement.mode}`)
+        : bad(name, `mode=${rBuilt.placement.mode} modelSaysFree=${want && want.label} violations=${JSON.stringify(viol)}`);
+      continue;
+    }
+
+    const regionOk = rBuilt.placement.region === expectRegion;
+    const exact = want && rBuilt.placement.mode === "inline" &&
+      Math.abs(rBuilt.placement.x - want.x) < 0.01 && Math.abs(rBuilt.placement.y - want.y) < 0.01;
+    (regionOk && exact && viol.length === 0)
+      ? ok(`${name} -> ${want.label} (y=${want.y.toFixed(1)})`)
+      : bad(name, `region=${rBuilt.placement.region} chose=(${rBuilt.placement.x?.toFixed(1)},${rBuilt.placement.y?.toFixed(1)}) firstFree=${want ? `${want.label} (${want.x.toFixed(1)},${want.y.toFixed(1)})` : "none"} violations=${JSON.stringify(viol)}`);
+  }
+
+  // R2/R7 must actually have MOVED off the lowest rung, or they prove nothing.
+  {
+    const { bytes: clearB } = await buildLetter({});
+    const clearBuilt = await M.buildQrVerificationPdf(clearB, { letterId: LETTER_ID, verifyUrl: QR_URL }, readPageContent);
+    const { bytes: blockedB } = await buildLetter({ blocks: [[COL[0], 12, COL[1], 40]] });
+    const blockedBuilt = await M.buildQrVerificationPdf(blockedB, { letterId: LETTER_ID, verifyUrl: QR_URL }, readPageContent);
+    const moved = blockedBuilt.placement.y > clearBuilt.placement.y + 0.01;
+    const step = (blockedBuilt.placement.y - clearBuilt.placement.y) % 6;
+    (moved && Math.abs(step) < 0.01)
+      ? ok(`R8  the climb is a whole number of 6pt rungs (+${(blockedBuilt.placement.y - clearBuilt.placement.y).toFixed(0)}pt)`)
+      : bad("R8  the climb is a whole number of 6pt rungs", `clear=${clearBuilt.placement.y} blocked=${blockedBuilt.placement.y}`);
+  }
 
   const re = await M.buildQrVerificationPdf(a1.bytes, { letterId: LETTER_ID, verifyUrl: QR_URL }, readPageContent);
   const stacked = re.placement.mode === "inline" &&
@@ -553,6 +685,26 @@ CONTROLS.push(["QR_OVERLAPS_CONTENT", "analyzer forced to call an occupied corne
   const BM = await loadModule(blind, "blind");
   const { bytes: o2, truth: t2 } = await buildLetter({ footerText: true, bodyLines: 34 });
   const b2 = await BM.buildQrVerificationPdf(o2, { letterId: LETTER_ID, verifyUrl: QR_URL }, readPageContent);
+  return [o2, b2, t2];
+}]);
+
+// 10. PAINTED-PATH BOUNDING BOX. commitPath() unions a subpath into ONE box.
+//     Reverted to noting each path POINT — which is what the module used to do —
+//     a filled rectangle drawn with m/l (pdf-lib's own output, and that of many
+//     real producers) is recorded as four zero-area corner marks with nothing
+//     between them, so the QR can be placed INSIDE a solid filled shape and the
+//     occupancy test sees nothing. Ground truth must catch it.
+CONTROLS.push(["QR_OVERLAPS_CONTENT", "painted path committed as corner POINTS, not a box", async () => {
+  const pointwise = MOD_SRC.replace(
+    "    note(x0, y0, x1, y1);\n  };",
+    "    for (const r of path) note(r.x0, r.y0, r.x1, r.y1);\n  };",
+  );
+  if (pointwise === MOD_SRC) throw new Error("commitPath anchor no longer matches");
+  const PM = await loadModule(pointwise, "pointwise");
+  // A solid filled box straight across the lower-right column: the ONLY thing
+  // standing between the QR and the interior of that box is the union.
+  const { bytes: o2, truth: t2 } = await buildLetter({ blocks: [[497, 12, 595, 120]] });
+  const b2 = await PM.buildQrVerificationPdf(o2, { letterId: LETTER_ID, verifyUrl: QR_URL }, readPageContent);
   return [o2, b2, t2];
 }]);
 

@@ -368,6 +368,33 @@ export function analyzePageContent(
   // corner could ever be found. Points accumulate here and are committed only
   // on a painting operator; `n` discards them.
   let path: Rect[] = [];
+  /**
+   * Commit the pending path as ONE bounding box.
+   *
+   * WHY A UNION AND NOT EACH POINT. `m`/`l`/`c` contribute DEGENERATE rects —
+   * single points. Committing them individually records a filled box as four
+   * zero-area corner marks with nothing in between, so an intersection test
+   * against the interior finds nothing and the QR can be placed INSIDE a solid
+   * filled shape. That is exactly how pdf-lib (and many real producers) emit a
+   * rectangle: `1 0 0 1 x y cm / 0 0 m / 0 h l / w h l / w 0 l / h / f`, with no
+   * `re` operator anywhere. Text and XObjects were unaffected — they already
+   * note true boxes — which is why the earlier fixtures never caught this.
+   *
+   * The union is also the conservative reading for curves: `c`/`v`/`y` control
+   * points bound the curve they describe, so the box can only be too large,
+   * never too small.
+   */
+  const commitPath = () => {
+    if (!path.length) return;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const r of path) {
+      if (r.x0 < x0) x0 = r.x0;
+      if (r.y0 < y0) y0 = r.y0;
+      if (r.x1 > x1) x1 = r.x1;
+      if (r.y1 > y1) y1 = r.y1;
+    }
+    note(x0, y0, x1, y1);
+  };
   // Non-stroking (fill) colour. A WHITE fill paints nothing a reader can see -
   // and converted PDFs almost always open with a page-sized white background
   // wash. Recording that as occupancy marked the entire page full and no corner
@@ -461,6 +488,9 @@ export function analyzePageContent(
           path.push({ x0: Math.min(x0, x1), y0: Math.min(y0, y1), x1: Math.max(x0, x1), y1: Math.max(y0, y1) });
         }
         break;
+      // Path-construction points. Each is recorded as a degenerate rect and is
+      // only ever committed through commitPath(), which unions the whole
+      // subpath into ONE bounding box — see the note there.
       case "m": case "l": case "c": case "v": case "y":
         for (let i = 0; i + 1 < st.length; i += 2) {
           const px = ce + st[i] * ca, py = cf + st[i + 1] * cd;
@@ -476,13 +506,13 @@ export function analyzePageContent(
       case "cs": case "sc": case "scn": fillIsWhite = false; break;
       // Fill-only paints: a white fill is invisible, so it is not occupancy.
       case "f": case "F": case "f*":
-        if (!fillIsWhite) for (const r of path) note(r.x0, r.y0, r.x1, r.y1);
+        if (!fillIsWhite) commitPath();
         path = [];
         break;
       // A stroke always marks the page, whatever the fill colour is.
       case "S": case "s":
       case "B": case "B*": case "b": case "b*":
-        for (const r of path) note(r.x0, r.y0, r.x1, r.y1);
+        commitPath();
         path = [];
         break;
       // End path with no painting — this is the clip-only case (W n / W* n).
@@ -519,6 +549,12 @@ export interface Placement {
   pageIndex?: number;
   x?: number;
   y?: number;
+  /**
+   * Which approved region won, recorded rather than parsed back out of `reason`.
+   * "lower-right" includes every raised rung of the lower ladder; the exact rung
+   * is still in `reason`.
+   */
+  region?: "lower-right" | "upper-right";
   reason: string;
 }
 
@@ -526,25 +562,36 @@ const intersects = (a: Rect, b: Rect) =>
   a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
 
 /**
- * Candidate positions, in preference order, for a page of this size.
- * Bottom-right first: that is the footer corner the owner asked for, and it is
- * where letters conventionally leave whitespace. Bottom-left is the fallback
- * for letters whose signature block sits on the right.
- */
-/**
- * Candidate positions, in preference order.
+ * Candidate positions, in the owner-approved preference order.
  *
- * LOWER BOTTOM-RIGHT FIRST. Across the genuine provider letters reviewed as
- * layout references, signatures and credential blocks concentrate on the
- * LOWER-LEFT, leaving the lower-right the most reliably free region — but the
- * letters end at different heights, so a single hard-coded coordinate would be
- * wrong for most of them. The bottom-right is therefore scanned as a LADDER:
- * start at the lowest position the margins allow and climb only as far as
- * needed to clear whatever is there.
+ * TWO REGIONS ONLY, both on the RIGHT edge:
  *
- * The preferred spot sits ~0.5in from the right edge and ~0.375in from the
- * bottom. Rungs above that are progressively less preferred but still safe;
- * they are only reached when the lower ones are occupied.
+ *   1. LOWER-RIGHT, climbing UP. Across the genuine provider letters reviewed
+ *      as layout references, signatures and credential blocks concentrate on
+ *      the LOWER-LEFT, leaving the lower-right the most reliably free region —
+ *      but letters end at different heights, so a single hard-coded coordinate
+ *      would be wrong for most of them. It is therefore scanned as a LADDER:
+ *      start at the approved position (~0.50in from the right, ~0.42in from the
+ *      bottom) and climb in 6pt steps ONLY as far as needed to clear whatever
+ *      is there.
+ *
+ *   2. UPPER-RIGHT, descending. Reached only when every lower-right rung is
+ *      blocked. It starts at the mirror of the approved position (~0.50in from
+ *      the right, ~0.42in from the TOP) and moves DOWN in the same 6pt steps.
+ *      "Place it on top" means the upper portion of the page, so the descent is
+ *      bounded to the upper half: a candidate is only offered while its bottom
+ *      edge stays at or above the page midpoint. Below that we would be
+ *      drifting into the body of the letter, and a safe-fail is the correct
+ *      answer instead.
+ *
+ * There is no third region and no appended page. BOTTOM-LEFT WAS REMOVED: the
+ * approved order is lower-right then upper-right, and the lower-left is exactly
+ * where signature and credential blocks live on these letters.
+ *
+ * Every candidate here is only a PROPOSAL. findSafePlacement() still has to
+ * prove the rectangle plus clearance is free of located content before any of
+ * them is used, so ordering changes which safe spot wins — never whether the
+ * occupancy check runs.
  */
 // Margins are measured to the CODE, not to the white plate. The plate carries a
 // 4-module quiet zone (~7.4pt at the sizes we encode), so anchoring on the plate
@@ -552,28 +599,44 @@ const intersects = (a: Rect, b: Rect) =>
 // margin at 0.60in when 0.45-0.55in was wanted.
 export const QR_CODE_RIGHT_PT = 36;      // 0.50in from the trimmed right edge
 export const QR_CODE_BOTTOM_PT = 30;     // 0.42in from the trimmed bottom edge
+export const QR_CODE_TOP_PT = 30;        // 0.42in from the trimmed top edge
 const LADDER_STEP_PT = 6;
-const LADDER_RUNGS = 30;                 // climbs up to 174pt above the floor
+const LADDER_RUNGS = 30;                 // climbs up to 174pt from its anchor
 
-export function candidates(pageW: number, pageH: number, block: BlockMetrics): Array<{ x: number; y: number; label: string }> {
-  const out: Array<{ x: number; y: number; label: string }> = [];
+export function candidates(
+  pageW: number,
+  pageH: number,
+  block: BlockMetrics,
+): Array<{ x: number; y: number; label: string; region: "lower-right" | "upper-right" }> {
+  const out: Array<{ x: number; y: number; label: string; region: "lower-right" | "upper-right" }> = [];
   const quiet = block.quietZonePt;
   // Plate origin that puts the CODE at the requested margins.
   const rightX = pageW - QR_CODE_RIGHT_PT - block.width + quiet;
-  const leftX = QR_CODE_RIGHT_PT - quiet;
   const floorY = QR_CODE_BOTTOM_PT - quiet;
+  // Mirror of floorY: the CODE sits QR_CODE_TOP_PT below the trimmed top edge.
+  const ceilY = pageH - QR_CODE_TOP_PT - block.height + quiet;
 
-  const ladder = (x: number, name: string) => {
-    for (let i = 0; i < LADDER_RUNGS; i++) {
-      const y = floorY + i * LADDER_STEP_PT;
-      if (y + block.height > pageH - MARGIN_PT) break;
-      out.push({ x, y, label: i === 0 ? `${name} (lowest)` : `${name} +${i * LADDER_STEP_PT}pt` });
-    }
-  };
-  ladder(rightX, "bottom-right");
-  // Fallback, only once the whole right-hand ladder is blocked.
-  ladder(leftX, "bottom-left");
-  out.push({ x: rightX, y: pageH - MARGIN_PT - block.height, label: "top-right" });
+  // 1 · lower-right, climbing
+  for (let i = 0; i < LADDER_RUNGS; i++) {
+    const y = floorY + i * LADDER_STEP_PT;
+    if (y + block.height > pageH - MARGIN_PT) break;
+    out.push({
+      x: rightX, y, region: "lower-right",
+      label: i === 0 ? "lower-right (lowest)" : `lower-right +${i * LADDER_STEP_PT}pt`,
+    });
+  }
+
+  // 2 · upper-right, descending, bounded to the upper half of the page
+  for (let i = 0; i < LADDER_RUNGS; i++) {
+    const y = ceilY - i * LADDER_STEP_PT;
+    if (y < MARGIN_PT) break;             // never below the bottom margin
+    if (y < pageH / 2) break;             // stay in the UPPER portion of the page
+    out.push({
+      x: rightX, y, region: "upper-right",
+      label: i === 0 ? "upper-right (highest)" : `upper-right -${i * LADDER_STEP_PT}pt`,
+    });
+  }
+
   return out;
 }
 
@@ -607,12 +670,15 @@ export function findSafePlacement(
     const hit = bounds.rects.find((r) => intersects(r, guard));
     if (!hit) {
       return {
-        mode: "inline", pageIndex, x: c.x, y: c.y,
+        mode: "inline", pageIndex, x: c.x, y: c.y, region: c.region,
         reason: `${c.label} of page ${pageIndex + 1} verified clear (${block.width.toFixed(1)}x${block.height.toFixed(1)}pt + ${CLEARANCE_PT}pt clearance)`,
       };
     }
   }
-  return { mode: "none", reason: `no clear corner on page ${pageIndex + 1}` };
+  return {
+    mode: "none",
+    reason: `no clear lower-right or upper-right space on page ${pageIndex + 1}`,
+  };
 }
 
 // ── Document integrity ───────────────────────────────────────────────────────

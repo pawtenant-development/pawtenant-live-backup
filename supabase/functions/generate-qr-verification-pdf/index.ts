@@ -226,7 +226,7 @@ Deno.serve(async (req: Request) => {
     qr_file_url: signed.signedUrl,
     qr_generated_at: new Date().toISOString(),
     qr_letter_id: letterId,
-    qr_placement: built.placement.mode,
+    qr_placement: built.placement.region ?? built.placement.mode,
     qr_source_sha256: originalSha,
   }).eq("id", doc.id);
   if (updErr) return json({ ok: false, error: `Update failed: ${updErr.message}` }, 500);
@@ -240,7 +240,8 @@ Deno.serve(async (req: Request) => {
     description: `QR verification copy generated for ${cid} (${letterId}) — ${built.placement.mode}`,
     metadata: {
       document_id: doc.id, order_id: doc.order_id, letter_id: letterId,
-      placement: built.placement.mode, placement_reason: built.placement.reason,
+      placement: built.placement.mode, placement_region: built.placement.region ?? null,
+      placement_reason: built.placement.reason,
       pages_before: built.pageCountBefore, pages_after: built.pageCountAfter,
       original_sha256: originalSha, destination: destPath, silent: true,
     },
