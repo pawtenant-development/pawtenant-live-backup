@@ -213,14 +213,14 @@ Thank you for trusting PawTenant with your ESA needs.`,
     subject: "Your PawTenant ESA Letter Is Landlord-Verifiable — Here's What That Means for You",
     body: `Hi {name},
 
-At PawTenant, we do something no other ESA provider does: every letter we issue includes a unique Verification ID and QR code that allows your landlord to instantly confirm your letter's authenticity — without ever seeing your personal health information.
+At PawTenant, we do something no other ESA provider does: every letter we issue carries a discreet verification QR code that allows your landlord to instantly confirm your letter's authenticity — without ever seeing your personal health information.
 
 This is our unique feature, built specifically to protect you.
 
 Here's how it works:
-• Your letter includes a unique Verification ID and QR code
+• Your letter carries a discreet verification QR code
 • Your landlord visits pawtenant.com/esa-letter-verification
-• They enter the ID or scan the QR code to confirm your letter is valid
+• They scan the QR code to confirm your letter is valid
 • Zero health information is disclosed — only letter validity is confirmed
 
 Why does this matter? Landlords who question the legitimacy of ESA letters are common. With PawTenant's verification system, you can hand your landlord a QR code and let them confirm it themselves — instantly, privately, and without any back-and-forth.
