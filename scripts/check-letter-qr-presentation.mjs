@@ -38,6 +38,12 @@ const F = {
   mod: "supabase/functions/_shared/qrVerificationPdf.ts",
   v1: "supabase/functions/inject-pdf-footer/index.ts",
   v2: "supabase/functions/generate-qr-verification-pdf/index.ts",
+  // The PROVIDER submission path. It stamps most letters in practice, and it
+  // carried its own inline copy of the legacy printed block long after
+  // inject-pdf-footer had been converted — a letter submitted after the QR-only
+  // rollout still came out with "Verification ID:" and the verify URL on it.
+  // Guarding only one injector is what let that survive.
+  sub: "supabase/functions/provider-submit-letter/index.ts",
   build: "scripts/build-sample-letter-assets.mjs",
   artifacts: "scripts/build-test-scan-artifacts.mjs",
 };
@@ -50,6 +56,16 @@ function read(key, override) {
   // anchors; on a CRLF checkout those anchors miss and the negative control
   // degrades to a NO-OP — a control that cannot fail proves nothing.
   return readFileSync(abs, "utf8").replace(/\r\n/g, "\n");
+}
+
+/**
+ * Strip comments but KEEP string literals. Needed for "this text must not be
+ * printable" checks: codeOnly() blanks literals, so a reintroduced
+ * "Verification ID:" string would vanish before the scan could see it. Comments
+ * still have to go, or the explanatory prose in these files trips the scan.
+ */
+function noComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
 }
 
 /** Strip line comments, block comments and string/template literals. */
@@ -91,6 +107,28 @@ function run(override) {
     !/Verification ID/i.test(v1) || !new RegExp("Verification ID\\s*:?\\s*[\"'`]").test(v1code));
   add("P3c", "inject-pdf-footer no longer embeds fonts for its own text",
     !/embedFont/.test(v1code));
+
+  // P3d-P3g — the PROVIDER SUBMISSION path, held to exactly the same contract.
+  // EVERY path that writes processed_file_url must go through the shared,
+  // guard-covered module; a second injector with its own drawing code is how a
+  // printed Verification ID outlived the rollout.
+  const sub = read("sub", override);
+  const subcode = codeOnly(sub);
+  add("P3d", "provider-submit-letter makes ZERO drawText calls", drawTextCalls(sub) === 0);
+  // Literals PRESERVED here on purpose: the thing being forbidden IS a string.
+  // The colon is REQUIRED — it is what distinguishes the printed label
+  // "Verification ID:" from the internal audit sentence "Verification ID issued
+  // for order ...", which is a log message and never reaches the document.
+  const subText = noComments(sub);
+  add("P3e", "provider-submit-letter builds no printed 'Verification ID:' label",
+    !/["'`]\s*Verification ID\s*:/i.test(subText));
+  add("P3h", "provider-submit-letter builds no printed verify-URL string",
+    !/pawtenant\.com\/verify\/\$\{/.test(subText));
+  add("P3f", "provider-submit-letter no longer embeds fonts for its own text",
+    !/embedFont/.test(subcode));
+  add("P3g", "provider-submit-letter routes through the shared QR module",
+    /buildQrVerificationPdf/.test(subcode) &&
+    /_shared\/qrVerificationPdf\.ts/.test(sub));
 
   // P4 — v1 routes through the shared, content-aware placement.
   add("P4", "inject-pdf-footer delegates to buildQrVerificationPdf",
@@ -157,6 +195,22 @@ if (SELF) {
       { build: build.replace("const CHECK =", "const T = process.env.SAMPLE_QR_TOKEN_ESA;\nconst CHECK =") }],
     ["P8b", "artifacts are written into public/",
       { artifacts: artifacts.replace('"docs/qa-artifacts"', '"public/qa-artifacts"') }],
+    // The exact regression that shipped: the provider submission path keeps its
+    // own printed verification block while the other injector is QR-only.
+    ["P3d", "provider-submit-letter draws text again",
+      { sub: read("sub").replace(
+        "    const processedBytes = built.bytes;",
+        '    pdfDoc.getPage(0).drawText("Verification ID:", {});\n    const processedBytes = built.bytes;') }],
+    ["P3e", "provider-submit-letter re-adds the printed 'Verification ID:' label",
+      { sub: read("sub").replace(
+        "    const processedBytes = built.bytes;",
+        '    const line1 = "Verification ID:";\n    const processedBytes = built.bytes;') }],
+    ["P3h", "provider-submit-letter re-adds the printed verify-URL template",
+      { sub: read("sub").replace(
+        "    const processedBytes = built.bytes;",
+        "    const line3 = `pawtenant.com/verify/${letterId}`;\n    const processedBytes = built.bytes;") }],
+    ["P3g", "provider-submit-letter stops using the shared module",
+      { sub: read("sub").replaceAll("buildQrVerificationPdf", "legacyStamp") }],
   ];
 
   let bad = 0;

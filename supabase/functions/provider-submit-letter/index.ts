@@ -1,5 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
+// rgb/StandardFonts are gone with the printed verification box: this function
+// no longer draws any text of its own. PDFDocument is kept only for the page
+// -content reader the shared placement analyzer needs.
+import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
+import { buildQrVerificationPdf } from "../_shared/qrVerificationPdf.ts";
 import { applyVerificationPrefix, LETTER_LABELS } from "../_shared/letterType.ts";
 import { ensureRaCompletionEarning } from "../_shared/raCompletionEarning.ts";
 // evaluateNotificationSuppression moved with the customer email to
@@ -8,6 +12,46 @@ import { suppressForFixtureOrder } from "../_shared/testNotificationSuppression.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const VERIFY_BASE = Deno.env.get("PUBLIC_SITE_URL") ?? "https://pawtenant.com";
+
+// ── Page-content reader for the shared placement analyzer ────────────────────
+// Byte-for-byte the reader inject-pdf-footer uses. Kept local rather than
+// imported so that a change to one injector cannot silently alter the other;
+// both are covered by the same guards.
+async function inflate(raw: Uint8Array, format: "deflate" | "deflate-raw"): Promise<string> {
+  const ds = new DecompressionStream(format);
+  const buf = await new Response(new Blob([raw]).stream().pipeThrough(ds)).arrayBuffer();
+  return new TextDecoder("latin1").decode(new Uint8Array(buf));
+}
+
+async function readPageContent(doc: PDFDocument, index: number): Promise<string | null> {
+  try {
+    const page = doc.getPage(index);
+    // deno-lint-ignore no-explicit-any
+    const contents = (page as any).node.Contents();
+    // No /Contents at all means the page draws nothing — proof of a blank page,
+    // not a failure to read one.
+    if (!contents) return "";
+    const list = contents.constructor?.name === "PDFArray"
+      // deno-lint-ignore no-explicit-any
+      ? contents.asArray().map((r: any) => (doc as any).context.lookup(r))
+      : [contents];
+    let out = "";
+    for (const s of list) {
+      if (!s?.getContents) return null;
+      const raw: Uint8Array = s.getContents();
+      if (raw[0] === 0x78) {
+        out += await inflate(raw, "deflate");
+      } else {
+        const asText = new TextDecoder("latin1").decode(raw);
+        out += /[A-Za-z]/.test(asText.slice(0, 32)) ? asText : await inflate(raw, "deflate-raw");
+      }
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? SUPABASE_SERVICE_ROLE_KEY;
 
 const corsHeaders = {
@@ -223,53 +267,61 @@ async function injectPdfVerification(
 
     const pdfBytes = await downloadDocumentBytes(supabase, fileUrl);
 
-    let pdfDoc: PDFDocument;
+    // ── QR-ONLY VERIFICATION COPY ────────────────────────────────────────────
+    // QR-LETTER-VERIFICATION-AND-SAMPLE-PARITY-001.
+    //
+    // This function used to draw its OWN verification box — "Verification ID:",
+    // the id, and pawtenant.com/verify/<id> — blindly at a fixed top-right
+    // position. That is the provider submission path, so it, not
+    // inject-pdf-footer, is what stamps most letters: a letter submitted after
+    // the QR-only injector shipped still came out with the printed block. The
+    // inline drawing is gone; both paths now go through the one shared,
+    // guard-covered module.
+    //
+    // The QR target prefers the opaque token when one exists, exactly as
+    // inject-pdf-footer does, so a scan never carries an enumerable id.
+    const { data: lv } = await supabase
+      .from("letter_verifications")
+      .select("public_token")
+      .eq("letter_id", letterId)
+      .maybeSingle();
+    const publicToken = (lv as { public_token: string | null } | null)?.public_token ?? null;
+    const verifyUrl = publicToken
+      ? `${VERIFY_BASE}/v/t/${publicToken}`
+      : `${VERIFY_BASE}/verify/${letterId}`;
+
+    let built: Awaited<ReturnType<typeof buildQrVerificationPdf>>;
     try {
-      pdfDoc = await PDFDocument.load(pdfBytes);
-    } catch {
-      pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+      built = await buildQrVerificationPdf(pdfBytes, { letterId, verifyUrl }, readPageContent);
+    } catch (e) {
+      throw new Error(`QR build failed: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    const pageCount = pdfDoc.getPageCount();
-    if (pageCount === 0) throw new Error("PDF has no pages");
+    // FAIL CLOSED. A document whose structure or geometry we cannot verify, or
+    // for which no provably empty lower-right / upper-right space exists, is
+    // NOT published: nothing is uploaded, processed_file_url keeps its previous
+    // value, the provider's original and its row are untouched, and no success
+    // audit is written. `verified` must be explicitly true — an absent flag is
+    // a refusal, not consent.
+    if (built.placement.mode !== "inline" || built.verified !== true) {
+      const code = built.failure ?? "no_safe_qr_placement";
+      const detail = built.failureDetail ?? built.placement.reason;
+      console.error(`[injectPdf] refusing to publish ${documentId}: ${code} — ${detail}`);
+      await supabase.from("audit_logs").insert({
+        actor_name: "System", actor_role: "system",
+        object_type: "pdf_footer_injection", object_id: confirmationId,
+        action: "pdf_footer_injection_failed",
+        description: `QR verification copy refused for document ${documentId} (order ${confirmationId}): ${code}`,
+        metadata: {
+          order_id: orderId, confirmation_id: confirmationId, document_id: documentId,
+          letter_id: letterId, success: false, refused: true, reason: code, detail,
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return { ok: false, error: `refused (${code}): ${detail}` };
+    }
 
-    const firstPage = pdfDoc.getPage(0);
-    const { width, height } = firstPage.getSize();
-
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-    const line1 = "Verification ID:";
-    const line2 = letterId;
-    const line3 = `pawtenant.com/verify/${letterId}`;
-
-    const sz1 = 8, sz2 = 11, sz3 = 7.5;
-    const w1 = font.widthOfTextAtSize(line1, sz1);
-    const w2 = fontBold.widthOfTextAtSize(line2, sz2);
-    const w3 = font.widthOfTextAtSize(line3, sz3);
-    const boxW = Math.max(w1, w2, w3) + 16;
-
-    const MARGIN_RIGHT = 20, MARGIN_TOP = 20;
-    const lineH1 = sz1 + 4, lineH2 = sz2 + 4, lineH3 = sz3 + 4;
-    const boxH = lineH1 + lineH2 + lineH3 + 8;
-    const boxX = width - MARGIN_RIGHT - boxW;
-    const boxY = height - MARGIN_TOP - boxH;
-
-    firstPage.drawRectangle({
-      x: boxX, y: boxY, width: boxW, height: boxH,
-      color: rgb(1, 1, 1), borderColor: rgb(0.85, 0.45, 0.1),
-      borderWidth: 1, opacity: 0.97,
-    });
-
-    const y1 = boxY + boxH - 8 - sz1;
-    const y2 = y1 - lineH1 - 1;
-    const y3 = y2 - lineH2 + 2;
-
-    firstPage.drawText(line1, { x: boxX + boxW - 8 - w1, y: y1, size: sz1, font, color: rgb(0.4, 0.4, 0.4) });
-    firstPage.drawText(line2, { x: boxX + boxW - 8 - w2, y: y2, size: sz2, font: fontBold, color: rgb(0.85, 0.35, 0.05) });
-    firstPage.drawText(line3, { x: boxX + boxW - 8 - w3, y: y3, size: sz3, font, color: rgb(0.35, 0.35, 0.35) });
-
-    const processedBytes = await pdfDoc.save();
+    const processedBytes = built.bytes;
     const processedFileName = `${confirmationId}-${documentId}-verified.pdf`;
 
     const { error: uploadErr } = await supabase.storage
@@ -305,8 +357,14 @@ async function injectPdfVerification(
       actor_name: "System", actor_role: "system",
       object_type: "pdf_footer_injection", object_id: confirmationId,
       action: "pdf_footer_injected",
-      description: `Verification header injected into document ${documentId} for order ${confirmationId} — letter_id: ${letterId}`,
-      metadata: { order_id: orderId, confirmation_id: confirmationId, document_id: documentId, letter_id: letterId, success: true, timestamp: new Date().toISOString() },
+      description: `QR verification copy generated for document ${documentId} (order ${confirmationId}) — letter_id: ${letterId}, ${built.placement.region ?? built.placement.mode}`,
+      metadata: {
+        order_id: orderId, confirmation_id: confirmationId, document_id: documentId,
+        letter_id: letterId, success: true,
+        placement_region: built.placement.region ?? null,
+        placement_reason: built.placement.reason,
+        timestamp: new Date().toISOString(),
+      },
     });
 
     return { ok: true, processedUrl };

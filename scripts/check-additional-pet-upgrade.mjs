@@ -63,7 +63,12 @@ function read(key, override) {
   if (override && override[key] !== undefined) return override[key];
   const p = resolve(ROOT, F[key]);
   if (!existsSync(p)) throw new Error(`missing file: ${F[key]}`);
-  return readFileSync(p, "utf8");
+  // Normalise to LF. P15b compares the positions of two MULTI-LINE anchors, and
+  // several other checks match across newlines; on a CRLF checkout every one of
+  // those anchors misses. indexOf then returns -1 for both sides and the
+  // ordering comparison silently inverts — the check fails on line endings
+  // rather than on the ordering it is supposed to police.
+  return readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 }
 
 /** Strip `--` SQL comments, `//` line comments and block comments (including the
@@ -272,6 +277,27 @@ const CHECKS = [
         || /refundResult\.refunded\s*$/m.test(stripComments(s.decision))],
   ["P12c", "refund cannot double-refund (Stripe idempotencyKey)",
     (s) => /idempotencyKey:\s*`addpet-refund:\$\{reqRow\.id\}`/.test(s.decision)],
+  // ADDITIONAL-PET-REJECTION-REFUND-TEST-PORT-001 — two rules the refund port
+  // relies on but did not itself assert.
+  ["P12b10", "an unpaid / $0 included request never enters the refund path at all",
+    (s) => {
+      const c = stripComments(s.decision);
+      // The whole Stripe block is gated on wasPaid, and wasPaid demands BOTH a
+      // settled paid_at and the paid_upgrade outcome — so an included $0 request
+      // (or an unpaid one) is rejected outright with no refund object created.
+      return /const\s+wasPaid\s*=\s*!!reqRow\.paid_at\s*&&\s*\(reqRow\.pricing_outcome as string\)\s*===\s*"paid_upgrade"/.test(c)
+          && /if\s*\(\s*wasPaid\s*\)\s*\{/.test(c)
+          && /status:\s*wasPaid\s*\?\s*"refund_pending"\s*:\s*"rejected"/.test(c);
+    }],
+  ["P12b11", "provider rejection never creates or alters a provider earning",
+    (s) => {
+      const c = stripComments(s.decision);
+      // Additional Pet is not compensated work. The rejection path must never
+      // write doctor_earnings, and must never mutate the base order's payment
+      // fields (which is what would indirectly void or re-rate an earning).
+      return !/from\(\s*["'`]doctor_earnings["'`]\s*\)/.test(c)
+          && !/\.from\(\s*["'`]orders["'`]\s*\)[\s\S]{0,200}?\.update\(/.test(c);
+    }],
   ["P13a", "one active request per order (partial unique index)",
     (s) => /uq_addpet_one_active_per_order[\s\S]{0,240}?where status not in/.test(s.migration)],
   ["P13b", "amount is bound to the pricing outcome by check constraint",
@@ -401,6 +427,13 @@ const CONTROLS = [
     "if (reqRow.refunded_at) {", "if (false) {")],
   ["G7", "P12b8", "decision", (t) => t.replace(
     "${refundLine}", "We have refunded the $20 upgrade in full.")],
+  // ADDITIONAL-PET-REJECTION-REFUND-TEST-PORT-001 controls.
+  ["G8", "P12b10", "decision", (t) => t.replace(
+    'const wasPaid = !!reqRow.paid_at && (reqRow.pricing_outcome as string) === "paid_upgrade";',
+    "const wasPaid = true;")],
+  ["G9", "P12b11", "decision", (t) => t.replace(
+    "let refundResult: Record<string, unknown> = { refunded: false };",
+    'await admin.from("doctor_earnings").insert({ amount_cents: quotedCents });\n  let refundResult: Record<string, unknown> = { refunded: false };')],
   ["H", "P13b", "migration", (t) => t.replace("paid_upgrade' and amount_cents = 2000",
                                               "paid_upgrade' and amount_cents >= 0")],
   ["I", "P14", "createFn", (t) => t.replace("new_pet: pet,", "new_pet: pet, assessment_answers: pet,")],
