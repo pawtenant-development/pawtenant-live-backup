@@ -2,10 +2,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // rgb/StandardFonts are gone with the printed verification box: this function
 // no longer draws any text of its own. PDFDocument is kept only for the page
 // -content reader the shared placement analyzer needs.
-import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
+import { PDFDocument, decodePDFRawStream } from "https://esm.sh/pdf-lib@1.17.1";
 import { buildQrVerificationPdf } from "../_shared/qrVerificationPdf.ts";
 import { applyVerificationPrefix, LETTER_LABELS } from "../_shared/letterType.ts";
-import { ensureRaCompletionEarning } from "../_shared/raCompletionEarning.ts";
+// RA-LIFECYCLE-001: the RA-completion earning is no longer created here. It is
+// created on the ADMIN APPROVAL transition in admin-review-document.
 // evaluateNotificationSuppression moved with the customer email to
 // admin-review-document; only the admin-alert fixture gate is still used here.
 import { suppressForFixtureOrder } from "../_shared/testNotificationSuppression.ts";
@@ -32,20 +33,23 @@ async function readPageContent(doc: PDFDocument, index: number): Promise<string 
     // No /Contents at all means the page draws nothing — proof of a blank page,
     // not a failure to read one.
     if (!contents) return "";
-    const list = contents.constructor?.name === "PDFArray"
+    const list = typeof contents.asArray === "function"
       // deno-lint-ignore no-explicit-any
       ? contents.asArray().map((r: any) => (doc as any).context.lookup(r))
       : [contents];
     let out = "";
-    for (const s of list) {
-      if (!s?.getContents) return null;
-      const raw: Uint8Array = s.getContents();
-      if (raw[0] === 0x78) {
-        out += await inflate(raw, "deflate");
+    for (const stream of list) {
+      let decoded: Uint8Array;
+      if (typeof stream?.getUnencodedContents === "function") {
+        decoded = stream.getUnencodedContents();
+      } else if (stream?.dict && stream?.contents) {
+        decoded = decodePDFRawStream(stream).decode();
       } else {
-        const asText = new TextDecoder("latin1").decode(raw);
-        out += /[A-Za-z]/.test(asText.slice(0, 32)) ? asText : await inflate(raw, "deflate-raw");
+        return null;
       }
+      // PDF content operators are ASCII-compatible. Avoid the unsupported
+      // "latin1" TextDecoder label in the Deno edge runtime.
+      out += new TextDecoder().decode(decoded);
     }
     return out;
   } catch {
@@ -826,10 +830,23 @@ Deno.serve(async (req: Request) => {
       // in-flow combo), leave status/doctor_status untouched so the base ESA/PSD
       // workflow continues on its own. Base letter fields (letter_id / validity /
       // signed_letter_url) are never touched here.
-      const housingOrderPatch: Record<string, unknown> = { additional_documentation_status: "completed" };
-      if (order.letter_id) {
-        housingOrderPatch.status = "completed";
-        housingOrderPatch.doctor_status = "patient_notified";
+      // RA-LIFECYCLE-001 step C. A provider UPLOAD is not a COMPLETION.
+      //
+      // This block used to set additional_documentation_status='completed' and,
+      // on an already-delivered base letter, push the order straight back to
+      // completed/patient_notified — while the document itself sat at
+      // review_status 'pending_admin_approval' and hidden from the customer.
+      // The provider became their own approver, and (below) was paid for a
+      // document an admin might still reject.
+      //
+      // The document stays pending and hidden; the ORDER moves to Pending
+      // Delivery so it lands in the admin review queue. Completion, customer
+      // visibility and the payout all happen in admin-review-document.
+      const housingOrderPatch: Record<string, unknown> = {
+        doctor_status: "pending_admin_approval",
+      };
+      if (order.letter_id && (order.status as string) === "completed") {
+        housingOrderPatch.status = "under-review";
       }
       await supabase.from("orders").update(housingOrderPatch).eq("id", order.id);
 
@@ -866,11 +883,9 @@ Deno.serve(async (req: Request) => {
       // the helper (combo + completed + base paid + provider). Non-critical: a
       // failure here must never fail the provider's submission — the backfill /
       // a later completion event heals it. See PROVIDER-EARNINGS-RA-DOUBLE-PAYOUT-001.
-      try {
-        await ensureRaCompletionEarning(supabase, order.id as string);
-      } catch (earnErr) {
-        console.error("[provider-submit-letter] RA-completion earning error (non-fatal):", earnErr);
-      }
+      // RA-LIFECYCLE-001 step C: NO PAYOUT HERE. ensureRaCompletionEarning()
+      // used to run at this point, gated on a completed status this function
+      // had just set itself. It now runs on the admin approval transition.
 
       if (!isReplay) notifyAdminLetterSubmitted({
         confirmationId, providerName: profile.full_name,

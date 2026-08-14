@@ -22,6 +22,8 @@ import PaymentHistoryTab from "./PaymentHistoryTab";
 // isolated read-only discount breakdown component, mounted in the Overview
 // payment rail + Payments tab. No payment/pricing logic touched.
 import OrderDiscountBreakdown from "./OrderDiscountBreakdown";
+// RA-PAYMENT-TOTAL-001 — isolated component mount (frozen-file approved edit).
+import OrderPaymentAmountBreakdown from "./OrderPaymentAmountBreakdown";
 // ADDON-DOC-INVOICE (2026-06-16, LIVE mirror): isolated mount — admin sends a
 // tracked $40 "Additional Documentation" invoice tied to this order. Approved
 // edit type: additive component mount + one header-menu item.
@@ -39,12 +41,17 @@ import OrderAdditionalPetMenuAction from "./OrderAdditionalPetMenuAction";
 // ORDER-LINKED-CUSTOM-STRIPE-INVOICE-001: isolated component mounts. Eligibility,
 // dialog, validation, idempotency and the request list all live in the children.
 import OrderCustomPaymentMenuAction from "./OrderCustomPaymentMenuAction";
+// RA-LIFECYCLE-001 step E — isolated component mount (frozen-file approved edit).
+import OrderMarkRaCompletedAction from "./OrderMarkRaCompletedAction";
 import OrderCustomPaymentPanel from "./OrderCustomPaymentPanel";
 import OrderResumeCheckoutEmailAction from "./OrderResumeCheckoutEmailAction";
 import OrderRaDocPanel from "./OrderRaDocPanel";
 import OrderDocumentVersionsPanel from "./OrderDocumentVersionsPanel";
 import OrderDocumentReviewPanel from "./OrderDocumentReviewPanel";
 import OrderAuditTimeline from "./OrderAuditTimeline";
+// RA-PAYOUT-DISPLAY-001 — isolated component mount (frozen-file approved edit).
+// Self-fetching, read-only; adds no state or data loading to this file.
+import ProviderPayoutSummary from "./ProviderPayoutSummary";
 import { canDelete } from "../../../lib/adminPermissions";
 // ATTR-CONSISTENCY-LOCK (2026-05-23): Overview "Referred By" badge now
 // reads the same canonical classifier the order list pill (OrderCard) and
@@ -3359,6 +3366,17 @@ export default function OrderDetailModal({
                       confirmationId={order.confirmation_id}
                       onCloseMenu={() => setShowHeaderMore(false)}
                     />
+                    {/* RA-LIFECYCLE-001 step E: isolated component mount. All
+                        entitlement proving, confirmation, evidence selection and
+                        submission live in the child, which fails closed and
+                        renders a DISABLED item with a reason when there is no RA
+                        entitlement or the service is already complete. Server
+                        re-checks everything — the UI is never the authority. */}
+                    <OrderMarkRaCompletedAction
+                      orderId={order.id}
+                      confirmationId={order.confirmation_id}
+                      onCloseMenu={() => setShowHeaderMore(false)}
+                    />
                     {/* 2026-05-22 REFUND-CANCEL-WORKFLOW: single entry point for
                         the Refund + Cancel Order modal. The same modal is also
                         opened by the body's "Refund + Cancel" button so we
@@ -4093,13 +4111,16 @@ export default function OrderDetailModal({
 
                   {/* ── Column 2: Payment ── */}
                   <div className="space-y-2.5">
-                    {/* Price */}
-                    <div>
-                      <p className="text-xs text-gray-400 mb-0.5">Payment Amount</p>
-                      <p className={`text-sm font-semibold ${order.price != null ? "text-gray-800" : "text-gray-400"}`}>
-                        {order.price != null ? `$${order.price}` : "—"}
-                      </p>
-                    </div>
+                    {/* Price — RA-PAYMENT-TOTAL-001: isolated component mount.
+                        Shows base + separately paid Additional Documentation +
+                        total, deduplicated by PaymentIntent and excluding RA
+                        already inside a bundled checkout. Renders exactly the old
+                        single figure when the order has no separate add-on. */}
+                    <OrderPaymentAmountBreakdown
+                      orderId={order.id}
+                      basePrice={order.price}
+                      orderPaymentIntentId={order.payment_intent_id ?? null}
+                    />
                     {/* Plan */}
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5">Plan</p>
@@ -4156,6 +4177,11 @@ export default function OrderDetailModal({
                       couponDiscount={order.coupon_discount}
                       variant="inline"
                     />
+                    {/* RA-PAYOUT-DISPLAY-001 — what the provider is owed for this
+                        order. Read-only reader over doctor_earnings, cancelled
+                        rows excluded. Sits here because Order Details is where
+                        operators already read the order's money facts. */}
+                    <ProviderPayoutSummary orderId={order.id} />
                     {/* OPS-ORDER-MODAL-OVERVIEW-CLEANUP: duplicate Referred By
                         removed. The colored source badge below (using
                         classifyOrder — ATTR-CONSISTENCY-LOCK 2026-05-23) is
@@ -5265,7 +5291,13 @@ export default function OrderDetailModal({
                           // Only FINAL ESA/PSD letters receive a verification footer.
                           // Housing forms (customer_upload / housing_completed /
                           // housing_verification / landlord_form) are NEVER stamped.
-                          const FINAL_LETTER_TYPES = ["esa_letter", "psd_letter", "signed_letter", "letter"];
+                          // DOC-QR-BOUNDARY-001: EXACTLY the two types the server
+                          // allowlist accepts. "signed_letter" and "letter" used to
+                          // be listed here, so Re-inject All queued documents that
+                          // inject-pdf-footer now refuses with
+                          // document_type_not_verifiable — visible work that could
+                          // only ever fail.
+                          const FINAL_LETTER_TYPES = ["esa_letter", "psd_letter"];
                           for (const doc of orderDocs.filter((d) => FINAL_LETTER_TYPES.includes(d.doc_type ?? ""))) {
                             const res = await fetch(`${supabaseUrl}/functions/v1/inject-pdf-footer`, {
                               method: "POST",
@@ -5514,7 +5546,10 @@ export default function OrderDetailModal({
                                 (customer_upload / housing_completed / housing_verification
                                 / landlord_form) and any other type never receive a
                                 verification ID / footer. */}
-                            {["esa_letter", "psd_letter", "signed_letter", "letter"].includes(doc.doc_type ?? "") && (() => {
+                            {/* DOC-QR-BOUNDARY-001: exactly the server allowlist.
+                                An RA / supporting-document row must never render an
+                                injection button at all. */}
+                            {["esa_letter", "psd_letter"].includes(doc.doc_type ?? "") && (() => {
                               const needsGenerate = !order.letter_id;
                               const label = reinjectingFooter
                                 ? "Processing..."

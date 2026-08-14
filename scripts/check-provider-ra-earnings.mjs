@@ -117,6 +117,8 @@ truthy("isRaCombo false for standard", isRaCombo({ package_key: "esa_standard" }
 console.log("\n  wiring (source):");
 const read = (p) => readFileSync(join(ROOT, p), "utf8");
 const has = (name, src, re, m) => truthy(name, (re instanceof RegExp ? re.test(src) : src.includes(re)), m);
+/** Asserts ABSENCE — used to pin that a behaviour has genuinely MOVED away. */
+const hasNot = (name, src, re, m) => truthy(name, !(re instanceof RegExp ? re.test(src) : src.includes(re)), m);
 
 const migration = read("supabase/migrations/20260721140000_ra_completion_provider_earning.sql");
 has("migration: partial unique index on order_id", migration, /doctor_earnings_ra_completion_order_uniq/);
@@ -133,9 +135,30 @@ has("reconciler: NOT customer price for payout", helper, /doctor_amount:\s*rate/
 has("reconciler: 23505 race-dedup handled", helper, /23505/);
 has("reconciler: base-paid gate", helper, /payment_intent_id|paid_at/);
 
-const submit = read("supabase/functions/provider-submit-letter/index.ts");
-has("completion event: imports reconciler", submit, /ensureRaCompletionEarning/);
-has("completion event: called in housing_completed path", submit, /await ensureRaCompletionEarning\(supabase,\s*order\.id/);
+// RA-LIFECYCLE-001 — the completion event MOVED.
+//
+// The RA-completion earning used to be created in provider-submit-letter, at
+// UPLOAD time. That made the provider their own approver and paid out for
+// documents still sitting at review_status 'pending_admin_approval' — including
+// ones an admin would go on to reject. The earning is now created on the ADMIN
+// APPROVAL transition in admin-review-document.
+//
+// Strip comments before asserting ABSENCE: provider-submit-letter still explains
+// the move in prose, and a bare /ensureRaCompletionEarning/ scan matches that
+// explanation. Asserting the mention instead of the call would let the old
+// behaviour come back unnoticed.
+const stripComments = (s) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+
+const submit = stripComments(read("supabase/functions/provider-submit-letter/index.ts"));
+hasNot("provider upload: does NOT create the earning", submit, /ensureRaCompletionEarning\s*\(/);
+hasNot("provider upload: does NOT mark RA completed", submit, /additional_documentation_status:\s*"completed"/);
+has("provider upload: moves order to admin review", submit, /doctor_status:\s*"pending_admin_approval"/);
+
+const approve = stripComments(read("supabase/functions/admin-review-document/index.ts"));
+has("completion event: imports reconciler", approve, /import\s*\{[^}]*ensureRaCompletionEarning/);
+has("completion event: called on admin approval", approve, /await ensureRaCompletionEarning\(admin,\s*ord\.id/);
+has("completion event: marks RA completed on approval", approve, /additional_documentation_status:\s*"completed"/);
 
 const paymentsTab = read("src/pages/admin-orders/components/PaymentHistoryTab.tsx");
 has("order Payments tab: distinct ra_completion line", paymentsTab, /earning_type === "ra_completion"/);

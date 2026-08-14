@@ -31,12 +31,26 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // rgb/StandardFonts are gone with the text box: this function no longer draws
 // any text of its own, and PDFDocument is kept only to validate the upload.
-import { PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
+import { decodePDFRawStream, PDFDocument } from "https://esm.sh/pdf-lib@1.17.1";
 import { buildQrVerificationPdf } from "../_shared/qrVerificationPdf.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const VERIFY_BASE = Deno.env.get("PUBLIC_SITE_URL") ?? "https://pawtenant.com";
+
+/**
+ * THE allowlist of document types that may carry a verification QR.
+ *
+ * This is an ALLOWLIST on purpose. A denylist would have to be extended every
+ * time a new document type is introduced, and the one nobody remembered to add
+ * would silently become verifiable. Here, an unknown or future type is refused
+ * by default — the failure mode is "no QR", never "QR on an RA form".
+ *
+ * Do not add `housing_completed`, `customer_upload`, `landlord_form`,
+ * `ra_completed_form`, `housing_verification`, intake/source forms, notary
+ * documents or supporting files. Those keep clean, unstamped originals.
+ */
+const VERIFIABLE_DOC_TYPES = new Set(["esa_letter", "psd_letter"]);
 
 /**
  * Inflate a page's content stream so the placement analyzer can read it.
@@ -53,37 +67,31 @@ async function readPageContent(doc: PDFDocument, index: number): Promise<string 
     // analyzer treat genuinely empty TEST letters as unreadable and refuse to
     // place the QR on them. An empty string is the honest answer.
     if (!contents) return "";
-    const list = contents.constructor?.name === "PDFArray"
+    // esm.sh minifies constructor names in the Edge bundle, so capability
+    // detection is required here. A constructor-name check mistakes a PDFArray
+    // for a stream and makes every compressed provider PDF unreadable.
+    const list = typeof contents.asArray === "function"
       // deno-lint-ignore no-explicit-any
       ? contents.asArray().map((r: any) => (doc as any).context.lookup(r))
       : [contents];
     let out = "";
-    for (const s of list) {
-      if (!s?.getContents) return null;
-      const raw: Uint8Array = s.getContents();
-      // A content stream may be Flate-compressed (zlib or raw deflate) or
-      // stored verbatim. Try each before giving up — a stream we cannot inflate
-      // is "unknown", and unknown blocks placement, so a false negative here
-      // silently costs every letter its QR.
-      if (raw[0] === 0x78) {
-        out += await inflate(raw, "deflate");
+    for (const stream of list) {
+      let decoded: Uint8Array;
+      if (typeof stream?.getUnencodedContents === "function") {
+        decoded = stream.getUnencodedContents();
+      } else if (stream?.dict && stream?.contents) {
+        decoded = decodePDFRawStream(stream).decode();
       } else {
-        const asText = new TextDecoder("latin1").decode(raw);
-        // Heuristic: real content streams are printable operators. If it does
-        // not look like one, try raw deflate before accepting it as text.
-        out += /[A-Za-z]/.test(asText.slice(0, 32)) ? asText : await inflate(raw, "deflate-raw");
+        return null;
       }
+      // PDF operators are ASCII-compatible. Deno Edge does not support the
+      // browser-only "latin1" TextDecoder label the old reader used.
+      out += new TextDecoder().decode(decoded);
     }
     return out;
   } catch {
     return null;
   }
-}
-
-async function inflate(raw: Uint8Array, format: "deflate" | "deflate-raw"): Promise<string> {
-  const ds = new DecompressionStream(format);
-  const buf = await new Response(new Blob([raw]).stream().pipeThrough(ds)).arrayBuffer();
-  return new TextDecoder("latin1").decode(new Uint8Array(buf));
 }
 
 const corsHeaders = {
@@ -98,32 +106,91 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+
+// RA-ADMIN-VISIBILITY-STORAGE-HARDENING-LIVE-001: fetch document bytes.
+// Prefer a service-role Storage download parsed from the stored URL (works on
+// private buckets, ignores stale signed-URL tokens); fall back to a raw fetch
+// for external / non-Supabase URLs.
+const STORAGE_PATH_RE = /^\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)$/;
+async function downloadDocumentBytes(
+  supabase: ReturnType<typeof createClient>,
+  fileUrl: string,
+): Promise<ArrayBuffer> {
+  try {
+    const m = new URL(fileUrl).pathname.match(STORAGE_PATH_RE);
+    if (m) {
+      const bucket = decodeURIComponent(m[1]);
+      const path = decodeURIComponent(m[2]);
+      const { data, error } = await supabase.storage.from(bucket).download(path);
+      if (!error && data) return await data.arrayBuffer();
+    }
+  } catch { /* fall through to fetch */ }
+  const dlRes = await fetch(fileUrl);
+  if (!dlRes.ok) throw new Error(`Failed to download PDF: HTTP ${dlRes.status}`);
+  return await dlRes.arrayBuffer();
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    // ── Auth: service-role key OR valid admin JWT ─────────────────────────────
+    // ── Auth: an ACTIVE ADMIN employee session. Nothing else. ─────────────────
+    //
+    // INJECT-PDF-FOOTER-AUTHZ-001. This block previously accepted two things it
+    // should never have accepted:
+    //
+    //   1. `token === SERVICE_ROLE_KEY` — the project's service-role SECRET used
+    //      as an application bearer token. That conflates "holds a database
+    //      superuser credential" with "is allowed to perform this action", and
+    //      it means the secret has to travel to every caller that wants to
+    //      stamp a letter. It also cannot be attributed to anyone or revoked
+    //      without rotating the key for the whole project.
+    //   2. ANY authenticated user. The old JWT branch only checked that
+    //      `auth.getUser()` resolved and the account had an email — so a signed-in
+    //      CUSTOMER could invoke verification stamping. The taxonomy gate bounded
+    //      the blast radius to real letters, but it was never an authorization
+    //      check.
+    //
+    // Replaced with the pattern already used by admin-review-document: resolve a
+    // real Supabase Auth user from the caller's own JWT, then require an ACTIVE
+    // ADMIN profile. Legitimate callers are unaffected — the only HTTP caller is
+    // the admin UI, which sends a real user JWT via getAdminToken().
     const authHeader = req.headers.get("Authorization") ?? "";
-    const token = authHeader.replace("Bearer ", "").trim();
+    const token = authHeader.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice(7).trim()
+      : authHeader.replace("Bearer ", "").trim();
 
     if (!token) {
       return json({ ok: false, error: "Unauthorized — no token provided" }, 401);
     }
 
-    const isServiceRole = token === SERVICE_ROLE_KEY;
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    if (!isServiceRole) {
-      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-      const userClient = createClient(SUPABASE_URL, anonKey, {
-        global: { headers: { Authorization: `Bearer ${token}` } },
-      });
-      const { data: { user }, error: authError } = await userClient.auth.getUser();
-      if (authError || !user || !user.email) {
-        return json({ ok: false, error: "Unauthorized — invalid token" }, 401);
-      }
+    // Explicit, and deliberately BEFORE getUser(): the service-role key is not an
+    // identity. Naming it in the response makes the misuse obvious to whoever
+    // wired it, instead of failing as a confusing "invalid token".
+    if (token === SERVICE_ROLE_KEY) {
+      return json({
+        ok: false,
+        error:
+          "Unauthorized — the service-role key is not an accepted credential. Verification stamping requires an admin employee session.",
+      }, 403);
     }
 
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const { data: userResp, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !userResp?.user) {
+      return json({ ok: false, error: "Unauthorized — invalid token" }, 401);
+    }
+
+    const { data: callerProfile } = await supabase
+      .from("doctor_profiles")
+      .select("is_admin, is_active")
+      .eq("user_id", userResp.user.id)
+      .maybeSingle();
+    const caller = callerProfile as { is_admin?: boolean; is_active?: boolean } | null;
+    if (!caller || caller.is_admin !== true || caller.is_active === false) {
+      return json({ ok: false, error: "Forbidden — admin privileges are required to stamp a letter." }, 403);
+    }
 
     const body = await req.json() as {
       orderId: string;
@@ -134,19 +201,65 @@ Deno.serve(async (req: Request) => {
       forceReInject?: boolean;
     };
 
-    const { orderId, confirmationId, documentId, fileUrl, letterId, forceReInject } = body;
+    // `fileUrl` is intentionally NOT destructured: it stays on the wire contract
+    // for existing callers but must never be read. See the taxonomy gate below.
+    const { orderId, confirmationId, documentId, letterId, forceReInject } = body;
 
-    if (!orderId || !confirmationId || !documentId || !fileUrl || !letterId) {
-      return json({ ok: false, error: "orderId, confirmationId, documentId, fileUrl, and letterId are required" }, 400);
+    if (!orderId || !confirmationId || !documentId || !letterId) {
+      return json({ ok: false, error: "orderId, confirmationId, documentId, and letterId are required" }, 400);
+    }
+
+    // ── AUTHORITATIVE TAXONOMY GATE ───────────────────────────────────────────
+    //
+    // Every request field describing the DOCUMENT is untrusted. `fileUrl` is
+    // still accepted for wire compatibility with existing callers but is
+    // deliberately IGNORED — a caller that could name its own source file could
+    // stamp a QR onto any PDF it liked, including an RA form.
+    //
+    // Resolve the row by id, prove it belongs to the order in the request, and
+    // refuse every class that is not a final clinical letter. This runs BEFORE
+    // any download, PDF construction, storage upload, verification record or
+    // pointer update, so a refused call leaves absolutely no trace: no
+    // verification row, no processed object, no audit success event.
+    //
+    // Only `esa_letter` and `psd_letter` are verifiable. RA source forms,
+    // completed RA/housing forms, landlord and accommodation forms, intake
+    // files, customer uploads, notary documents, supporting files and any
+    // UNKNOWN or future type all fail closed here by construction: the check is
+    // an allowlist, so a type nobody has invented yet is refused by default.
+    const { data: authoritativeDoc, error: docLookupError } = await supabase
+      .from("order_documents")
+      .select("id, order_id, doc_type, file_url, footer_injected, processed_file_url, footer_letter_id")
+      .eq("id", documentId)
+      .maybeSingle();
+    if (docLookupError || !authoritativeDoc || authoritativeDoc.order_id !== orderId) {
+      return json({ ok: false, error: "Document does not belong to this order" }, 404);
+    }
+    if (!VERIFIABLE_DOC_TYPES.has(authoritativeDoc.doc_type ?? "")) {
+      console.log(
+        `[inject-pdf-footer] refusing ${documentId}: doc_type=${authoritativeDoc.doc_type ?? "null"} is not verifiable`,
+      );
+      return json({
+        ok: false,
+        skipped: true,
+        reason: "document_type_not_verifiable",
+        error: "Only final ESA or PSD letters can receive a verification QR code.",
+      }, 422);
+    }
+
+    // The ONLY source of bytes. Always the immutable original — never
+    // `processed_file_url`, so a re-inject can never stack a QR on an
+    // already-stamped file, and never the caller's `fileUrl`.
+    const authoritativeFileUrl = authoritativeDoc.file_url as string | null;
+    if (!authoritativeFileUrl) {
+      return json({ ok: false, error: "The final letter has no original PDF" }, 422);
     }
 
     // ── Idempotency check — skipped when forceReInject is true ───────────────
     if (!forceReInject) {
-      const { data: docRecord } = await supabase
-        .from("order_documents")
-        .select("footer_injected, processed_file_url, footer_letter_id")
-        .eq("id", documentId)
-        .maybeSingle();
+      // Reuse the row already fetched by the taxonomy gate — a second lookup
+      // would be a wasted round trip and could observe a different state.
+      const docRecord = authoritativeDoc;
 
       if (docRecord?.footer_injected && docRecord?.footer_letter_id === letterId && docRecord?.processed_file_url) {
         console.log(`[inject-pdf-footer] Already injected for doc ${documentId} — returning cached URL`);
@@ -163,9 +276,10 @@ Deno.serve(async (req: Request) => {
     // ── Download the original PDF ─────────────────────────────────────────────
     let pdfBytes: ArrayBuffer;
     try {
-      const dlRes = await fetch(fileUrl);
-      if (!dlRes.ok) throw new Error(`Failed to download PDF: HTTP ${dlRes.status}`);
-      pdfBytes = await dlRes.arrayBuffer();
+      // MERGED 2026-08-15: the storage-hardened downloader (private buckets)
+      // applied to the AUTHORITATIVE url. TEST v52 had regressed this to a plain
+      // fetch(), which 404s on the now-private provider-letters bucket.
+      pdfBytes = await downloadDocumentBytes(supabase, authoritativeFileUrl);
     } catch (dlErr: unknown) {
       const msg = dlErr instanceof Error ? dlErr.message : "Download failed";
       await logInjection(supabase, { orderId, confirmationId, documentId, letterId, success: false, error: msg });

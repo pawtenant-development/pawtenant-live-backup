@@ -1,4 +1,4 @@
-// send-customer-otp — issues a 6-digit email verification code for the
+// send-customer-otp — issues a 6-digit verification code for the
 // customer pre-checkout OTP step in the ESA/PSD assessment flow.
 //
 // Design (mirrors the existing admin OTP convention):
@@ -6,13 +6,21 @@
 //     customer_otp_codes table, 10-minute TTL, single use.
 //   * Soft rate limit: refuse a new send if one was issued < 45s ago for the
 //     same email (returns ok:true with cooldown so the UI can show a timer).
-//   * Emailed via Resend (same infra + FROM address as the rest of the app).
+//   * Delivered through BOTH canonical channels: Resend email and GHL SMS.
 //   * Does NOT reveal whether an account exists — always behaves identically.
 //
+// BOTH CHANNELS ARE REQUIRED. One code is generated and the SAME code goes to
+// email and SMS. If either provider refuses it, the stored code is DELETED and
+// the call fails. Partial delivery must never look like a successful send: a
+// customer who received only one of the two would otherwise be holding a code
+// the system had already counted as fully delivered.
+//
 // verify_jwt is disabled (public flow, called with the anon key like
-// create-payment-intent). No secret values are ever returned in the response.
+// create-payment-intent). No secret values are ever returned in the response,
+// and the OTP is never written to a log line, audit row or response payload.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendGhlSms, normalizeE164 } from "../_shared/ghlSms.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,9 +77,14 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
 
   try {
-    const body = await req.json() as { email?: string; confirmationId?: string; firstName?: string; letterType?: string };
+    const body = await req.json() as { email?: string; phone?: string; confirmationId?: string; firstName?: string; letterType?: string };
     const email = (body.email ?? "").trim().toLowerCase();
     if (!email || !EMAIL_RE.test(email)) return json({ ok: false, error: "A valid email is required" }, 400);
+    // A dialable mobile number is REQUIRED, not optional. SMS is one of the two
+    // mandatory channels, so an unreachable number is rejected here rather than
+    // discovered after the code has already been emailed.
+    const phone = normalizeE164((body.phone ?? "").trim());
+    if (!phone) return json({ ok: false, error: "A valid mobile number is required to send the verification code by SMS." }, 400);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -89,7 +102,7 @@ Deno.serve(async (req) => {
     if (recent?.created_at) {
       const ageMs = Date.now() - new Date(recent.created_at as string).getTime();
       if (ageMs < RESEND_COOLDOWN_MS) {
-        return json({ ok: true, cooldown: true, retryInSeconds: Math.ceil((RESEND_COOLDOWN_MS - ageMs) / 1000), message: "A code was just sent. Check your inbox." });
+        return json({ ok: true, cooldown: true, retryInSeconds: Math.ceil((RESEND_COOLDOWN_MS - ageMs) / 1000), message: "A code was just sent by email and SMS." });
       }
     }
 
@@ -113,27 +126,52 @@ Deno.serve(async (req) => {
 
     if (!resendKey) {
       console.warn("[send-customer-otp] RESEND_API_KEY not set — code stored but not emailed");
+      await admin.from("customer_otp_codes").delete().eq("email", email).eq("code", otp);
       return json({ ok: false, error: "Email service not configured" }, 500);
     }
 
     const firstName = (body.firstName ?? "").split(" ")[0];
-    const emailRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: FROM_ADDRESS,
-        to: [email],
-        subject: `${otp} — Your ${COMPANY_NAME} verification code`,
-        html: buildEmail(firstName, otp),
-        reply_to: SUPPORT_EMAIL,
+    // ONE code, both channels, dispatched together.
+    const [emailRes, smsRes] = await Promise.all([
+      fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: FROM_ADDRESS,
+          to: [email],
+          subject: `${otp} — Your ${COMPANY_NAME} verification code`,
+          html: buildEmail(firstName, otp),
+          reply_to: SUPPORT_EMAIL,
+        }),
       }),
-    });
+      sendGhlSms({
+        toPhone: phone,
+        message: `${otp} is your PawTenant verification code. It expires in ${TTL_MINUTES} minutes. Do not share this code.`,
+        checkDnd: true,
+        contactSource: "PawTenant assessment OTP",
+      }),
+    ]);
     if (!emailRes.ok) {
       console.error("[send-customer-otp] Resend error:", await emailRes.text());
+      await admin.from("customer_otp_codes").delete().eq("email", email).eq("code", otp);
       return json({ ok: false, error: "Failed to send the verification email. Please try again." }, 500);
     }
 
-    return json({ ok: true, expires_minutes: TTL_MINUTES });
+    if (!smsRes.ok) {
+      // Provider internals stay server-side: the caller learns WHICH channel
+      // failed, never the vendor, credential state or provider error text.
+      console.error("[send-customer-otp] GHL SMS failed:", smsRes.failureCode, smsRes.outcome);
+      // Fail closed: an OTP is usable only when both requested channels accepted
+      // it. This also lets the customer correct the phone and retry immediately.
+      await admin.from("customer_otp_codes").delete().eq("email", email).eq("code", otp);
+      return json({
+        ok: false,
+        error: "The code was emailed, but we could not send the SMS. Please confirm your mobile number and try again.",
+        channels: { email: true, sms: false },
+      }, smsRes.outcome === "retryable" ? 503 : 400);
+    }
+
+    return json({ ok: true, expires_minutes: TTL_MINUTES, channels: { email: true, sms: true } });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[send-customer-otp] error:", msg);

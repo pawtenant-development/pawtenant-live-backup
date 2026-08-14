@@ -283,11 +283,23 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
   useEffect(() => { loadAddons(); }, [loadAddons, order.refund_amount, order.refunded_at]);
 
   // Provider payout ledger for this order (base + add-on). Admin RLS permits read.
+  //
+  // RA-PAYOUT-DISPLAY-001 — DEFENCE 1 OF 2: never load a cancelled row.
+  //
+  // A cancelled earning is a VOID ledger entry: the provider is not paid for it.
+  // Superseded/duplicate rows are cancelled rather than deleted, so an order can
+  // legitimately carry several cancelled rows alongside the one live row. Summing
+  // them displayed a payout that was never owed — PT-PSDRQPYL11K rendered $120
+  // (1 live base $30 + 2 cancelled base $30 + RA $30) instead of the true $60.
+  //
+  // This filter is deliberately duplicated in the render below. A reader that
+  // loses one defence in a refactor must not silently start overpaying again.
   const loadProviderEarnings = useCallback(async () => {
     const { data } = await supabase
       .from("doctor_earnings")
       .select("id, earning_type, doctor_amount, status, additional_documentation_request_id")
       .eq("order_id", order.id)
+      .neq("status", "cancelled")
       .order("created_at", { ascending: true });
     setProviderEarnings((data as ProviderEarningRow[]) ?? []);
   }, [order.id]);
@@ -470,9 +482,19 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
         // Additional Documentation (paid standalone add-on) each equal the
         // provider's standard rate; the rest is the base order payout (legacy
         // rows have null/other earning_type → treated as base).
-        const addonRows = providerEarnings.filter((e) => e.earning_type === "additional_documentation");
-        const raRows = providerEarnings.filter((e) => e.earning_type === "ra_completion");
-        const baseRows = providerEarnings.filter((e) => e.earning_type !== "additional_documentation" && e.earning_type !== "ra_completion");
+        // RA-PAYOUT-DISPLAY-001 — DEFENCE 2 OF 2: re-filter cancelled here.
+        //
+        // The query above already excludes them. This repeats it against the
+        // in-memory rows so the total stays correct even if the query filter is
+        // dropped, or a caller ever hands this component an unfiltered array.
+        // Payout display is money-facing; one defence is not enough.
+        const live = providerEarnings.filter((e) => (e.status ?? "") !== "cancelled");
+        // Every row cancelled → nothing is owed, so render nothing rather than a
+        // card full of zeros.
+        if (live.length === 0) return null;
+        const addonRows = live.filter((e) => e.earning_type === "additional_documentation");
+        const raRows = live.filter((e) => e.earning_type === "ra_completion");
+        const baseRows = live.filter((e) => e.earning_type !== "additional_documentation" && e.earning_type !== "ra_completion");
         const baseTotal = baseRows.reduce((s, e) => s + num(e.doctor_amount), 0);
         const raTotal = raRows.reduce((s, e) => s + num(e.doctor_amount), 0);
         const addonTotal = addonRows.reduce((s, e) => s + num(e.doctor_amount), 0);

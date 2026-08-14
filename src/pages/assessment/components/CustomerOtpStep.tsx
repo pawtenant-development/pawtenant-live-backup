@@ -32,6 +32,12 @@ const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
 interface Props {
   email: string;
+  /**
+   * REQUIRED. The same code is delivered by email AND SMS, so send-customer-otp
+   * rejects a request without a dialable number. This is not optional polish:
+   * omitting it makes every send fail with "a valid mobile number is required".
+   */
+  phone: string;
   firstName?: string;
   confirmationId: string;
   letterType: "esa" | "psd";
@@ -60,6 +66,13 @@ function maskEmail(e: string): string {
   return `${head}${dots}@${domain}`;
 }
 
+/** Mask a phone for display: "+13108717516" → "•••-•••-7516". Never store this. */
+function maskPhone(p: string): string {
+  const digits = String(p || "").replace(/\D/g, "");
+  if (digits.length < 4) return "your mobile";
+  return `•••-•••-${digits.slice(-4)}`;
+}
+
 /** Bucket a verify error into a privacy-safe category (the message itself is never stored). */
 function classifyVerifyFail(msg: string): OtpVerifyFailureCategory {
   const m = (msg || "").toLowerCase();
@@ -69,7 +82,7 @@ function classifyVerifyFail(msg: string): OtpVerifyFailureCategory {
   return "wrong_code";
 }
 
-export default function CustomerOtpStep({ email, firstName, confirmationId, letterType, accent = "esa", onVerified, onBack }: Props) {
+export default function CustomerOtpStep({ email, phone, firstName, confirmationId, letterType, accent = "esa", onVerified, onBack }: Props) {
   const [code, setCode] = useState("");
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -80,6 +93,7 @@ export default function CustomerOtpStep({ email, firstName, confirmationId, lett
   const entryStartedRef = useRef(false);
 
   const masked = maskEmail(email);
+  const maskedPhone = maskPhone(phone);
   const orange = accent === "psd";
   const primaryBg = orange ? "bg-amber-600 hover:bg-amber-700" : "bg-[#F97316] hover:bg-[#EA580C]";
   const linkColor = orange ? "text-amber-700" : "text-[#1A5C4F]";
@@ -94,7 +108,7 @@ export default function CustomerOtpStep({ email, firstName, confirmationId, lett
     }
     let r: { ok?: boolean; cooldown?: boolean; retryInSeconds?: number; error?: string } = {};
     try {
-      r = await post("send-customer-otp", { email, confirmationId, firstName, letterType });
+      r = await post("send-customer-otp", { email, phone, confirmationId, firstName, letterType });
     } catch {
       // Network failure (fetch rejected) — surface + record, never leave the button stuck.
       setSending(false);
@@ -104,7 +118,11 @@ export default function CustomerOtpStep({ email, firstName, confirmationId, lett
     }
     setSending(false);
     if (r?.ok) {
-      setInfo(r.cooldown ? "A code was just sent — check your inbox." : `We sent a 6-digit code to ${masked}.`);
+      setInfo(
+        r.cooldown
+          ? "A code was just sent — check your email and texts."
+          : `We sent the same 6-digit code to ${masked} and by text to ${maskedPhone}.`,
+      );
       setCooldown(r.retryInSeconds ?? 45);
       // Funnel: fire only when the server actually dispatched a NEW code. A
       // within-45s cooldown reply (ok:true, cooldown:true) is not a new send, so
@@ -189,10 +207,12 @@ export default function CustomerOtpStep({ email, firstName, confirmationId, lett
           <div className="w-12 h-12 mx-auto flex items-center justify-center bg-[#E8F1EE] rounded-xl mb-3">
             <i className="ri-mail-lock-line text-[#1A5C4F] text-xl"></i>
           </div>
-          <h2 className="text-xl font-extrabold text-gray-900">Confirm your email</h2>
+          <h2 className="text-xl font-extrabold text-gray-900">Confirm your contact details</h2>
           <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-            Enter the 6-digit code we sent to <span className="font-semibold text-gray-700">{masked}</span> so we can
-            securely save your assessment and deliver your documents.
+            We sent the <span className="font-semibold text-gray-700">same 6-digit code</span> by email to{" "}
+            <span className="font-semibold text-gray-700">{masked}</span> and by text to{" "}
+            <span className="font-semibold text-gray-700">{maskedPhone}</span>. Enter it below so we can securely save
+            your assessment and deliver your documents.
           </p>
         </div>
 

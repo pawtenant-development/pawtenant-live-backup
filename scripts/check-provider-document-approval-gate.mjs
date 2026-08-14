@@ -155,14 +155,32 @@ function runChecks(f) {
   //     reopen; the housing document itself still stays gated. A6 (the trigger)
   //     is what actually prevents that document from being released.
   const letterPatch = (submit.match(/const\s+orderUpdatePatch[\s\S]*?\n\s*};/) ?? [""])[0];
+  // RA-LIFECYCLE-001 UPDATE. The final clause used to require the OPPOSITE of
+  // what it now requires. It pinned:
+  //
+  //     if (order.letter_id) { housingOrderPatch.doctor_status = "patient_notified" }
+  //
+  // i.e. a provider's housing UPLOAD restoring a delivered order straight back
+  // to notified. That is exactly the defect: the RA service was completed and
+  // PAID while the housing document still sat at review_status
+  // 'pending_admin_approval', so the provider approved their own work and a
+  // document an admin might reject had already produced an earning.
+  //
+  // The restore now happens on the ADMIN APPROVAL transition in
+  // admin-review-document. A provider upload may only move the order INTO
+  // review, never out of it — so the housing patch must NOT contain
+  // patient_notified at all.
+  const housingPatch = (submit.match(/const\s+housingOrderPatch[\s\S]*?\n\s*};/) ?? [""])[0];
   add("A4", "final-letter submission does NOT set completed / patient_notified",
     letterPatch.length > 0
     && !/status:\s*["']completed["']/.test(letterPatch)
     && !/doctor_status:\s*["']patient_notified["']/.test(letterPatch)
     && /doctor_status:\s*["']pending_admin_approval["']/.test(letterPatch)
     && !/patient_notification_sent_at/.test(letterPatch)
-    // the housing restore must stay conditional on an already-delivered letter
-    && /if\s*\(order\.letter_id\)\s*\{[\s\S]{0,240}housingOrderPatch\.doctor_status\s*=\s*["']patient_notified["']/.test(submit));
+    // the housing upload must move INTO admin review and never out of it
+    && housingPatch.length > 0
+    && /doctor_status:\s*["']pending_admin_approval["']/.test(housingPatch)
+    && !/patient_notified/.test(housingPatch));
 
   add("A5", "provider submission does NOT repoint orders.signed_letter_url",
     !/signed_letter_url:/.test(submit));

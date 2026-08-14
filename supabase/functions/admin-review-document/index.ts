@@ -28,6 +28,8 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// RA-LIFECYCLE-001 step D: RA completion payout is created on APPROVAL, here.
+import { ensureRaCompletionEarning } from "../_shared/raCompletionEarning.ts";
 import { evaluateNotificationSuppression } from "../_shared/testNotificationSuppression.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -264,6 +266,64 @@ Deno.serve(async (req: Request) => {
         ? "Already approved and delivered — no duplicate notification was sent."
         : "No change — this document is no longer awaiting approval.",
     });
+  }
+
+  // ── RA-LIFECYCLE-001 step D — the ONLY place RA completion + payout happen ──
+  //
+  // provider-submit-letter used to mark the RA service completed and create the
+  // provider earning at UPLOAD time, which made the provider their own approver
+  // and paid out for documents an admin had not seen (and might reject). Both
+  // now hang off this approval transition, and only when it really transitioned
+  // — an idempotent replay returned above, so a double-click cannot reach here
+  // twice.
+  //
+  // ensureRaCompletionEarning() is itself guarded by a pre-check AND the partial
+  // unique index doctor_earnings_ra_completion_order_uniq, so even a genuine
+  // race creates exactly one row. The status patch runs FIRST because the helper
+  // gates on additional_documentation_status='completed'.
+  let raCompleted = false;
+  let raEarning: { created: boolean; reason: string } | null = null;
+  let raOrderReturnedToCompleted = false;
+  try {
+    const { data: approvedDoc } = await admin
+      .from("order_documents")
+      .select("id, order_id, doc_type")
+      .eq("id", documentId)
+      .maybeSingle();
+
+    if (approvedDoc && approvedDoc.doc_type === "housing_completed") {
+      const { data: ord } = await admin
+        .from("orders")
+        .select("id, status, doctor_status, letter_id")
+        .eq("id", approvedDoc.order_id)
+        .maybeSingle();
+
+      if (ord) {
+        // The base clinical letter is "delivered" once its verification id has
+        // been minted. RA approval must never complete an order whose ESA/PSD
+        // letter has not reached the customer — that base workflow continues
+        // untouched and completes on its own terms.
+        const baseDelivered = !!ord.letter_id;
+        const patch: Record<string, unknown> = { additional_documentation_status: "completed" };
+        if (baseDelivered) {
+          patch.status = "completed";
+          patch.doctor_status = "patient_notified";
+        }
+        await admin.from("orders").update(patch).eq("id", ord.id);
+        raCompleted = true;
+        raOrderReturnedToCompleted = baseDelivered;
+
+        raEarning = await ensureRaCompletionEarning(admin, ord.id as string);
+        console.info(
+          `[admin-review-document] RA approved for ${ord.id} — baseDelivered=${baseDelivered}, earning=${raEarning?.reason}`,
+        );
+      }
+    }
+  } catch (raErr) {
+    // Never fail a completed approval because the payout bookkeeping threw. The
+    // document IS approved; reconciliation heals the earning, and the helper is
+    // idempotent so healing cannot double-pay.
+    console.error("[admin-review-document] RA completion side effect failed (non-fatal):", raErr);
   }
 
   // ── Side effects of a REAL release ─────────────────────────────────────────

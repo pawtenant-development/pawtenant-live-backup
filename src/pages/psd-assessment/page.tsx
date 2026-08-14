@@ -1000,6 +1000,7 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
               {step === 3 && checkoutGate === "otp" && (
                 <CustomerOtpStep
                   email={step2.email}
+                  phone={step2.phone}
                   firstName={step2.firstName}
                   confirmationId={confirmationId}
                   letterType="psd"
