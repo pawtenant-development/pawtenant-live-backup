@@ -1,4 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  buildInboundColumns,
+  extractConversationId,
+  extractProviderEventId,
+  isDuplicateInsert,
+  maskPhone,
+  resolveInboundIdentity,
+} from "../_shared/inboundIdentity.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -33,7 +41,9 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  console.log("[GHL-CALL-INBOUND] Received payload:", JSON.stringify(payload));
+  // §10: key shape only. The raw payload carries the caller's full number and,
+  // on some GHL workflow versions, a recording URL.
+  console.log("[GHL-CALL-INBOUND] payload keys:", Object.keys(payload).sort().join(","));
 
   // ── Extract fields from GHL webhook payload ───────────────────────────────
   const phone =
@@ -79,49 +89,47 @@ Deno.serve(async (req: Request) => {
     (payload.contact_id as string) ||
     null;
 
-  // ── Try to match this inbound call to an existing order ───────────────────
-  let matchedOrderId: string | null = null;
-  let matchedConfirmationId: string | null = null;
+  // ── Identity, provider id and normalisation ──────────────────────────────
+  // UNIFIED-ADMIN-COMMAND-CENTER-...-GHL-SYNC-001. THIS is the writer that
+  // produced all 570 LIVE `call_inbound` rows carrying "(832) 726-0357" in
+  // `phone_from`: the GHL payload value went in verbatim, so every E.164-keyed
+  // lookup — conversation identity, admin search, GHL contact match — missed
+  // them, which is exactly the reported "(832) calls appear in PawTenant but
+  // not correctly in GHL".
+  //
+  // The `.limit(1)` phone match it replaced also attached a GUESSED customer
+  // whenever several orders shared a number.
+  const providerEventId = extractProviderEventId(payload);
+  const conversationId = extractConversationId(payload);
+  const identity = await resolveInboundIdentity(supabase, phone);
 
-  if (phone) {
-    const cleanPhone = phone.replace(/\D/g, "");
-    const { data: orders } = await supabase
-      .from("orders")
-      .select("id, confirmation_id, phone")
-      .ilike("phone", `%${cleanPhone.slice(-10)}`)
-      .limit(1);
-
-    if (orders && orders.length > 0) {
-      matchedOrderId = orders[0].id;
-      matchedConfirmationId = orders[0].confirmation_id;
-    }
-  }
-
-  // If no match by phone, try by email
-  if (!matchedOrderId && contactEmail) {
+  let matchedOrderId = identity.orderId;
+  let matchedConfirmationId = identity.confirmationId;
+  if (identity.state === "unknown" && contactEmail) {
     const { data: orders } = await supabase
       .from("orders")
       .select("id, confirmation_id, email")
       .ilike("email", contactEmail)
-      .limit(1);
-
-    if (orders && orders.length > 0) {
+      .limit(2);
+    if (orders && orders.length === 1) {
       matchedOrderId = orders[0].id;
       matchedConfirmationId = orders[0].confirmation_id;
     }
   }
 
   // ── Build a summary body for the call log ────────────────────────────────
+  // §10: the recording URL is NOT written into the body. It has its own column
+  // (`recording_url`) which the Admin UI renders behind an explicit control;
+  // inlining it here put a media credential into a free-text field that gets
+  // previewed, searched and copied around.
   const bodyParts: string[] = [];
   if (contactName && contactName !== "Unknown Caller") bodyParts.push(`From: ${contactName}`);
-  if (phone) bodyParts.push(`Phone: ${phone}`);
   if (callStatus) bodyParts.push(`Status: ${callStatus}`);
   if (durationSeconds > 0) {
     const mins = Math.floor(durationSeconds / 60);
     const secs = durationSeconds % 60;
     bodyParts.push(`Duration: ${mins}m ${secs}s`);
   }
-  if (recordingUrl) bodyParts.push(`Recording: ${recordingUrl}`);
   const body = bodyParts.join(" | ") || "Inbound call received";
 
   // ── Insert into communications table ─────────────────────────────────────
@@ -131,14 +139,34 @@ Deno.serve(async (req: Request) => {
     type: "call_inbound",
     direction: "inbound",
     body,
-    phone_from: phone,
-    phone_to: Deno.env.get("GHL_PHONE_NUMBER") ?? null,
     duration_seconds: durationSeconds > 0 ? durationSeconds : null,
     status: callStatus,
     recording_url: recordingUrl,
     sent_by: contactName,
-    twilio_sid: ghlContactId ? `ghl:${ghlContactId}` : null,
+    // The spread supplies phone_from (NORMALISED), phone_to, twilio_sid,
+    // provider_event_id, ghl_conversation_id, ghl_sync_state and dedupe_key.
+    // Conflict resolved toward the spread: it already sets `twilio_sid`, and the
+    // TEST-side `source` column does not exist on LIVE (see the note in
+    // `_shared/inboundIdentity.ts`).
+    ...buildInboundColumns({
+      type: "call_inbound",
+      rawPhone: phone,
+      ourNumber: Deno.env.get("GHL_PHONE_NUMBER") ?? null,
+      providerEventId,
+      conversationId,
+      contactId: ghlContactId,
+    }),
   });
+
+  // Replayed webhook: the unique `dedupe_key` index rejected the second copy.
+  // Acknowledge so GHL stops retrying; do not log a duplicate call.
+  if (insertError && isDuplicateInsert(insertError)) {
+    console.log(`[GHL-CALL-INBOUND] duplicate webhook ignored — event ${providerEventId ?? "n/a"}`);
+    return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+      status: 200,
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    });
+  }
 
   if (insertError) {
     console.error("[GHL-CALL-INBOUND] DB insert error:", insertError.message);
@@ -156,8 +184,10 @@ Deno.serve(async (req: Request) => {
       .eq("id", matchedOrderId);
   }
 
+  // §10: masked number only — the full caller number is PII and these logs are
+  // retained and searchable.
   console.log(
-    `[GHL-CALL-INBOUND] ✅ Logged inbound call from ${phone ?? "unknown"} — status: ${callStatus} — order: ${matchedOrderId ?? "unmatched"}`
+    `[GHL-CALL-INBOUND] ✅ inbound call from ${maskPhone(phone)} — status: ${callStatus} — identity: ${identity.state} — order: ${matchedOrderId ?? "unmatched"}`
   );
 
   return new Response(JSON.stringify({ ok: true, matched: !!matchedOrderId }), {

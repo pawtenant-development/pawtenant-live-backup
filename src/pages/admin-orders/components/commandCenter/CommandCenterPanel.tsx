@@ -46,6 +46,10 @@ import {
   type QueueChip,
 } from "./useCommsQueue";
 import BlacklistManager from "./BlacklistManager";
+import ConversationSearchBox from "./ConversationSearchBox";
+import UnifiedThreadPane, { type ThreadTarget } from "./UnifiedThreadPane";
+import { useConversationSearch, type ConversationHit } from "./useConversation";
+import { formatPhoneDisplay, normalizeE164 } from "../../../../lib/conversationIdentity";
 
 const PAW20_COPY = "You can use code PAW20 for $20 off your order.";
 
@@ -89,6 +93,15 @@ export default function CommandCenterPanel() {
   const [mobileView, setMobileView] = useState<"queue" | "thread">("queue");
   const [showBlacklist, setShowBlacklist] = useState(false);
 
+  // ── Search (§2) ───────────────────────────────────────────────────────────
+  // A search hit is a SEPARATE selection channel from the queue. The queue only
+  // ever contained rows that had an `ai_support_conversations` record or were
+  // one of the last 20 inbound calls — which is exactly why the +16202539921
+  // message was unreachable: it had neither. A hit selected here bypasses the
+  // queue entirely and opens its thread directly.
+  const search = useConversationSearch();
+  const [searchTarget, setSearchTarget] = useState<ThreadTarget | null>(null);
+
   const visible = useMemo(() => rows.filter((r) => r.facets.has(filter)), [rows, filter]);
   const selected = useMemo(
     () => rows.find((r) => r.key === selectedKey) ?? null,
@@ -105,8 +118,41 @@ export default function CommandCenterPanel() {
 
   const onSelect = useCallback((key: string) => {
     setSelectedKey(key);
+    setSearchTarget(null);   // a queue pick supersedes a search pick
     setMobileView("thread");
   }, []);
+
+  const onPickHit = useCallback((hit: ConversationHit) => {
+    setSearchTarget({
+      contactE164: hit.contactE164,
+      orderId: hit.orderId,
+      confirmationId: hit.confirmationId,
+      displayName: hit.displayName,
+      identityState: hit.identityState,
+      candidateCount: hit.candidateCount,
+    });
+    setSelectedKey(null);
+    setMobileView("thread");
+  }, []);
+
+  // A queue row becomes a thread target whenever it carries a usable phone.
+  // `smsPhone` is populated for SMS conversations AND for inbound calls, so an
+  // unknown caller gets a real thread rather than the old dead-end card.
+  const queueTarget = useMemo<ThreadTarget | null>(() => {
+    if (!selected) return null;
+    const e164 = normalizeE164(selected.smsPhone ?? selected.context.phone);
+    if (!e164) return null;
+    return {
+      contactE164: e164,
+      orderId: null,
+      confirmationId: selected.context.orderId ?? null,
+      displayName: selected.context.name || null,
+      identityState: selected.context.orderId ? "linked" : "unknown",
+      candidateCount: selected.context.orderId ? 1 : 0,
+    };
+  }, [selected]);
+
+  const activeSearchKey = searchTarget?.contactE164 ?? searchTarget?.orderId ?? null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -116,6 +162,19 @@ export default function CommandCenterPanel() {
       <div className="lg:grid lg:grid-cols-[320px_minmax(0,1fr)_300px] lg:gap-3">
         {/* LEFT — queue */}
         <div className={`${mobileView === "thread" ? "hidden lg:flex" : "flex"} flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-0`}>
+          {/* Search sits ABOVE the filters: it is a way INTO a conversation the
+              queue may not contain at all, not another way to narrow the queue. */}
+          <ConversationSearchBox
+            query={search.query}
+            setQuery={search.setQuery}
+            hits={search.hits}
+            searching={search.searching}
+            empty={search.empty}
+            error={search.error}
+            clear={search.clear}
+            onPick={onPickHit}
+            activeKey={activeSearchKey}
+          />
           <div className="px-3 py-2.5 border-b border-slate-100 flex items-center gap-1.5 flex-wrap">
             {FILTERS.map((f) => {
               const n = counts.get(f.key) ?? 0;
@@ -151,9 +210,16 @@ export default function CommandCenterPanel() {
         </div>
 
         {/* CENTER — conversation / timeline */}
-        <div className={`${mobileView === "queue" ? "hidden lg:flex" : "flex"} flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-[420px] mt-3 lg:mt-0`}>
-          {selected ? (
-            <ConversationPane row={selected} onBack={() => setMobileView("queue")} onChanged={refresh} />
+        <div className={`${mobileView === "queue" ? "hidden lg:flex" : "flex"} flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-[420px] max-h-[calc(100vh-220px)] mt-3 lg:mt-0`}>
+          {searchTarget ? (
+            <UnifiedThreadPane target={searchTarget} onBack={() => setMobileView("queue")} />
+          ) : selected ? (
+            <ConversationPane
+              row={selected}
+              target={queueTarget}
+              onBack={() => setMobileView("queue")}
+              onChanged={refresh}
+            />
           ) : (
             <EmptyCenter />
           )}
@@ -161,7 +227,9 @@ export default function CommandCenterPanel() {
 
         {/* RIGHT — context + AI panel */}
         <div className={`${mobileView === "queue" ? "hidden lg:block" : "block"} bg-white rounded-xl border border-slate-200 overflow-hidden mt-3 lg:mt-0`}>
-          {selected ? <ContextPane row={selected} /> : (
+          {searchTarget ? (
+            <SearchContextPane target={searchTarget} />
+          ) : selected ? <ContextPane row={selected} /> : (
             <div className="p-6 text-center text-sm text-slate-400">Select a conversation to see customer &amp; AI context.</div>
           )}
         </div>
@@ -260,8 +328,20 @@ function EmptyCenter() {
 }
 
 // ── Conversation pane (routes by channel) ─────────────────────────────────────
-function ConversationPane({ row, onBack, onChanged }: { row: CommRow; onBack: () => void; onChanged: () => void }) {
+function ConversationPane({ row, target, onBack, onChanged }: {
+  row: CommRow; target: ThreadTarget | null; onBack: () => void; onChanged: () => void;
+}) {
   const ch = CHANNEL_CHIP[row.kind];
+
+  // §3 — A CALL row used to render a single sentence plus an "Open SMS / Calls"
+  // button that navigated the admin OUT of the workspace they were working in,
+  // and the panel was otherwise empty. Any row that resolves to a real phone now
+  // gets the genuine unified thread instead: its SMS, its calls and its emails
+  // in one chronology, with a reply box. The redirect is gone.
+  if (row.kind === "call" && target) {
+    return <UnifiedThreadPane target={target} onBack={onBack} />;
+  }
+
   return (
     <div className="flex flex-col min-h-0 h-full">
       <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
@@ -276,9 +356,76 @@ function ConversationPane({ row, onBack, onChanged }: { row: CommRow; onBack: ()
         <ChatTimeline row={row} onChanged={onChanged} />
       ) : row.kind === "sms" && row.aiConversationId ? (
         <SmsTimeline row={row} onChanged={onChanged} />
+      ) : target ? (
+        // An SMS row with no AI conversation (a raw provider message that never
+        // got one — the exact shape of the +16202539921 case) still has a phone,
+        // so it still has a real thread.
+        <UnifiedThreadPane target={target} onBack={onBack} />
       ) : (
         <SummaryTimeline row={row} />
       )}
+    </div>
+  );
+}
+
+// ── Right panel for a SEARCH-selected conversation ───────────────────────────
+// Deliberately separate from `ContextPane`, which is built around a queue row's
+// AI-decision snapshot. A search hit has no AI decision and may have no customer
+// at all; presenting an empty AI panel would imply the AI looked and found
+// nothing, which is a different and false statement.
+function SearchContextPane({ target }: { target: ThreadTarget }) {
+  const navigate = useNavigate();
+  return (
+    <div className="p-4 flex flex-col gap-4 overflow-y-auto max-h-[calc(100vh-220px)]">
+      <section>
+        <p className="text-[10px] text-[#059669] font-bold uppercase tracking-widest mb-2">Contact</p>
+        <dl className="grid grid-cols-[80px_1fr] gap-y-1 gap-x-2 text-[12.5px]">
+          <dt className="text-slate-400 text-[11px] font-semibold pt-0.5">Name</dt>
+          <dd className="font-semibold text-slate-700 break-words">{target.displayName ?? "—"}</dd>
+          <dt className="text-slate-400 text-[11px] font-semibold pt-0.5">Phone</dt>
+          <dd className="font-semibold text-slate-700 tabular-nums break-words">
+            {target.contactE164 ? formatPhoneDisplay(target.contactE164) : "—"}
+          </dd>
+        </dl>
+      </section>
+
+      <section className="border-t border-slate-100 pt-3">
+        <p className="text-[10px] text-[#059669] font-bold uppercase tracking-widest mb-2">Identity</p>
+        {target.identityState === "linked" ? (
+          <p className="text-[12.5px] text-slate-700">
+            <i className="ri-user-check-line mr-1 text-emerald-600" />
+            Matched to a single customer.
+          </p>
+        ) : target.identityState === "ambiguous" ? (
+          <p className="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-2">
+            <i className="ri-alert-line mr-1" />
+            <strong>{target.candidateCount} customers</strong> have this number on file, so no
+            single customer can be attached without guessing. The thread is keyed by the
+            number; open a specific order from the Orders tab to act on one of them.
+          </p>
+        ) : (
+          <p className="text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-2">
+            <i className="ri-user-unfollow-line mr-1" />
+            No customer or order matches this number. The conversation is kept under the
+            number itself and can be linked to an order later without losing history.
+          </p>
+        )}
+      </section>
+
+      <section className="border-t border-slate-100 pt-3">
+        <p className="text-[10px] text-[#059669] font-bold uppercase tracking-widest mb-2">Order</p>
+        {target.confirmationId ? (
+          <button
+            type="button"
+            onClick={() => navigate(`/admin-orders?tab=orders&q=${encodeURIComponent(target.confirmationId!)}`)}
+            className="text-[12.5px] font-mono font-semibold text-[#1E293B] hover:underline break-all text-left"
+          >
+            {target.confirmationId}
+          </button>
+        ) : (
+          <p className="text-[12.5px] text-slate-400">No order linked</p>
+        )}
+      </section>
     </div>
   );
 }

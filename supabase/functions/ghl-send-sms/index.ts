@@ -53,6 +53,20 @@ Deno.serve(async (req: Request) => {
     // to one provider call. Deliberately NOT derived from the message text — an
     // admin sending the same short message again next week is a real send.
     operationToken?: string;
+    // UNIFIED-ADMIN-COMMAND-CENTER-...-GHL-SYNC-001 §4.
+    //
+    // OPT-IN, default OFF. Order Details has sent with `checkDnd: false` since
+    // this endpoint existed and that is a working LIVE admin workflow; flipping
+    // its default would silently add a provider round trip to every manual send
+    // and start refusing sends that succeed today.
+    //
+    // The Command Center composer passes TRUE, because it can be aimed at an
+    // UNKNOWN number that never went through checkout and therefore has no
+    // `orders.sms_opted_out` record at all — a STOP sent to the GHL number is
+    // the only opt-out signal that exists for that person. Under `true`,
+    // `sendGhlSms` fails CLOSED: a confirmed DND is permanent, and an
+    // UNREADABLE DND refuses the send rather than assuming consent.
+    checkDnd?: boolean;
   };
 
   try {
@@ -146,7 +160,12 @@ Deno.serve(async (req: Request) => {
       subject: "",
       slug: "admin_sms",
       type: "sms_outbound",
-      dedupeKey: `${confirmationId ?? orderId}:admin_sms:${operationToken}`,
+      // An UNKNOWN-number reply has neither a confirmation id nor an order id.
+      // The old template interpolated `undefined` into the key — still unique
+      // per operation token, so it worked, but it made every unlinked send key
+      // read "undefined:admin_sms:…" and told an operator nothing. Anchor those
+      // on the phone instead; linked sends keep their existing key shape.
+      dedupeKey: `${confirmationId ?? orderId ?? `phone:${toPhone}`}:admin_sms:${operationToken}`,
       sentBy,
       staleClaimMinutes: 5,
       extraColumns: {
@@ -168,7 +187,9 @@ Deno.serve(async (req: Request) => {
   const smsRes = await sendGhlSms({
     toPhone,
     message: outboundMessage,
-    checkDnd: false,
+    // Default preserved exactly: absent flag → false → unchanged Order Details
+    // behaviour. Only an explicit `true` from the Command Center opts in.
+    checkDnd: body.checkDnd === true,
     contactSource: "Admin Portal",
   });
 

@@ -1,6 +1,7 @@
 // CommunicationsPanel — Top-level feed of all SMS, calls & emails across every order
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import CommDetailDrawer from "./CommDetailDrawer";
 
 interface CommEntry {
   id: string;
@@ -17,6 +18,13 @@ interface CommEntry {
   sent_by: string | null;
   recording_url: string | null;
   created_at: string;
+  // UNIFIED-ADMIN-COMMAND-CENTER-...-GHL-SYNC-001 §6. The query already does
+  // `select("*")`, so these arrive without changing it — they were simply never
+  // typed, and therefore never displayable.
+  contact_e164: string | null;
+  provider_event_id: string | null;
+  ghl_sync_state: string | null;
+  ghl_sync_error_code: string | null;
 }
 
 interface EmailFlatEntry {
@@ -120,6 +128,9 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
   const [emailTypeFilter, setEmailTypeFilter] = useState<string>("all");
   const [search, setSearch]             = useState("");
   const [offset, setOffset]             = useState(0);
+  // §6 — the row a drawer is open for. The table keeps its COMPACT preview; the
+  // drawer is where the complete stored body becomes readable.
+  const [detailRow, setDetailRow]       = useState<CommEntry | null>(null);
 
   // Build order lookup map
   const orderMap = new Map<string, Order>();
@@ -392,7 +403,18 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
 
                     return (
                       <div key={entry.id}
-                        className={`grid grid-cols-1 md:grid-cols-[28px_130px_1fr_150px_110px_90px_80px] gap-3 md:gap-4 px-5 py-3.5 items-center hover:bg-gray-50/50 transition-colors ${isCall ? "border-l-2 border-sky-200" : ""}`}>
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Open full message detail"
+                        onClick={() => setDetailRow(entry)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetailRow(entry); }
+                        }}
+                        // LIVE keeps its OWN 7-column layout and leading dot column.
+                        // Only the drawer wiring and `cursor-pointer` are added here;
+                        // TEST's 9-column customer-first grid is a separate pre-existing
+                        // divergence and is deliberately NOT promoted by this rollout.
+                        className={`grid grid-cols-1 md:grid-cols-[28px_130px_1fr_150px_110px_90px_80px] gap-3 md:gap-4 px-5 py-3.5 items-center hover:bg-gray-50/50 transition-colors cursor-pointer ${isCall ? "border-l-2 border-sky-200" : ""}`}>
                         {/* Dot */}
                         <div className="hidden md:flex items-center justify-center">
                           <div className={`w-2 h-2 rounded-full ${cfg?.dot ?? "bg-gray-300"}`}></div>
@@ -413,11 +435,22 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                               {entry.type === "call_outbound" ? "Outbound call" : entry.type === "call_inbound" ? "Inbound call" : "No content"}
                             </p>
                           )}
+                          {/* The preview above stays CLIPPED on purpose — §6 keeps
+                              the compact table. This is the affordance that says
+                              the full text exists, which is what the old
+                              truncate row never communicated. */}
+                          {entry.body && entry.body.length > 60 && (
+                            <span className="inline-flex items-center gap-1 mt-0.5 text-[11px] font-semibold text-[#3b6ea5]">
+                              <i className="ri-expand-diagonal-line" style={{ fontSize: "10px" }}></i>
+                              View full message
+                            </span>
+                          )}
                           {entry.recording_url && (
                             <a
                               href={entry.recording_url}
                               target="_blank"
                               rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
                               className="inline-flex items-center gap-1 mt-0.5 text-xs text-sky-600 hover:underline cursor-pointer"
                             >
                               <i className="ri-record-circle-line" style={{ fontSize: "10px" }}></i>Recording
@@ -431,7 +464,9 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
                         </div>
                         {/* Customer */}
                         {order ? (
-                          <button type="button" onClick={() => onViewOrder(order)} className="text-left group cursor-pointer min-w-0">
+                          // stopPropagation: this nested control opens the ORDER,
+                          // not the message drawer the surrounding row click opens.
+                          <button type="button" onClick={(e) => { e.stopPropagation(); onViewOrder(order); }} className="text-left group cursor-pointer min-w-0">
                             <p className="text-xs font-bold text-gray-800 truncate group-hover:text-[#3b6ea5] transition-colors">{name}</p>
                             <p className="text-xs text-gray-400 font-mono truncate">{entry.confirmation_id}</p>
                             {order.state && <p className="text-xs text-gray-400">{order.state}</p>}
@@ -620,6 +655,20 @@ export default function CommunicationsPanel({ orders, onViewOrder }: Communicati
             )}
           </div>
         </>
+      )}
+
+      {/* §6 — full-message drawer. Mounts the SAME UnifiedThreadPane the Command
+          Center uses, so the two screens share one conversation history and one
+          send path rather than growing separate ones. */}
+      {detailRow && (
+        <CommDetailDrawer
+          row={detailRow}
+          customerName={(() => {
+            const o = detailRow.order_id ? orderMap.get(detailRow.order_id) : null;
+            return o ? ([o.first_name, o.last_name].filter(Boolean).join(" ") || o.email) : null;
+          })()}
+          onClose={() => setDetailRow(null)}
+        />
       )}
     </div>
   );

@@ -1,4 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  buildInboundColumns,
+  extractConversationId,
+  extractProviderEventId,
+  isDuplicateInsert,
+  maskPhone,
+  resolveInboundIdentity,
+} from "../_shared/inboundIdentity.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -70,7 +78,11 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  console.log("[GHL-SMS-INBOUND] Received payload:", JSON.stringify(payload));
+  // §10: never log the raw payload — for an inbound SMS it contains the
+  // customer's complete message body, and these logs are retained, searchable
+  // and exportable. Log the KEY SHAPE instead, which is what the payload-probing
+  // in `_shared/inboundIdentity.ts` actually needs for diagnosis.
+  console.log("[GHL-SMS-INBOUND] payload keys:", Object.keys(payload).sort().join(","));
 
   // ── Extract phone ─────────────────────────────────────────────────────────
   const phone =
@@ -109,33 +121,35 @@ Deno.serve(async (req: Request) => {
     (payload.contact_id as string) ||
     null;
 
-  // ── Try to match this inbound SMS to an existing order ───────────────────
-  let matchedOrderId: string | null = null;
-  let matchedConfirmationId: string | null = null;
+  // ── Identity, provider id and normalisation ──────────────────────────────
+  // UNIFIED-ADMIN-COMMAND-CENTER-...-GHL-SYNC-001. This block used to
+  //   * store `phone` verbatim (GHL sends display format, so the row became
+  //     unreachable by every E.164 lookup),
+  //   * use `.limit(1)` on a phone `ilike` and thereby ATTACH A GUESSED
+  //     CUSTOMER when several share a number, and
+  //   * put the CONTACT id in `twilio_sid` and call it a provider id — the same
+  //     value for every message that contact ever sends, so there was no
+  //     idempotency key at all.
+  // All three now live in `_shared/inboundIdentity.ts` so this webhook and
+  // `ghl-call-inbound` cannot drift apart again.
+  const providerEventId = extractProviderEventId(payload);
+  const conversationId = extractConversationId(payload);
+  const identity = await resolveInboundIdentity(supabase, phone);
 
-  if (phone) {
-    const cleanPhone = phone.replace(/\D/g, "");
-    const { data: orders } = await supabase
-      .from("orders")
-      .select("id, confirmation_id, phone")
-      .ilike("phone", `%${cleanPhone.slice(-10)}`)
-      .limit(1);
-
-    if (orders && orders.length > 0) {
-      matchedOrderId = orders[0].id;
-      matchedConfirmationId = orders[0].confirmation_id;
-    }
-  }
-
-  // Fallback: try matching by email
-  if (!matchedOrderId && contactEmail) {
+  // Email is a WEAKER signal than phone and is only consulted when the phone
+  // produced no candidate at all. It is never used to override an `ambiguous`
+  // phone verdict — that would reintroduce the guess by another route.
+  let matchedOrderId = identity.orderId;
+  let matchedConfirmationId = identity.confirmationId;
+  if (identity.state === "unknown" && contactEmail) {
     const { data: orders } = await supabase
       .from("orders")
       .select("id, confirmation_id, email")
       .ilike("email", contactEmail)
-      .limit(1);
-
-    if (orders && orders.length > 0) {
+      .limit(2);
+    // Exactly one match, or nothing. Two customers behind one address is not a
+    // resolution.
+    if (orders && orders.length === 1) {
       matchedOrderId = orders[0].id;
       matchedConfirmationId = orders[0].confirmation_id;
     }
@@ -148,12 +162,28 @@ Deno.serve(async (req: Request) => {
     type: "sms_inbound",
     direction: "inbound",
     body: message,
-    phone_from: phone,
-    phone_to: Deno.env.get("GHL_PHONE_NUMBER") ?? null,
     status: "received",
     sent_by: contactName,
-    twilio_sid: ghlContactId ? `ghl:${ghlContactId}` : null,
+    ...buildInboundColumns({
+      type: "sms_inbound",
+      rawPhone: phone,
+      ourNumber: Deno.env.get("GHL_PHONE_NUMBER") ?? null,
+      providerEventId,
+      conversationId,
+      contactId: ghlContactId,
+    }),
   });
+
+  // A replayed webhook loses the race on `communications_dedupe_key_uniq`. That
+  // is the mechanism working, not a failure: acknowledge 200 so GHL stops
+  // retrying, and do NOT write a second copy of the customer's message.
+  if (insertError && isDuplicateInsert(insertError)) {
+    console.log(`[GHL-SMS-INBOUND] duplicate webhook ignored — event ${providerEventId ?? "n/a"}`);
+    return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+      status: 200,
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    });
+  }
 
   if (insertError) {
     console.error("[GHL-SMS-INBOUND] DB insert error:", insertError.message);
@@ -171,8 +201,10 @@ Deno.serve(async (req: Request) => {
       .eq("id", matchedOrderId);
   }
 
+  // §10: never log a message body. The previous line printed the first 100
+  // characters of every inbound customer SMS into the function logs.
   console.log(
-    `[GHL-SMS-INBOUND] ✅ Logged inbound SMS from ${phone ?? "unknown"} — order: ${matchedOrderId ?? "unmatched"} — body: "${message.slice(0, 100)}"`
+    `[GHL-SMS-INBOUND] ✅ inbound SMS from ${maskPhone(phone)} — identity: ${identity.state} — order: ${matchedOrderId ?? "unmatched"} — chars: ${message.length}`
   );
 
   return new Response(JSON.stringify({ ok: true, matched: !!matchedOrderId }), {
