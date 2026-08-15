@@ -115,8 +115,16 @@ export default function CommDetailDrawer({
   // Derived the same way `communications.contact_e164` is generated, so the
   // drawer and the thread agree on which conversation this row belongs to.
   const inbound = isInbound(row.type, row.direction);
-  const rawContact = row.contact_e164 ?? (inbound ? row.phone_from : row.phone_to);
-  const contactE164 = normalizeE164(rawContact);
+  // `storedRaw` is the value AS STORED — the whole point of the explainer below
+  // is to show an operator that a row reading "(832) 726-0357" is the same
+  // conversation as "+18327260357".
+  //
+  // This previously read `row.contact_e164 ?? (inbound ? ...)`, which made the
+  // explainer dead code the moment the generated column shipped: `contact_e164`
+  // is ALREADY normalised, so `stored` and `normalised` were always equal and
+  // the line never rendered. Caught in production QA on a real (832) call row.
+  const storedRaw = inbound ? row.phone_from : row.phone_to;
+  const contactE164 = normalizeE164(row.contact_e164 ?? storedRaw);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -176,7 +184,7 @@ export default function CommDetailDrawer({
               {isCall ? "Call detail" : "Message detail"}
             </p>
             <p className="text-sm font-bold text-gray-800 truncate">
-              {customerName || formatPhoneDisplay(contactE164 || rawContact)}
+              {customerName || formatPhoneDisplay(contactE164 || storedRaw)}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close detail"
@@ -210,18 +218,18 @@ export default function CommDetailDrawer({
             <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Details</p>
             <dl className="grid grid-cols-[112px_1fr] gap-y-1.5 gap-x-3">
               <Row label="Number">
-                <span className="tabular-nums">{formatPhoneDisplay(contactE164 || rawContact)}</span>
+                <span className="tabular-nums">{formatPhoneDisplay(contactE164 || storedRaw)}</span>
                 {contactE164 && (
                   <button type="button" onClick={copyPhone}
                     className="ml-2 text-[11px] font-bold text-[#3b6ea5] hover:underline">
                     <i className="ri-file-copy-line mr-0.5" />{copied ? "Copied" : "Copy"}
                   </button>
                 )}
-                {contactE164 && contactE164 !== rawContact && (
+                {contactE164 && storedRaw && contactE164 !== storedRaw && (
                   // Surfaces the (832) 726-0357 → +18327260357 correction so an
                   // operator can see WHY an older row looked unmatched.
                   <span className="block text-[10.5px] text-gray-400 font-normal">
-                    stored as “{rawContact}” · normalised to {contactE164}
+                    stored as “{storedRaw}” · normalised to {contactE164}
                   </span>
                 )}
               </Row>
