@@ -53,6 +53,10 @@ import OrderAuditTimeline from "./OrderAuditTimeline";
 // Self-fetching, read-only; adds no state or data loading to this file.
 import ProviderPayoutSummary from "./ProviderPayoutSummary";
 import { canDelete } from "../../../lib/adminPermissions";
+// ORDER-PAID-STALE-FAILURE-SUPPRESSION-001 — an order that failed a checkout
+// attempt and THEN paid is in good standing; the red warning was still firing.
+// Predicate lives in the canonical lifecycle module (guard-importable), not here.
+import { isStalePaymentFailure, type LifecycleOrder } from "../../../lib/orderLifecycle";
 // ATTR-CONSISTENCY-LOCK (2026-05-23): Overview "Referred By" badge now
 // reads the same canonical classifier the order list pill (OrderCard) and
 // the Attribution / Journey tab Source Summary already use. Hierarchy:
@@ -3773,7 +3777,7 @@ export default function OrderDetailModal({
         {(() => {
           const TABS: { key: Section; label: string; icon: string; badge: number | null; alert?: boolean }[] = [
             { key: "overview",   label: "Overview",                                     icon: "ri-layout-grid-line",  badge: null },
-            { key: "payments",   label: "Payments",                                     icon: "ri-bank-card-line",    badge: null, alert: !order.payment_intent_id && !!order.payment_failure_reason },
+            { key: "payments",   label: "Payments",                                     icon: "ri-bank-card-line",    badge: null, alert: !order.payment_intent_id && !!order.payment_failure_reason && !isStalePaymentFailure(order as LifecycleOrder) },
             { key: "comms",      label: "Comms",                                        icon: "ri-message-3-line",    badge: order.email_log && order.email_log.length > 0 ? order.email_log.length : null },
             { key: "documents",  label: "Documents",                                    icon: "ri-file-pdf-line",     badge: docCount > 0 ? docCount : null },
             { key: "assessment", label: isPSDOrder(order) ? "PSD Eval" : "Assessment",  icon: "ri-questionnaire-line",badge: assessmentCount > 0 ? assessmentCount : null },
@@ -4136,8 +4140,12 @@ export default function OrderDetailModal({
                     </div>
                     {/* OPS-ORDER-MODAL-V2-LAYOUT: Delivery Speed moved out of
                         Overview Order Details (still visible in Assessment + Payments). */}
-                    {/* Payment Failure Reason — only when present */}
-                    {order.payment_failure_reason && (
+                    {/* Payment Failure Reason — only when present AND still the
+                        current authoritative state. ORDER-PAID-STALE-FAILURE-
+                        SUPPRESSION-001: the compact summary reflects where the
+                        order stands NOW; a superseded attempt belongs to the
+                        Payments tab and audit history, not to this grid. */}
+                    {order.payment_failure_reason && !isStalePaymentFailure(order as LifecycleOrder) && (
                       <div>
                         <p className="text-xs text-gray-400 mb-0.5">Payment Failure</p>
                         <p className="text-sm font-semibold text-red-700 break-words">{order.payment_failure_reason}</p>
@@ -4395,8 +4403,12 @@ export default function OrderDetailModal({
                   </div>
                 )}
 
-                {/* Payment failure banner — links to Payments tab */}
-                {order.payment_failed_at && (
+                {/* Payment failure banner — links to Payments tab.
+                    ORDER-PAID-STALE-FAILURE-SUPPRESSION-001: an earlier declined
+                    or abandoned attempt on an order that HAS since paid is not an
+                    active warning. The attempt itself is untouched and still
+                    listed in the Payments tab + audit history. */}
+                {order.payment_failed_at && !isStalePaymentFailure(order as LifecycleOrder) && (
                   <div className="mt-4 pt-4 border-t border-red-200">
                     <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
                       <div className="flex items-start gap-3">

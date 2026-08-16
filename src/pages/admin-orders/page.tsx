@@ -73,6 +73,15 @@ import {
   KPI_CARD_LABEL,
   type KpiCardKey,
   type KpiCardCounts,
+  // ADMIN-ORDERS-SERVER-BACKED-LOADING-001 — the row read borrows the SAME
+  // predicate builder the counts use. There is no second definition of what a
+  // bucket, a filter or a date basis means anywhere in this feature.
+  applyListPredicates,
+  isDefaultScopeEligible,
+  defaultScopeCutoffIso,
+  fetchListScopeTotal,
+  DEFAULT_SCOPE_DAYS,
+  type FacetFilters,
 } from "./orderFacetCounts";
 // ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §9 — the banner's SOLE data source is the
 // period-event RPC imported below.
@@ -125,6 +134,107 @@ import type {
 // Package/RA classification for the Orders list chips + filters
 // (ORDERS-RA-COMBO-CHIP-FILTER-001). Explicit-fields-only; never price.
 import { classifyOrderPackage, matchesPackageFilter, type PackageFilterKey } from "./orderPackage";
+import { notify as desktopNotify } from "../../lib/desktopNotify";
+import { getSoundPrefs } from "../../lib/soundPrefs";
+
+// ADMIN-ORDERS-SERVER-BACKED-LOADING-001 — the Orders LIST is server-paged.
+//
+// What this replaced: every load walked the ENTIRE orders table into the
+// browser in 250-row pages, and a setInterval re-walked it every 30 seconds.
+// That is the visible "2049 orders loading" cycle, and it grew with the table.
+//
+// The contract now:
+//   • The list asks the server for ONE page at a time, with every filter, the
+//     status tab and the search term applied SERVER-side, through the single
+//     predicate builder in orderFacetCounts.ts (never a second copy).
+//   • The default view is bounded to the DEFAULT SCOPE — the last 60 days plus
+//     every still-actionable paid order regardless of age (§2, §17). Measured
+//     on TEST: 120 rows instead of 609.
+//   • Searching, choosing a tab, opening a filter or setting a date range drops
+//     that window and queries the COMPLETE dataset (§3, §4).
+//   • Nothing polls. Realtime pushes and explicit Refresh are the only
+//     refreshers, so the loading state never restarts under the operator (§8, §9).
+//
+// ADMIN-ORDERS-DATASET-FLICKER-P0-001 is PRESERVED, not undone: page reads are
+// still deterministic (basis DESC, created_at DESC, id DESC), still deduplicated
+// by order id, and a newer request still invalidates an older one so a stale
+// response can never overwrite newer rows or flicker the list back (§10, §13).
+const ORDERS_PAGE_SIZE = 100;
+// Runaway backstop for any multi-page sweep — far above any real page count.
+const ORDERS_MAX_PAGES = 400;
+
+// The whole-table snapshot (Dashboard / Analytics / Communications) is a
+// DIFFERENT dataset from the Orders list and is read in bigger pages, because
+// it is fetched once on demand rather than per interaction.
+const SNAPSHOT_PAGE_SIZE = 250;
+
+// Tabs whose surfaces genuinely aggregate the WHOLE orders table. The Orders
+// tab is deliberately absent — that is the entire point of the change. Loading
+// the snapshot is what the old architecture did unconditionally, on a timer.
+const SNAPSHOT_TABS = new Set(["dashboard", "analytics", "communications", "comms"]);
+
+// ── The whole-table FACTS projection ────────────────────────────────────────
+//
+// A handful of Orders-tab surfaces are genuinely whole-table questions and
+// always were: how many duplicate contacts exist, how many orders never synced
+// to GHL, which requested-provider values are selectable, which states have
+// paid orders but no licensed provider.
+//
+// Server-paging the list would have quietly re-pointed all of them at the
+// current 100-row page — they would not have errored, they would just have
+// reported small confident wrong numbers. So instead of changing what they
+// mean, this narrow projection preserves it: ~15 small columns instead of the
+// ~90-column list projection, fetched ONCE per session instead of every 30
+// seconds. Same answers, a fraction of the bytes, and nothing on a timer.
+const ORDER_FACTS_COLUMNS =
+  "id,confirmation_id,email,phone,state,status,doctor_status,doctor_email," +
+  "doctor_user_id,payment_intent_id,selected_provider,ghl_synced_at," +
+  "refund_status,refunded_at,sent_followup_at,source_system,historical_import";
+
+// COS-042 Phase A — Shared column projection for the Orders list query and
+// the direct-lookup query. Keeping these in sync guarantees that an order
+// fetched via direct lookup can be opened in OrderDetailModal with the same
+// fields as a row from the loaded list.
+const ORDERS_LIST_COLUMNS =
+  "id,confirmation_id,email,first_name,last_name,phone,state," +
+  "selected_provider,plan_type,delivery_speed,status,doctor_status," +
+  "doctor_email,doctor_name,doctor_user_id,payment_intent_id," +
+  "checkout_session_id,payment_method,price,created_at,letter_url," +
+  "signed_letter_url,patient_notification_sent_at,email_log,refunded_at," +
+  "refund_amount,refund_status,letter_type,dispute_id,dispute_status,dispute_reason," +
+  "dispute_created_at,fraud_warning,fraud_warning_at,subscription_status," +
+  "coupon_code,coupon_discount,paid_at,payment_failure_reason," +
+  "payment_failed_at,referred_by,addon_services,ghl_synced_at," +
+  "ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,assessment_progress," +
+  "sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at," +
+  "followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out," +
+  "last_broadcast_sent_at,source_system,historical_import," +
+  "utm_source,utm_medium,utm_campaign,gclid,fbclid," +
+  // Package / RA-bundle identity (ORDERS-RA-COMBO-CHIP-FILTER-001) — drives the
+  // Orders list package chips + filters. Explicit saved identity only; never price.
+  "package_key,package_display_name,includes_reasonable_accommodation_letter," +
+  "additional_documentation_required,additional_documentation_status," +
+  // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — canonical lifecycle dates.
+  // last_meaningful_activity_at is the DEFAULT sort key; the rest drive the
+  // payment-vs-workflow split and the immutable/latest date pairs. See
+  // src/lib/orderLifecycle.ts.
+  "last_meaningful_activity_at,last_meaningful_activity_type,last_payment_at," +
+  "first_completed_at,last_completed_at,last_reopened_at," +
+  // MONTH-END-...-001 §D/§E — lifecycle ENTRY timestamps (trigger-maintained),
+  // required by the under_review_entered / pending_delivery_entered date bases.
+  "last_under_review_entered_at,last_pending_delivery_entered_at,last_cancelled_at," +
+  "official_letter_reopened_at,official_letter_final_completed_at," +
+  // Phase K2 — first / last touch attribution snapshots (jsonb) from the
+  // analytics_phase1 migration. These carry referrer, landing_url, channel,
+  // and the full UTM / click-id set so the acquisition classifier can detect
+  // AI referrals, dark social, and organic sources at the Order level.
+  // Display-only — analytics math + attribution capture remain unchanged.
+  "first_touch_json,last_touch_json";
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const ORDERS_LOOKUP_EMAIL_LIMIT = 20;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 // Order / DoctorProfile / DoctorContact / AttributionSnapshot are now
@@ -489,19 +599,109 @@ export default function AdminOrdersPage() {
     },
     [location.search, navigate],
   );
+  // ── The WHOLE-TABLE snapshot ───────────────────────────────────────────────
+  //
+  // ADMIN-ORDERS-SERVER-BACKED-LOADING-001 §snapshot. This is NOT the Orders
+  // list any more — `orderRows` below is. This array exists solely for the
+  // surfaces that genuinely aggregate every order:
+  //
+  //   AdminDashboard (charts), AnalyticsTab (MERGE-FROZEN — its whole-table
+  //   maths must not change), CommunicationsHub / CommunicationsPanel and
+  //   IncomingCallBanner (comms → order resolution).
+  //
+  // Narrowing this to a page would not have thrown; it would have silently
+  // recomputed those dashboards against 100 rows and reported confident wrong
+  // numbers. So it keeps its exact old meaning — and instead stops being
+  // loaded eagerly on every visit and every 30 seconds. It is now fetched ONCE,
+  // on demand, only when a tab that needs it is opened (SNAPSHOT_TABS).
   const [orders, setOrders] = useState<Order[]>([]);
+  // ── ADMIN-ORDERS-DATASET-FLICKER-P0-001 — dataset stability guards ─────────
+  // loadSeqRef = one monotonic id per refresh cycle. Every async write (rows,
+  // counts, loading, error, refreshing) checks isLatest() so a stale or
+  // superseded cycle can never overwrite newer state.
+  const loadSeqRef = useRef(0);
+  // Mirrors ordersReady for reads INSIDE the stable loadOrderData callback.
+  const ordersReadyRef = useRef(false);
+  // Whether the whole-table snapshot has been requested this session, so
+  // switching between Dashboard and Analytics does not refetch it.
+  const snapshotRequestedRef = useRef(false);
+  // Flips true only once the FIRST complete snapshot has committed. Global
+  // counts (total, Dupes, No-GHL) show placeholders until then, so a partial
+  // page-1 count is never presented as final.
+  const [ordersReady, setOrdersReady] = useState(false);
+  // True while a full snapshot is being rebuilt in the background AFTER a
+  // completed snapshot is already on screen — drives a subtle "Refreshing"
+  // chip and never clears or resets the visible list.
+  const [ordersRefreshing, setOrdersRefreshing] = useState(false);
+
+  // ── THE ORDERS LIST — server-paged (ADMIN-ORDERS-SERVER-BACKED-LOADING-001) ──
+  //
+  // `orderRows` holds only the pages fetched for the CURRENT query. Appending a
+  // page never re-reads the earlier ones, and changing the query never appends
+  // onto the previous query's rows — the old rows stay on screen, marked
+  // refreshing, until the new first page lands and replaces them atomically.
+  // That is how §12 (keep the page during a pending request) and §13 (never
+  // flicker back to stale data) hold at the same time.
+  const [orderRows, setOrderRows] = useState<Order[]>([]);
+  // First page of a NEW query is in flight. Appending a further page does not
+  // set this, so "Load more" can never blank the list.
+  const [orderRowsLoading, setOrderRowsLoading] = useState(true);
+  const [orderRowsAppending, setOrderRowsAppending] = useState(false);
+  const [orderRowsHasMore, setOrderRowsHasMore] = useState(false);
+  // Server-side count of everything the CURRENT list query matches, including
+  // the rows not yet paged in. Never derived from what is loaded.
+  const [orderRowsTotal, setOrderRowsTotal] = useState<number | null>(null);
+  const [orderRowsError, setOrderRowsError] = useState(false);
+  // Operator escape hatch out of the 60-day default window. Purely additive:
+  // any search / filter / tab already drops the window on its own.
+  const [showAllOrders, setShowAllOrders] = useState(false);
+  // Only the newest list request may publish (same discipline as the counts).
+  const orderRowsGuard = useRef(createRequestGuard()).current;
+  // How many pages of the current query have been requested.
+  const orderPageRef = useRef(0);
+
+  // ── ONE updater for BOTH datasets ─────────────────────────────────────────
+  //
+  // There are now two arrays holding orders: the server-paged list the operator
+  // is looking at, and the whole-table snapshot the dashboards aggregate. Every
+  // mutation — assign, refund, delete, opt-out, bulk action, realtime push —
+  // has to reach both, or the row on screen silently disagrees with the row in
+  // the database.
+  //
+  // Routing every mutation through here is what makes that structural instead
+  // of something each of the fourteen call sites has to remember. Applying the
+  // SAME transform to both keeps them consistent by construction; a row absent
+  // from one array is simply not matched there.
+  // The narrow whole-table projection (see ORDER_FACTS_COLUMNS). Typed as
+  // Order[] because every consumer is an existing Order predicate; only the
+  // columns those predicates actually read are selected.
+  const [orderFacts, setOrderFacts] = useState<Order[]>([]);
+  const [orderFactsReady, setOrderFactsReady] = useState(false);
+
+  const mutateOrders = useCallback((fn: (prev: Order[]) => Order[]) => {
+    setOrders(fn);
+    setOrderRows(fn);
+    setOrderFacts(fn);
+  }, []);
   const [doctorContacts, setDoctorContacts] = useState<DoctorContact[]>([]);
   const [doctorProfiles, setDoctorProfiles] = useState<DoctorProfile[]>([]);
   const [loading, setLoading] = useState(true);
   // True when the PRIMARY orders fetch failed and we have nothing to show —
   // drives a retry affordance instead of a misleading "No orders" empty state.
   const [ordersError, setOrdersError] = useState(false);
-  // Monotonic sequence so a slower, older orders fetch can never overwrite a
-  // newer one (boot + 30s auto-refresh + manual Refresh can overlap).
-  const loadSeqRef = useRef(0);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshSyncMsg, setRefreshSyncMsg] = useState("");
   const [search, setSearch] = useState("");
+  // §11 — the SERVER search term. The input stays instant; the query waits for
+  // the operator to stop typing. The client-side row predicate reads this same
+  // debounced value, never the raw input: if it read the raw one it would hide
+  // rows the current server page legitimately contains and the list would blink
+  // empty between keystrokes.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => { window.clearTimeout(t); };
+  }, [search]);
   // Seeded from ?kpi= so a direct load lands on the card's tab immediately,
   // with no intermediate "All" frame.
   const [statusFilter, setStatusFilter] = useState<string>(
@@ -544,7 +744,8 @@ export default function AdminOrdersPage() {
   // the dataset-stability contract (ADMIN-ORDERS-DATASET-FLICKER-P0-001) is
   // untouched and the list can never flicker or re-sort because of it.
   const [additionalPetStatusById, setAdditionalPetStatusById] = useState<Map<string, string>>(new Map());
-  const [visibleCount, setVisibleCount] = useState(50);
+  // (visibleCount is gone: pagination is server-side. A filter change resets
+  // the list to page 0 via listQueryKey, not via a client slice counter.)
 
   // ── Advanced filters ──
   const [stateFilterAdv, setStateFilterAdv] = useState("all");
@@ -698,6 +899,35 @@ export default function AdminOrdersPage() {
   }, []);
 
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  // ADMIN-ORDERS-CONTROL-CONSOLIDATION-001 §11 — the Filters panel is now the
+  // one place the Orders controls live, including the exports, so it has to
+  // close the way an operator expects a menu to close. It previously had
+  // NEITHER behaviour: only re-clicking the Filters button dismissed it.
+  const filtersPanelRef = useRef<HTMLDivElement | null>(null);
+  const filtersButtonRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!showAdvancedFilters) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowAdvancedFilters(false);
+        filtersButtonRef.current?.focus();
+      }
+    };
+    const onPointer = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      // The toggle button owns its own click; closing here too would reopen it.
+      if (filtersButtonRef.current?.contains(t)) return;
+      if (filtersPanelRef.current?.contains(t)) return;
+      setShowAdvancedFilters(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onPointer);
+    };
+  }, [showAdvancedFilters]);
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
   const [showNonGhlOnly, setShowNonGhlOnly] = useState(false);
 
@@ -732,28 +962,48 @@ export default function AdminOrdersPage() {
   // (statusFilter is deliberately excluded so the cards keep faceting one universe
   // when the user switches status tabs). Debounced; narrow COUNT queries only;
   // the loader/pagination/polling is untouched.
+  //
+  // It reads the EFFECTIVE window, so when a card is active
+  // `filteredTotalFor(statusFilter, facetCounts)` recomputes that card's bucket
+  // on that card's basis and range — i.e. the list total IS the card count, by
+  // construction rather than by coincidence.
+  // ── THE ONE ACTIVE FILTER SET ─────────────────────────────────────────────
+  //
+  // ADMIN-ORDERS-SERVER-BACKED-LOADING-001. The faceted status counts, the KPI
+  // cards and (new) the ROW query all read this same object. Three surfaces
+  // that must agree, built in one place — so a filter cannot reach the rows
+  // without also reaching the numbers that describe them.
+  //
+  // `search` is the DEBOUNCED term, so all three fire on the same keystroke
+  // boundary instead of the counts and the rows chasing each other.
+  const listFilters = useMemo<FacetFilters>(() => ({
+    dateBasis: effDateBasis, dateFrom: effDateFrom, dateTo: effDateTo,
+    payment: paymentFilter,
+    state: stateFilterAdv,
+    referredBy: referredByFilter,
+    assignedProvider: doctorFilter,
+    requestedProvider: selectedProviderFilter,
+    sequence: sequenceFilter,
+    search: debouncedSearch,
+    nonGhl: showNonGhlOnly,
+    source: sourceFilter ?? undefined,
+    packageFilter,
+    duplicatesOnly: showDuplicatesOnly,
+  }), [
+    effDateBasis, effDateFrom, effDateTo, paymentFilter, stateFilterAdv,
+    referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter,
+    debouncedSearch, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly,
+  ]);
+
   const facetGuard = useRef(createRequestGuard()).current;
   useEffect(() => {
     const t = window.setTimeout(() => {
-      void runLatest(facetGuard, () => fetchOrderFacetCounts({
-        dateBasis: effDateBasis, dateFrom: effDateFrom, dateTo: effDateTo,
-        payment: paymentFilter,
-        state: stateFilterAdv,
-        referredBy: referredByFilter,
-        assignedProvider: doctorFilter,
-        requestedProvider: selectedProviderFilter,
-        sequence: sequenceFilter,
-        search,
-        nonGhl: showNonGhlOnly,
-        source: sourceFilter ?? undefined,
-        packageFilter,
-        duplicatesOnly: showDuplicatesOnly,
-      }), setFacetCounts);
+      void runLatest(facetGuard, () => fetchOrderFacetCounts(listFilters), setFacetCounts);
     }, 500);
     return () => { window.clearTimeout(t); };
     // aggregateReloadToken is what makes the status-tab counts react to a
     // MUTATION and not only to a filter change.
-  }, [effDateBasis, effDateFrom, effDateTo, paymentFilter, stateFilterAdv, referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter, search, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly, aggregateReloadToken, facetGuard]);
+  }, [listFilters, aggregateReloadToken, facetGuard]);
 
 
 
@@ -781,7 +1031,7 @@ export default function AdminOrdersPage() {
           assignedProvider: doctorFilter,
           requestedProvider: selectedProviderFilter,
           sequence: sequenceFilter,
-          search,
+          search: debouncedSearch,
           nonGhl: showNonGhlOnly,
           source: sourceFilter ?? undefined,
           packageFilter,
@@ -792,7 +1042,168 @@ export default function AdminOrdersPage() {
       );
     }, 300);
     return () => { window.clearTimeout(t); };
-  }, [kpiFrom, kpiTo, paymentFilter, stateFilterAdv, referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter, search, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly, monthlyKpiReloadToken, aggregateReloadToken, kpiCountGuard]);
+  }, [kpiFrom, kpiTo, paymentFilter, stateFilterAdv, referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter, debouncedSearch, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly, monthlyKpiReloadToken, aggregateReloadToken, kpiCountGuard]);
+
+  // ── THE ORDERS LIST QUERY (ADMIN-ORDERS-SERVER-BACKED-LOADING-001) ─────────
+  //
+  // Recomputed daily rather than per render: a cutoff that moved every render
+  // would change the query key on every render and never settle.
+  const defaultScopeCutoff = useMemo(
+    () => defaultScopeCutoffIso(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [businessDayKey],
+  );
+
+  // The 60-day window narrows the list ONLY in the untouched default view. A
+  // KPI card imposes its own range, and every filter / tab / search already
+  // disqualifies it inside isDefaultScopeEligible — this is belt and braces so
+  // a future card cannot silently inherit the window.
+  const defaultScopeActive =
+    !showAllOrders && !activeKpi && isDefaultScopeEligible(listFilters, statusFilter);
+
+  // Fetch ONE page. Every WHERE clause comes from applyListPredicates; only the
+  // projection, the ordering and the window are decided here.
+  const fetchOrdersPage = useCallback(async (pageIndex: number) => {
+    const from = pageIndex * ORDERS_PAGE_SIZE;
+    const asc = sortOrder === "asc";
+    // §6/§12 deterministic ordering: <basis>, created_at, id. The two
+    // tie-breakers are what make offset paging safe — without them two rows
+    // sharing a timestamp can swap pages and produce a duplicate on one page
+    // and a missing row on the next.
+    const base = applyListPredicates(
+      supabase.from("orders").select(ORDERS_LIST_COLUMNS),
+      listFilters,
+      statusFilter,
+      { defaultScopeCutoff: defaultScopeActive ? defaultScopeCutoff : null },
+    );
+    const ordered = effDateBasis === "created"
+      ? base.order("created_at", { ascending: asc })
+      : base
+          .order(ORDER_DATE_BASIS_COLUMN[effDateBasis], { ascending: asc, nullsFirst: false })
+          .order("created_at", { ascending: asc });
+    const { data, error } = await ordered
+      .order("id", { ascending: asc })
+      .range(from, from + ORDERS_PAGE_SIZE - 1);
+    if (error) throw error;
+    const rows = ((data as unknown as Order[]) ?? []);
+    return { rows, full: rows.length === ORDERS_PAGE_SIZE };
+  }, [listFilters, statusFilter, defaultScopeActive, defaultScopeCutoff, effDateBasis, sortOrder]);
+
+  // ONE key for "which query am I looking at". Changing it resets to page 0;
+  // appending a page does not touch it.
+  const listQueryKey = useMemo(
+    () => JSON.stringify([listFilters, statusFilter, effDateBasis, sortOrder, defaultScopeActive]),
+    [listFilters, statusFilter, effDateBasis, sortOrder, defaultScopeActive],
+  );
+
+  // First page of the CURRENT query. The previous query's rows deliberately
+  // stay on screen (flagged loading) until this resolves, then are REPLACED —
+  // never appended to, so results can never mix two queries (§12, §13).
+  useEffect(() => {
+    orderPageRef.current = 0;
+    setOrderRowsLoading(true);
+    setOrderRowsError(false);
+    void runLatest(
+      orderRowsGuard,
+      async () => {
+        const [page, total] = await Promise.all([
+          fetchOrdersPage(0),
+          fetchListScopeTotal(listFilters, statusFilter, {
+            defaultScopeCutoff: defaultScopeActive ? defaultScopeCutoff : null,
+          }),
+        ]);
+        return { page, total };
+      },
+      ({ page, total }) => {
+        setOrderRows(page.rows);
+        setOrderRowsHasMore(page.full);
+        setOrderRowsTotal(total);
+        setOrderRowsLoading(false);
+        setOrdersReady(true);
+        ordersReadyRef.current = true;
+        setLastSyncedAt(new Date());
+      },
+      (err) => {
+        console.error("[admin-orders] list query failed:", err);
+        setOrderRowsError(true);
+        setOrderRowsLoading(false);
+      },
+    );
+    // listQueryKey collapses every input above into one primitive; the
+    // individual values are read through the stable fetchOrdersPage callback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listQueryKey, aggregateReloadToken, orderRowsGuard]);
+
+  // Mirrors listQueryKey for reads inside the async load-more closure, so a
+  // page that resolves after the operator changed the query is discarded
+  // instead of appended to a list it does not belong to.
+  const listQueryKeyRef = useRef(listQueryKey);
+  useEffect(() => { listQueryKeyRef.current = listQueryKey; }, [listQueryKey]);
+
+  // "Load more" — appends the NEXT page of the SAME query. Never clears the
+  // list, never resets the loading state, and a page that arrives after the
+  // query changed is dropped.
+  const loadMoreOrders = useCallback(() => {
+    if (orderRowsAppending || orderRowsLoading || !orderRowsHasMore) return;
+    if (orderPageRef.current + 1 >= ORDERS_MAX_PAGES) return;
+    const next = orderPageRef.current + 1;
+    const keyAtRequest = listQueryKey;
+    setOrderRowsAppending(true);
+    void (async () => {
+      try {
+        const { rows, full } = await fetchOrdersPage(next);
+        if (keyAtRequest !== listQueryKeyRef.current) return; // query moved on
+        orderPageRef.current = next;
+        setOrderRows((prev) => {
+          // Dedupe by order id: a row inserted between two page reads can
+          // otherwise appear on both.
+          const seen = new Set(prev.map((o) => o.id));
+          return [...prev, ...rows.filter((r) => r && r.id && !seen.has(r.id))];
+        });
+        setOrderRowsHasMore(full);
+      } catch (e) {
+        console.error("[admin-orders] load-more failed:", e);
+      } finally {
+        setOrderRowsAppending(false);
+      }
+    })();
+  }, [orderRowsAppending, orderRowsLoading, orderRowsHasMore, listQueryKey, fetchOrdersPage]);
+
+  // ── EXPORTS read the COMPLETE matching dataset ────────────────────────────
+  //
+  // ADMIN-ORDERS-SERVER-BACKED-LOADING-001 §export. Both exports used to run
+  // `.range(0, 9999)` with NO predicates and filter in the browser, which meant
+  // two silent defects: the 10,000th order was the hard ceiling, and the work
+  // scaled with the table rather than with the selection.
+  //
+  // They now page through exactly what the CURRENT filters match, server-side,
+  // through the same predicate builder as the list — and deliberately WITHOUT
+  // the 60-day default window, so an export is never quietly truncated to the
+  // default view the operator happened to be looking at.
+  const fetchAllMatchingOrders = useCallback(async (): Promise<Order[]> => {
+    const acc: Order[] = [];
+    const seen = new Set<string>();
+    for (let page = 0; page < ORDERS_MAX_PAGES; page++) {
+      const from = page * SNAPSHOT_PAGE_SIZE;
+      const base = applyListPredicates(
+        supabase.from("orders").select(ORDERS_LIST_COLUMNS),
+        listFilters,
+        statusFilter,
+        { defaultScopeCutoff: null },
+      );
+      const { data, error } = await base
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, from + SNAPSHOT_PAGE_SIZE - 1);
+      if (error) throw error;
+      const chunk = ((data as unknown as Order[]) ?? []);
+      for (const o of chunk) {
+        if (o && o.id && !seen.has(o.id)) { seen.add(o.id); acc.push(o); }
+      }
+      if (chunk.length < SNAPSHOT_PAGE_SIZE) break;
+    }
+    return acc;
+  }, [listFilters, statusFilter]);
 
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState(""); // export error surface (avoids silent bad CSV)
@@ -975,7 +1386,8 @@ export default function AdminOrdersPage() {
         { event: "INSERT", schema: "public", table: "orders" },
         (payload) => {
           const newOrder = payload.new as Order;
-          setOrders((prev) => {
+          if (newOrder.status === "paid") notifyOrderPaid(newOrder);
+          mutateOrders((prev) => {
             if (prev.some((o) => o.id === newOrder.id)) return prev;
             // Always prepend — filtered sort will place it correctly
             return [newOrder, ...prev];
@@ -992,7 +1404,13 @@ export default function AdminOrdersPage() {
         { event: "UPDATE", schema: "public", table: "orders" },
         (payload) => {
           const updated = payload.new as Order;
-          setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
+          mutateOrders((prev) => {
+            const existing = prev.find((o) => o.id === updated.id);
+            if (existing && existing.status !== "paid" && updated.status === "paid") {
+              notifyOrderPaid(updated);
+            }
+            return prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o));
+          });
           setLastSyncedAt(new Date());
           // This is the transition path that produced the reported mismatch: a
           // provider submitting a letter flips doctor_status to
@@ -1037,148 +1455,22 @@ export default function AdminOrdersPage() {
   // 2026-04-25: allSettled so one failing query (e.g. 522 from pool
   // saturation) doesn't unwind the whole admin boot into an infinite loader.
   const loadOrderData = useCallback(async () => {
-    // 2026-06-06 ADMIN-ORDERS-ZERO-ORDERS: the orders fetch is the PRIMARY
-    // signal that gates Orders-tab + dashboard readiness, so it is awaited on
-    // its own. The provider rosters (doctor_contacts/doctor_profiles) and note
-    // counts are SECONDARY — under browser->Supabase connection congestion they
-    // can lag for tens of seconds, and awaiting them was what used to hang the
-    // whole admin. They now run fire-and-forget so they fill the UI when they
-    // land without holding the loader, and orders is never presented empty
-    // before its query actually finished.
     const seq = ++loadSeqRef.current;
     const isLatest = () => seq === loadSeqRef.current;
+    // Whether a complete snapshot is already on screen. If so, this cycle is a
+    // background refresh: keep the current list + counts visible until commit
+    // and skip the fast page-1 paint (which would reset a completed list).
+    const hadSnapshot = ordersReadyRef.current;
 
+    if (isLatest()) setOrdersRefreshing(true);
+
+    // ── Small side tables (assignable providers) — cheap, refreshed each cycle
     try {
-      // ── PRIMARY: orders ────────────────────────────────────────────────
-      // ATTR-CONSISTENCY-LOCK 2026-05-23: keep the attribution columns the
-      // acquisition classifier consumes (utm_source,utm_medium,utm_campaign,
-      // gclid,fbclid,first_touch_json,last_touch_json). If a 400 returns under
-      // load, drop ONLY first_touch_json,last_touch_json — the five flat
-      // utm/click-id columns MUST stay (paid-signal for the pill hierarchy).
-      const ORDERS_SELECT = "id,confirmation_id,email,first_name,last_name,phone,state,selected_provider,plan_type,delivery_speed,status,doctor_status,doctor_email,doctor_name,doctor_user_id,payment_intent_id,checkout_session_id,payment_method,price,created_at,letter_url,signed_letter_url,patient_notification_sent_at,email_log,refunded_at,refund_amount,refund_status,letter_type,dispute_id,dispute_status,dispute_reason,dispute_created_at,fraud_warning,fraud_warning_at,subscription_status,coupon_code,coupon_discount,paid_at,payment_failure_reason,payment_failed_at,referred_by,addon_services,ghl_synced_at,ghl_sync_error,ghl_contact_id,last_contacted_at,assessment_answers,assessment_progress,sent_followup_at,seq_30min_sent_at,seq_24h_sent_at,seq_3day_sent_at,followup_opt_out,seq_opted_out_at,letter_id,broadcast_opt_out,last_broadcast_sent_at,source_system,historical_import,utm_source,utm_medium,utm_campaign,gclid,fbclid,package_key,package_display_name,includes_reasonable_accommodation_letter,additional_documentation_required,additional_documentation_status,first_touch_json,last_touch_json" +
-        // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — canonical lifecycle dates.
-        // last_meaningful_activity_at is the DEFAULT sort key; the rest drive the
-        // payment-vs-workflow split and the immutable/latest date pairs. See
-        // src/lib/orderLifecycle.ts.
-        ",last_meaningful_activity_at,last_meaningful_activity_type,last_payment_at" +
-        ",first_completed_at,last_completed_at,last_reopened_at" +
-        // MONTH-END-...-LIVE-ROLLOUT-001 §C — lifecycle ENTRY timestamps
-        // (trigger-maintained), required by the under_review_entered /
-        // pending_delivery_entered date bases.
-        ",last_under_review_entered_at,last_pending_delivery_entered_at,last_cancelled_at" +
-        ",official_letter_reopened_at,official_letter_final_completed_at";
-
-      // LIVE-ADMIN-ORDERS-EMPTY 2026-07-13: page the orders read newest-first.
-      // At ~1300+ orders the previous single unbounded select of every column
-      // (incl. large JSON: assessment_answers, email_log, first/last_touch_json
-      // ≈ 5 MB) took 20-90s in the live admin session — past the 8s
-      // authenticated statement window — so the Orders tab hung on
-      // "Loading all orders…" and never rendered rows. The KPI cards use
-      // separate lightweight count queries so they still populated, which is
-      // exactly the reported symptom. Small pages return in ~1-2s: page 1
-      // unblocks the loader, the rest backfill silently. Columns are unchanged,
-      // so every downstream consumer receives the same fields as before.
-      const ORDERS_PAGE_SIZE = 250;
-      // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — server page ordering matches
-      // the ACTIVE sort basis so page N always contains the rows the client would
-      // place at position N; pagination and the rendered list can never disagree.
-      // Read through the ref so the loader callback identity (and therefore the
-      // existing LIVE paging/refresh architecture) is unchanged by a basis flip.
-      // §12 deterministic ordering: <basis> DESC, created_at DESC, id DESC — the
-      // two tie-breakers are what keep paging stable, because without them two
-      // rows sharing a timestamp can swap between pages and produce a duplicate
-      // on one page and a missing row on the next.
-      const basis = dateBasisRef.current;
-      const fetchOrdersPage = (from: number) =>
-        basis === "created"
-          ? supabase
-              .from("orders")
-              .select(ORDERS_SELECT)
-              .order("created_at", { ascending: false })
-              .order("id", { ascending: false })
-              .range(from, from + ORDERS_PAGE_SIZE - 1)
-          : supabase
-              .from("orders")
-              .select(ORDERS_SELECT)
-              .order(ORDER_DATE_BASIS_COLUMN[basis], { ascending: false, nullsFirst: false })
-              .order("created_at", { ascending: false })
-              .order("id", { ascending: false })
-              .range(from, from + ORDERS_PAGE_SIZE - 1);
-
-      // Note counts for a batch of loaded ids — SECONDARY, non-blocking.
-      // Chunked by page so the id list never overflows the request URI (the
-      // old all-ids-at-once variant 400'd once the table grew).
-      const loadNoteCounts = (rows: Order[]) => {
-        if (rows.length === 0) return;
-        void (async () => {
-          try {
-            const { data: notesData } = await supabase
-              .from("doctor_notes")
-              .select("order_id")
-              .in("order_id", rows.map((o) => o.id));
-            if (notesData && isLatest()) {
-              const counts: Record<string, number> = {};
-              (notesData as { order_id: string }[]).forEach((n) => {
-                counts[n.order_id] = (counts[n.order_id] ?? 0) + 1;
-              });
-              setOrderNoteCounts((prev) => ({ ...prev, ...counts }));
-            }
-          } catch (notesErr) {
-            console.error("[admin-orders] doctor_notes query failed:", notesErr);
-          }
-        })();
-      };
-
-      const firstPage = await fetchOrdersPage(0);
-      if (!firstPage.error) {
-        let accumulated = (firstPage.data as Order[]) ?? [];
-        // Sequence guard: a stale older fetch must never overwrite a newer one.
-        if (isLatest()) {
-          setOrders(accumulated);
-          setOrdersError(false);
-        }
-        loadNoteCounts(accumulated);
-
-        // Backfill the remaining pages in the background — never blocks the
-        // loader. The sequence guard stops this loop the moment a newer load
-        // (boot re-run, 30s auto-refresh or manual refresh) supersedes it.
-        if (accumulated.length === ORDERS_PAGE_SIZE) {
-          void (async () => {
-            for (let from = ORDERS_PAGE_SIZE, guard = 0; guard < 200; guard++, from += ORDERS_PAGE_SIZE) {
-              if (!isLatest()) return;
-              const pageRes = await fetchOrdersPage(from);
-              if (pageRes.error) {
-                console.error("[admin-orders] orders page fetch failed:", pageRes.error);
-                return;
-              }
-              const chunk = (pageRes.data as Order[]) ?? [];
-              if (!isLatest()) return;
-              if (chunk.length > 0) {
-                accumulated = accumulated.concat(chunk);
-                setOrders(accumulated.slice());
-                loadNoteCounts(chunk);
-              }
-              if (chunk.length < ORDERS_PAGE_SIZE) return;
-            }
-          })();
-        }
-      } else {
-        // Do NOT clear existing orders on failure. Flag it so the Orders tab
-        // shows a retry affordance instead of a misleading empty state; the
-        // 30s auto-refresh keeps retrying.
-        console.error("[admin-orders] orders query failed:", firstPage.error);
-        if (isLatest()) setOrdersError(true);
-      }
-
-      setLastSyncedAt(new Date());
-
-      // ── SECONDARY: provider rosters (fire-and-forget, never blocks loader) ─
-      void (async () => {
-        const [contactsSettled, profilesSettled] = await Promise.allSettled([
-          supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
-          supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role, portal_first_accessed_at").order("full_name"),
-        ]);
-        if (!isLatest()) return;
+      const [contactsSettled, profilesSettled] = await Promise.allSettled([
+        supabase.from("doctor_contacts").select("id, full_name, email, phone, licensed_states, is_active").order("full_name"),
+        supabase.from("doctor_profiles").select("id, user_id, full_name, title, email, phone, is_admin, is_active, licensed_states, state_license_numbers, role, portal_first_accessed_at").order("full_name"),
+      ]);
+      if (isLatest()) {
         if (contactsSettled.status === "fulfilled" && !contactsSettled.value.error) {
           setDoctorContacts((contactsSettled.value.data as DoctorContact[]) ?? []);
         } else {
@@ -1195,42 +1487,240 @@ export default function AdminOrdersPage() {
             profilesSettled.status === "rejected" ? profilesSettled.reason : profilesSettled.value.error,
           );
         }
-      })();
-    } catch (outerErr) {
-      console.error("[admin-orders] loadOrderData failed:", outerErr);
-      if (isLatest()) setOrdersError(true);
+      }
+    } catch (metaErr) {
+      console.error("[admin-orders] contacts/profiles load failed:", metaErr);
     }
+
+    if (!isLatest()) return;
+
+    // ── The WHOLE-TABLE snapshot — ON DEMAND ONLY ─────────────────────────────
+    //
+    // ADMIN-ORDERS-SERVER-BACKED-LOADING-001. This sweep used to run on every
+    // visit and again every 30 seconds, for every operator, whether or not
+    // anything on screen needed it. It is what the "2049 orders loading" cycle
+    // actually was.
+    //
+    // It now runs only when a tab that genuinely aggregates the whole table has
+    // been opened (SNAPSHOT_TABS), and only once per session unless the
+    // operator presses Refresh. The Orders LIST never triggers it — the list is
+    // server-paged and asks for exactly the page it is showing.
+    if (!snapshotRequestedRef.current) {
+      if (isLatest()) setOrdersRefreshing(false);
+      return;
+    }
+
+    // Pages accumulate into `acc` (deduped by id via `seen`) — never written to
+    // React state page by page. The whole snapshot commits once, atomically.
+    const acc: Order[] = [];
+    const seen = new Set<string>();
+    const appendChunk = (chunk: Order[]) => {
+      // Dedupe by stable order primary key after every page.
+      for (const o of chunk) {
+        if (o && o.id && !seen.has(o.id)) { seen.add(o.id); acc.push(o); }
+      }
+    };
+    // Server-side page ordering matches the ACTIVE sort basis so page N always
+    // contains the rows the client would place at position N — pagination and
+    // the committed snapshot can never disagree. Read through the ref so the
+    // loader callback identity (and therefore the flicker architecture) is
+    // unchanged by a basis flip. Backed by orders_last_meaningful_activity_idx.
+    const basis = dateBasisRef.current;
+    const fetchPage = (page: number) => {
+      const from = page * SNAPSHOT_PAGE_SIZE;
+      // §12 deterministic ordering: <basis> DESC, created_at DESC, id DESC. The
+      // two tie-breakers are what keep pagination stable — without them two rows
+      // sharing a timestamp can swap between pages and produce a duplicate on
+      // one page and a missing row on the next.
+      // Both arms stay ONE bounded statement with the canonical page window —
+      // the list projection is never read without .range() (COS dataset-stability
+      // invariant) and the window expression stays literal for the guard.
+      return basis === "created"
+        ? supabase.from("orders").select(ORDERS_LIST_COLUMNS)
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, from + SNAPSHOT_PAGE_SIZE - 1)
+        : supabase.from("orders").select(ORDERS_LIST_COLUMNS)
+            .order(ORDER_DATE_BASIS_COLUMN[basis], { ascending: false, nullsFirst: false })
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, from + SNAPSHOT_PAGE_SIZE - 1);
+    };
+
+    // Sort exactly once, then commit rows + readiness + freshness together.
+    // React 19 batches these async setStates into ONE render, so the rows and
+    // every derived count (total, Dupes, No-GHL) update from the SAME completed,
+    // deduplicated snapshot — never from a partial page.
+    const commitSnapshot = () => {
+      const snapshot = acc.slice().sort(orderComparator(basis));
+      ordersReadyRef.current = true;
+      setOrders(snapshot);
+      setOrdersReady(true);
+      setLastSyncedAt(new Date());
+      setOrdersRefreshing(false);
+
+      // Secondary, non-blocking: per-order note-count badges. Chunked so the id
+      // list never overflows the request URI, guarded, replaced in one write.
+      void (async () => {
+        if (snapshot.length === 0) { if (isLatest()) setOrderNoteCounts({}); return; }
+        try {
+          const counts: Record<string, number> = {};
+          for (let i = 0; i < snapshot.length; i += ORDERS_PAGE_SIZE) {
+            if (!isLatest()) return;
+            const ids = snapshot.slice(i, i + ORDERS_PAGE_SIZE).map((o) => o.id);
+            const { data, error } = await supabase.from("doctor_notes").select("order_id").in("order_id", ids);
+            if (error) { console.error("[admin-orders] doctor_notes query failed:", error); continue; }
+            ((data as { order_id: string }[] | null) ?? []).forEach((n) => {
+              counts[n.order_id] = (counts[n.order_id] ?? 0) + 1;
+            });
+          }
+          if (isLatest()) setOrderNoteCounts(counts);
+        } catch (notesErr) {
+          console.error("[admin-orders] doctor_notes query failed:", notesErr);
+        }
+      })();
+    };
+
+    // Page 1 (index 0) is awaited: on the very first load it paints instantly,
+    // and it tells us whether a background backfill is needed. Any error keeps
+    // whatever is already on screen (previous snapshot, or the boot loader).
+    let firstRes;
+    try {
+      firstRes = await fetchPage(0);
+    } catch (pageErr) {
+      console.error("[admin-orders] orders page 1 fetch threw:", pageErr);
+      if (isLatest()) setOrdersRefreshing(false);
+      return;
+    }
+    if (!isLatest()) return;
+    if (firstRes.error) {
+      console.error("[admin-orders] orders page 1 fetch failed:", firstRes.error);
+      if (isLatest()) setOrdersRefreshing(false);
+      return;
+    }
+    appendChunk((firstRes.data as unknown as Order[]) ?? []);
+    const firstLen = ((firstRes.data as unknown as Order[]) ?? []).length;
+
+    // Very first load ONLY: paint page 1 immediately so rows appear fast.
+    // Counts stay gated (ordersReady=false) so no partial total is shown, and a
+    // background refresh (hadSnapshot=true) never resets a completed list here.
+    if (!hadSnapshot && isLatest()) {
+      setOrders(acc.slice());
+    }
+
+    // Whole table fit in one page → commit the complete snapshot now.
+    if (firstLen < SNAPSHOT_PAGE_SIZE) {
+      if (isLatest()) commitSnapshot();
+      return;
+    }
+
+    // Otherwise backfill pages 2..N in the BACKGROUND so page 1 stays instantly
+    // interactive and (on a refresh) the previous completed snapshot stays
+    // visible until this loop finishes and commits atomically. A newer cycle
+    // invalidates this loop immediately via isLatest(), so stale page loops and
+    // stale responses can never append twice or overwrite newer state.
+    void (async () => {
+      try {
+        for (let page = 1; page < ORDERS_MAX_PAGES; page++) {
+          if (!isLatest()) return;
+          let res;
+          try {
+            res = await fetchPage(page);
+          } catch (pageErr) {
+            console.error("[admin-orders] orders backfill page threw:", pageErr);
+            if (isLatest()) setOrdersRefreshing(false);
+            return;
+          }
+          if (!isLatest()) return;
+          if (res.error) {
+            console.error("[admin-orders] orders backfill page failed:", res.error);
+            // Keep the previous completed snapshot; never commit a partial one.
+            if (isLatest()) setOrdersRefreshing(false);
+            return;
+          }
+          appendChunk((res.data as unknown as Order[]) ?? []);
+          if (((res.data as unknown as Order[]) ?? []).length < SNAPSHOT_PAGE_SIZE) break;
+        }
+        if (isLatest()) commitSnapshot();
+      } catch (loopErr) {
+        console.error("[admin-orders] orders backfill loop failed:", loopErr);
+        if (isLatest()) setOrdersRefreshing(false);
+      }
+    })();
   }, []);
 
-  // ── Auto-refresh every 30s: silent background data re-fetch ───────────────
-  // Realtime handles instant pushes; this is the safety-net full re-fetch.
-  // Skips if a modal is open so nothing is pulled out from under the user.
+  // ── NO RECURRING FULL-LIST REFRESH ────────────────────────────────────────
+  //
+  // ADMIN-ORDERS-SERVER-BACKED-LOADING-001 §8/§9. There was a setInterval here
+  // that re-walked the ENTIRE orders table every 30 seconds. That is what made
+  // the list restart its loading state under the operator, and it got slower
+  // with every order the business took.
+  //
+  // What replaces it, deliberately, is nothing on a timer:
+  //   • Realtime postgres_changes already patches individual rows instantly.
+  //   • Every mutation calls invalidateOrderAggregates(), which re-runs the
+  //     list query and the counts for the CURRENT view only.
+  //   • The operator's own Refresh button does a full re-pull on demand.
+  //
+  // Do not reintroduce a polling loop here — the dataset-stability guard fails
+  // the build if a setInterval reappears around the list or the snapshot.
+
+  // ── The whole-table FACTS projection — once, narrow, never polled ─────────
+  //
+  // Feeds the Orders-tab aggregates that were always whole-table questions
+  // (duplicates, No-GHL, requested-provider options, uncovered states). Read in
+  // pages so a growing table can never produce one enormous request, and
+  // re-read only when the operator explicitly refreshes.
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (!anyModalOpenRef.current) {
-        loadOrderData();                  // silent background re-fetch
-        // The aggregates ride the SAME cadence as the rows they summarise. This
-        // is the safety net for a change that produced no realtime event this
-        // tab received (dropped socket, tab backgrounded, non-orders write).
-        // Refetching the banner no longer flashes the skeleton — the cards keep
-        // their existing numbers while a refresh is in flight (see the
-        // `firstLoad` note on the period-KPI effect).
-        invalidateOrderAggregates();
+    let cancelled = false;
+    void (async () => {
+      const acc: Order[] = [];
+      try {
+        for (let page = 0; page < ORDERS_MAX_PAGES; page++) {
+          if (cancelled) return;
+          const from = page * SNAPSHOT_PAGE_SIZE;
+          const { data, error } = await supabase
+            .from("orders")
+            .select(ORDER_FACTS_COLUMNS)
+            .order("id", { ascending: false })
+            .range(from, from + SNAPSHOT_PAGE_SIZE - 1);
+          if (error) throw error;
+          const chunk = (data as unknown as Order[]) ?? [];
+          acc.push(...chunk);
+          if (chunk.length < SNAPSHOT_PAGE_SIZE) break;
+        }
+        if (cancelled) return;
+        setOrderFacts(acc);
+        setOrderFactsReady(true);
+      } catch (e) {
+        console.error("[admin-orders] order facts projection failed:", e);
+        // Leave the previous facts in place; the badges keep their last known
+        // values rather than flipping to a confident zero.
+        if (!cancelled) setOrderFactsReady(true);
       }
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [loadOrderData, invalidateOrderAggregates]);
+    })();
+    return () => { cancelled = true; };
+  }, [refreshNonce]);
+
+  // ── The whole-table snapshot loads ON DEMAND ──────────────────────────────
+  // Opening Dashboard / Analytics / Communications is what asks for it, once
+  // per session. The Orders tab never does.
+  useEffect(() => {
+    if (!SNAPSHOT_TABS.has(activeTab)) return;
+    if (snapshotRequestedRef.current) return;
+    snapshotRequestedRef.current = true;
+    void loadOrderData();
+  }, [activeTab, loadOrderData]);
 
   // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — a basis change alters the SERVER
   // page order, so re-page once. The already-loaded snapshot re-sorts client-side
   // immediately (no blank list), and the loader's own monotonic sequence guard
   // (loadSeqRef) invalidates any in-flight pages from the previous basis. Skips
   // the first run so mount still loads exactly once.
-  const basisBootRef = useRef(true);
-  useEffect(() => {
-    if (basisBootRef.current) { basisBootRef.current = false; return; }
-    void loadOrderData();
-  }, [dateBasis, loadOrderData]);
+  // (A basis change no longer re-sweeps anything: the LIST re-queries through
+  // listQueryKey, which already carries the basis, and the whole-table snapshot
+  // is basis-independent — Dashboard and Analytics do their own aggregation.
+  // The old effect here re-walked the entire table on every basis flip.)
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1269,7 +1759,7 @@ export default function AdminOrdersPage() {
       });
       const result = await res.json() as { ok?: boolean; error?: string; doctorName?: string };
       if (result.ok) {
-        setOrders((prev) => prev.map((o) => o.confirmation_id === confirmationId
+        mutateOrders((prev) => prev.map((o) => o.confirmation_id === confirmationId
           ? { ...o, doctor_name: result.doctorName ?? dc?.full_name ?? null, doctor_email: doctorEmail, doctor_status: "pending_review" }
           : o));
         setAssignMsg((prev) => ({ ...prev, [confirmationId]: "Assigned & notified" }));
@@ -1301,7 +1791,7 @@ export default function AdminOrdersPage() {
       const msg = result.message ?? (result.ok ? "GHL re-fired successfully" : "GHL re-fire failed");
       setGhlReFireResult((prev) => ({ ...prev, [confirmationId]: { ok: result.ok, msg } }));
       if (result.ok) {
-        setOrders((prev) => prev.map((o) =>
+        mutateOrders((prev) => prev.map((o) =>
           o.confirmation_id === confirmationId
             ? { ...o, ghl_synced_at: new Date().toISOString(), ghl_sync_error: null, phone: result.phonePersisted ?? o.phone }
             : o
@@ -1315,13 +1805,13 @@ export default function AdminOrdersPage() {
   }, [supabaseUrl]);
 
   const handleOrderDeleted = useCallback((orderId: string) => {
-    setOrders((prev) => prev.filter((o) => o.id !== orderId));
+    mutateOrders((prev) => prev.filter((o) => o.id !== orderId));
     setOrderDetail(null);
     invalidateOrderAggregates();
   }, [invalidateOrderAggregates]);
 
   const handleOrderUpdated = useCallback((updated: Partial<Order> & { id: string }) => {
-    setOrders((prev) => prev.map((o) => o.id === updated.id ? { ...o, ...updated } : o));
+    mutateOrders((prev) => prev.map((o) => o.id === updated.id ? { ...o, ...updated } : o));
     setOrderDetail((prev) => prev && prev.id === updated.id ? { ...prev, ...updated } : prev);
     // This is the single funnel for EVERY OrderDetailModal mutation (approve,
     // needs-correction, mark under review, mark completed/delivered, refund,
@@ -1402,6 +1892,13 @@ export default function AdminOrdersPage() {
   }, [adminProfile]);
 
   // ── Open order detail and mark communications as read ─────────────────────
+  // For "which order is behind this id" lookups (notification deep links, bell
+  // destinations, bulk result reconciliation). The whole-table snapshot when it
+  // happens to be loaded, otherwise the rows currently on screen. NEITHER is
+  // authoritative: handleDirectLookup is the canonical resolver, and every
+  // caller that can miss falls back to it.
+  const lookupPool = orders.length > 0 ? orders : orderRows;
+
   const openOrderDetail = useCallback((order: Order) => {
     const now = Date.now();
     const updated = { ...lastViewedMap, [order.confirmation_id]: now };
@@ -1410,6 +1907,77 @@ export default function AdminOrdersPage() {
     setUnreadCommsMap((prev) => ({ ...prev, [order.confirmation_id]: 0 }));
     setOrderDetail(order);
   }, [lastViewedMap]);
+
+  // ── Open an order by PRIMARY KEY, loaded or not ───────────────────────────
+  //
+  // ADMIN-ORDERS-SERVER-BACKED-LOADING-001 §13/§18. Notification and bell
+  // destinations resolve an order by exact id. That used to be a guaranteed hit
+  // because the whole table sat in the browser; with the list server-paged the
+  // order is usually NOT loaded, and the old "fall back to the Orders tab" path
+  // would have become the normal outcome — a deep link that quietly stops
+  // opening anything.
+  //
+  // So a miss now READS THAT ONE ROW instead of giving up. Still resolution by
+  // exact primary key, still never a guess, and it opens through the same
+  // openOrderDetail controller as every other surface.
+  const openOrderById = useCallback(async (
+    orderId: string,
+    modalTab?: "overview" | "documents" | "comms",
+  ) => {
+    const local = lookupPool.find((o) => o.id === orderId);
+    if (local) {
+      if (modalTab) setOrderDetailSection(modalTab);
+      openOrderDetail(local);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select(ORDERS_LIST_COLUMNS)
+        .eq("id", orderId)
+        .maybeSingle();
+      if (error) throw error;
+      const row = data as unknown as Order | null;
+      if (!row) { setActiveTab("orders"); return; }
+      if (modalTab) setOrderDetailSection(modalTab);
+      openOrderDetail(row);
+    } catch (e) {
+      console.error("[admin-orders] open-by-id lookup failed:", e);
+      setActiveTab("orders");
+    }
+  }, [lookupPool, openOrderDetail, setActiveTab]);
+
+  // ── COMMAND-CENTER-OPEN-EXACT-ORDER-001 — durable ?order= deep link ────────
+  //
+  // Command Center, and any notification link, can hand us a confirmation id or
+  // an orders.id and expect THAT order's modal. This routes the parameter
+  // through handleDirectLookup — the SAME controller the Orders search uses —
+  // so there is exactly one order-opening implementation, one "No matching
+  // order found." path, and one multi-match pick list. It never guesses.
+  //
+  // `resolvedOrderParamRef` makes this fire once per distinct value, so a
+  // re-render (or a poll) cannot reopen a modal the operator just closed, while
+  // back/forward to a DIFFERENT order still works.
+  const resolvedOrderParamRef = useRef<string | null>(null);
+  useEffect(() => {
+    const ref = new URLSearchParams(location.search).get("order");
+    if (!ref) { resolvedOrderParamRef.current = null; return; }
+    if (resolvedOrderParamRef.current === ref) return;
+    resolvedOrderParamRef.current = ref;
+    setActiveTabState("orders");
+    void handleDirectLookup(ref);
+  }, [location.search, handleDirectLookup]);
+
+  // Closing the modal drops ?order= so the link is not "sticky" — otherwise the
+  // next render would immediately reopen what was just dismissed.
+  const clearOrderParam = useCallback(() => {
+    const params = new URLSearchParams(location.search);
+    if (!params.has("order")) return;
+    params.delete("order");
+    resolvedOrderParamRef.current = null;
+    const qs = params.toString();
+    navigate(`/admin-orders${qs ? `?${qs}` : ""}`, { replace: true });
+  }, [location.search, navigate]);
 
   const handleDoctorStatesSaved = (id: string, states: string[]) => {
     setDoctorContacts((prev) => prev.map((d) => d.id === id ? { ...d, licensed_states: states } : d));
@@ -1493,7 +2061,7 @@ export default function AdminOrdersPage() {
     // Only assign orders that are paid, not refunded/cancelled, and not completed
     // (active partial Refund Only stays assignable — see orderClassification).
     const assignableIds = Array.from(selectedOrders).filter((cid) => {
-      const o = orders.find((x) => x.confirmation_id === cid);
+      const o = lookupPool.find((x) => x.confirmation_id === cid);
       return o ? isAssignable(o) : false;
     });
     const skippedCount = selectedOrders.size - assignableIds.length;
@@ -1511,7 +2079,7 @@ export default function AdminOrdersPage() {
           if (result.ok) {
             successCount++;
             const dc = doctorContacts.find((d) => d.email.toLowerCase() === bulkDoctorEmail.toLowerCase());
-            setOrders((prev) => prev.map((o) =>
+            mutateOrders((prev) => prev.map((o) =>
               o.confirmation_id === confirmationId
                 ? { ...o, doctor_name: result.doctorName ?? dc?.full_name ?? null, doctor_email: bulkDoctorEmail, doctor_status: "pending_review" }
                 : o
@@ -1541,7 +2109,7 @@ export default function AdminOrdersPage() {
     let failCount = 0;
 
     for (const confirmationId of ids) {
-      const o = orders.find((x) => x.confirmation_id === confirmationId);
+      const o = lookupPool.find((x) => x.confirmation_id === confirmationId);
       if (!o) continue;
       try {
         // Clean up related records first
@@ -1555,7 +2123,7 @@ export default function AdminOrdersPage() {
       } catch { failCount++; }
     }
 
-    setOrders((prev) => prev.filter((o) => !selectedOrders.has(o.confirmation_id)));
+    mutateOrders((prev) => prev.filter((o) => !selectedOrders.has(o.confirmation_id)));
     setSelectedOrders(new Set());
     setShowBulkDeleteConfirm(false);
     setBulkDeleteConfirmText("");
@@ -1577,7 +2145,7 @@ export default function AdminOrdersPage() {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ action: newVal ? "opt_out" : "opt_in", orderId: order.id }),
     });
-    setOrders((prev) => prev.map((o) => o.id === order.id ? { ...o, followup_opt_out: newVal, seq_opted_out_at: newVal ? new Date().toISOString() : null } : o));
+    mutateOrders((prev) => prev.map((o) => o.id === order.id ? { ...o, followup_opt_out: newVal, seq_opted_out_at: newVal ? new Date().toISOString() : null } : o));
   }, [supabaseUrl]);
 
   // ── Bulk stop sequence for selected unpaid leads ─────────────────────────
@@ -1586,7 +2154,7 @@ export default function AdminOrdersPage() {
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token ?? "";
     // Only opt-out leads that are unpaid and not already opted out
-    const eligibleOrders = orders.filter((o) =>
+    const eligibleOrders = orderRows.filter((o) =>
       selectedOrders.has(o.confirmation_id) &&
       (!o.payment_intent_id || o.status === "lead") &&
       !o.followup_opt_out
@@ -1601,7 +2169,7 @@ export default function AdminOrdersPage() {
       )
     );
     const now = new Date().toISOString();
-    setOrders((prev) =>
+    mutateOrders((prev) =>
       prev.map((o) =>
         eligibleOrders.some((e) => e.id === o.id)
           ? { ...o, followup_opt_out: true, seq_opted_out_at: now }
@@ -1615,7 +2183,7 @@ export default function AdminOrdersPage() {
 
   // ── Bulk GHL sync for selected orders ───────────────────────────────────
   const handleBulkGhlSync = useCallback(async () => {
-    const targets = orders.filter((o) => selectedOrders.has(o.confirmation_id));
+    const targets = orderRows.filter((o) => selectedOrders.has(o.confirmation_id));
     if (targets.length === 0) return;
     setBulkGhlSyncing(true);
     setBulkGhlSyncDone(false);
@@ -1641,7 +2209,7 @@ export default function AdminOrdersPage() {
         const result = await res.json() as { ok: boolean };
         if (result.ok) {
           success++;
-          setOrders((prev) => prev.map((o) =>
+          mutateOrders((prev) => prev.map((o) =>
             o.confirmation_id === order.confirmation_id
               ? { ...o, ghl_synced_at: new Date().toISOString(), ghl_sync_error: null }
               : o
@@ -1724,12 +2292,12 @@ export default function AdminOrdersPage() {
     setRecoverySending(false);
   }, [recoveryModal, recoveryDiscount, recoveryDiscountType, recoveryDiscountValue, recoveryCustomMsg, supabaseUrl, anonKey]);
 
-  const selectedProviders = Array.from(new Set(orders.map((o) => o.selected_provider).filter(Boolean))) as string[];
+  const selectedProviders = Array.from(new Set(orderFacts.map((o) => o.selected_provider).filter(Boolean))) as string[];
 
   // ── Duplicate email + phone detection (must be before `filtered`) ─────────
   const duplicateEmailSet = useMemo(() => {
     const counts: Record<string, number> = {};
-    orders.forEach((o) => {
+    orderFacts.forEach((o) => {
       const key = o.email.toLowerCase();
       counts[key] = (counts[key] ?? 0) + 1;
     });
@@ -1742,7 +2310,7 @@ export default function AdminOrdersPage() {
   const duplicateContactSet = useMemo(() => {
     const emailCounts: Record<string, number> = {};
     const phoneCounts: Record<string, number> = {};
-    orders.forEach((o) => {
+    orderFacts.forEach((o) => {
       const ek = o.email.toLowerCase();
       emailCounts[ek] = (emailCounts[ek] ?? 0) + 1;
       if (o.phone) {
@@ -1756,7 +2324,7 @@ export default function AdminOrdersPage() {
   }, [orders]);
 
   const duplicateCount = useMemo(() => {
-    return orders.filter(
+    return orderFacts.filter(
       (o) => duplicateContactSet.has(o.email.toLowerCase()) ||
              (!!o.phone && duplicateContactSet.has(o.phone.replace(/\D/g, "")))
     ).length;
@@ -1778,7 +2346,7 @@ export default function AdminOrdersPage() {
     return ts.length ? Math.max(...ts) : 0;
   };
 
-  const filtered = orders.filter((o) => {
+  const orderMatchesFilters = useCallback((o: Order): boolean => {
     let matchStatus = true;
     if (statusFilter === "all") {
       matchStatus = true;
@@ -1871,7 +2439,10 @@ export default function AdminOrdersPage() {
         classifyOrderPackage(o, { hasPaidStandaloneAddon: raAddonOrderIds.has(o.id) }),
         packageFilter,
       );
-    const q = search.toLowerCase();
+    // The DEBOUNCED term — the same one the server page was fetched with. Using
+    // the raw input here would hide rows the current page legitimately holds
+    // while the operator is still typing.
+    const q = debouncedSearch.toLowerCase();
     const matchSearch = !q ||
       o.confirmation_id.toLowerCase().includes(q) ||
       o.email.toLowerCase().includes(q) ||
@@ -1881,7 +2452,37 @@ export default function AdminOrdersPage() {
       (o.phone ?? "").includes(q) ||
       (o.ghl_contact_id ?? "").toLowerCase().includes(q);
     return matchStatus && matchState && matchDoctor && matchSelectedProvider && matchPayment && matchRef && matchSequence && matchDateBasis && matchSearch && matchDuplicates && matchNonGhl && matchSource && matchPackage;
-  }).filter((o) => {
+  }, [
+    statusFilter,
+    stateFilterAdv,
+    doctorFilter,
+    selectedProviderFilter,
+    paymentFilter,
+    referredByFilter,
+    sequenceFilter,
+    // §10 — the EFFECTIVE window (KPI card basis+range when a card is active),
+    // not the raw operator state, so the rows always match the card count.
+    effDateBasis,
+    effDateFrom,
+    effDateTo,
+    showDuplicatesOnly,
+    showNonGhlOnly,
+    sourceFilter,
+    packageFilter,
+    raAddonOrderIds,
+    debouncedSearch,
+    duplicateContactSet,
+  ]);
+
+  // ADMIN-ORDERS-SERVER-BACKED-LOADING-001 — the rows are the SERVER page.
+  //
+  // `orderMatchesFilters` still runs over them, unchanged and deliberately so:
+  // for every filter the server can express, the two agree exactly and this
+  // removes nothing (it is a free consistency check between the SQL predicate
+  // and the TypeScript one). For the three the server cannot express — traffic
+  // source, package and duplicates — it is what actually applies them, exactly
+  // as it always did.
+  const filtered = orderRows.filter(orderMatchesFilters).filter((o) => {
     if (!hideRecentFollowup) return true;
     if (!o.sent_followup_at) return true;
     const age = Date.now() - new Date(o.sent_followup_at).getTime();
@@ -1898,27 +2499,66 @@ export default function AdminOrdersPage() {
     return sortOrder === "desc" ? cmp : -cmp;
   });
 
-  // ── Pagination: slice filtered to visibleCount ───────────────────────────
-  const visibleOrders = filtered.slice(0, visibleCount);
-  const hasMore = filtered.length > visibleCount;
+  // CSV export of the FULL matching set (re-queries beyond the loaded list).
+  const exportFilteredAll = useCallback(async () => {
+    setExporting(true);
+    setExportMsg("");
+    try {
+      const all = await fetchAllMatchingOrders();
+      const matched = all.filter(orderMatchesFilters).filter((o) => {
+        if (!hideRecentFollowup) return true;
+        if (!o.sent_followup_at) return true;
+        const age = Date.now() - new Date(o.sent_followup_at).getTime();
+        return age > 7 * 24 * 60 * 60 * 1000;
+      // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 §CSV — the export must be the
+      // SAME date universe AND the same order as the visible list. `orderMatchesFilters`
+      // is already basis-aware (it calls matchesBasisDateRange with the active
+      // dateBasis), so the row SET already matched; only the ORDER differed. The
+      // server read stays created_at-ordered (it is just a bounded bulk fetch);
+      // the exported ordering is the canonical basis comparator.
+      // ...-LIFECYCLE-DATE-INTEGRITY-002 — on the EFFECTIVE basis, so an export
+      // taken with a KPI card active is ordered and stamped with the same column
+      // the card counted, the rows were selected on and the ribbons grouped by.
+      }).sort(orderComparator(effDateBasis));
+      const providerPayments = await fetchProviderPaymentsForExport(matched as unknown as ExportableOrder[]);
+      exportOrdersToCSV(
+        matched as unknown as ExportableOrder[],
+        `pawtenant-orders-export-filtered-${effDateBasis}`,
+        providerPayments,
+        // Stamped into every row so a downstream reader can never mistake which
+        // date the export was filtered and ordered on.
+        ORDER_DATE_BASIS_LABEL[effDateBasis],
+      );
+    } catch (e) {
+      console.error("[exportFilteredAll] failed", e);
+      setExportMsg("Export cancelled — provider earnings could not be loaded. Please retry.");
+    } finally {
+      setExporting(false);
+    }
+    // `effDateBasis` is load-bearing here: it picks the export ORDER and the
+    // stamped Date Basis column. Omitting it would freeze the export on
+    // whichever basis was active when this callback was first created.
+  }, [orderMatchesFilters, hideRecentFollowup, effDateBasis, fetchAllMatchingOrders]);
 
-  // ADMIN-ORDERS-FILTER-COUNT-* — the filtered "X of Y" X comes from the SAME
-  // server universe the KPI cards facet, so a card and the list total can never
-  // disagree. Falls back to the client-side filtered length only when the server
-  // count is unavailable: still loading, a client-only filter is active (traffic
-  // source / package / duplicates), or hideRecentFollowup narrows the list further.
-  const clientOnlyCountActive = facetCounts.blockedClientFilters.length > 0 || hideRecentFollowup;
-  const serverFilteredTotal = clientOnlyCountActive ? null : filteredTotalFor(statusFilter, facetCounts);
-  // LIVE pages the dataset in progressively, so the server-authoritative total is
-  // known BEFORE every row has arrived. Publishing it against a still-growing
-  // `orders.length` would render nonsense mid-load ("1621 of 250"). While the
-  // loaded set is still catching up, stay on the client-side count so both halves
-  // of "X of Y" come from the same snapshot; the server total takes over the moment
-  // the dataset is complete, which is when reconciliation actually matters.
-  const datasetStillLoading = serverFilteredTotal != null && orders.length < serverFilteredTotal;
-  const filteredTotalDisplay = (clientOnlyCountActive || datasetStillLoading)
-    ? filtered.length
-    : (serverFilteredTotal ?? filtered.length);
+  // Export the SELECTED orders (stable confirmation-id selection, full loaded
+  // snapshot — never the paginated view) as a rich CSV, enriched with the canonical
+  // provider payment per order. Fetches provider earnings first; on failure the
+  // export is cancelled rather than emitting a misleading all-zero provider column.
+  const exportSelected = useCallback(async () => {
+    const selected = orderRows.filter((o) => selectedOrders.has(o.confirmation_id));
+    if (selected.length === 0) return;
+    setExporting(true);
+    setExportMsg("");
+    try {
+      const providerPayments = await fetchProviderPaymentsForExport(selected as unknown as ExportableOrder[]);
+      exportOrdersToCSV(selected as unknown as ExportableOrder[], "pawtenant-orders-export-selected", providerPayments);
+    } catch (e) {
+      console.error("[exportSelected] failed", e);
+      setExportMsg("Export cancelled — provider earnings could not be loaded. Please retry.");
+    } finally {
+      setExporting(false);
+    }
+  }, [orders, selectedOrders]);
 
   // Meta Custom Audience export — identifiers-only, paid clients.
   // LIVE adaptation: the orders list query loads the full matching set into
@@ -1926,11 +2566,13 @@ export default function AdminOrdersPage() {
   // export straight from `filtered` (no extra re-query). exportMetaAudienceToCSV
   // restricts to paid (or paid+refunded) and dedupes by email/phone.
   // Privacy: never includes order/payment/service/attribution fields.
-  const exportMetaAudience = useCallback((mode: MetaAudienceMode) => {
+  const exportMetaAudience = useCallback(async (mode: MetaAudienceMode) => {
     setAudienceExporting(true);
     setAudienceMsg("");
     try {
-      const count = exportMetaAudienceToCSV(filtered as unknown as MetaAudienceOrder[], mode);
+      const all = await fetchAllMatchingOrders();
+      const matched = all.filter(orderMatchesFilters);
+      const count = exportMetaAudienceToCSV(matched as unknown as MetaAudienceOrder[], mode);
       setAudienceMsg(count > 0 ? `Exported ${count} contact${count === 1 ? "" : "s"}` : "No matching contacts");
       setTimeout(() => setAudienceMsg(""), 6000);
     } catch (e) {
@@ -1940,7 +2582,30 @@ export default function AdminOrdersPage() {
     } finally {
       setAudienceExporting(false);
     }
-  }, [filtered]);
+  }, [orderMatchesFilters, fetchAllMatchingOrders]);
+
+  // ── Pagination is SERVER-side ─────────────────────────────────────────────
+  // Every loaded row is rendered; there is no client slice any more, because
+  // the browser only ever holds the pages it asked for. "More" is a fact about
+  // the SERVER (was the last page full?), never about how much of a loaded
+  // array is currently being shown.
+  const visibleOrders = filtered;
+  const hasMore = orderRowsHasMore;
+
+  // Server-authoritative filtered total for the "X of Y" display — reconciles with
+  // the faceted KPI counts and never depends on how many rows are loaded. Falls
+  // back to the client-side filtered length only when the server count is
+  // unavailable: still loading, a client-only filter is active (traffic source /
+  // package / duplicates), or hideRecentFollowup narrows the list further.
+  const clientOnlyCountActive = facetCounts.blockedClientFilters.length > 0 || hideRecentFollowup;
+  // While the 60-day default scope is narrowing the list, the authoritative "Y"
+  // is the count of what THAT query matches — not the all-time facet total,
+  // which would claim 609 while 120 rows exist to page through. The KPI cards
+  // and the status-tab counts stay full-dataset either way (§15).
+  const serverFilteredTotal = clientOnlyCountActive
+    ? null
+    : (defaultScopeActive ? orderRowsTotal : filteredTotalFor(statusFilter, facetCounts));
+  const filteredTotalDisplay = serverFilteredTotal ?? filtered.length;
 
   // ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §15 — the Filters badge counts ONLY
   // filters the operator can see and can clear.
@@ -1970,7 +2635,8 @@ export default function AdminOrdersPage() {
   // or clearing a KPI card resets pagination the same way an explicit basis or
   // range change does. Without it a card click could leave page 2+ of the PREVIOUS
   // window's rows on screen under the new window's totals.
-  useEffect(() => { setVisibleCount(50); }, [search, statusFilter, stateFilterAdv, doctorFilter, selectedProviderFilter, paymentFilter, referredByFilter, sequenceFilter, effDateBasis, effDateFrom, effDateTo, showDuplicatesOnly, showNonGhlOnly, hideRecentFollowup, sortOrder, sourceFilter, packageFilter]);
+  // (No pagination-reset effect: listQueryKey already collapses every one of
+  // these inputs, and changing it restarts the server query at page 0.)
 
   // ── KPI card selection (§8 click, toggle-off, All; §13 URL) ───────────────
   //
@@ -1989,7 +2655,6 @@ export default function AdminOrdersPage() {
     // The card's tab IS its bucket, so the highlighted tab always matches the
     // rows. Deselecting returns to All.
     setStatusFilter(key ?? "all");
-    setVisibleCount(50);
   }, []);
 
   const onKpiCardClick = useCallback((key: KpiCardKey) => {
@@ -2003,7 +2668,6 @@ export default function AdminOrdersPage() {
   const onStatusTabClick = useCallback((value: string) => {
     setActiveKpi(null);
     setStatusFilter(value);
-    setVisibleCount(50);
   }, []);
 
   // §13 — the selected card is reflected in the URL so a direct reload and
@@ -2038,7 +2702,6 @@ export default function AdminOrdersPage() {
     activeKpiRef.current = next;
     setActiveKpi(next);
     setStatusFilter(next ?? "all");
-    setVisibleCount(50);
   }, [location.search]);
 
   const clearAdvancedFilters = () => {
@@ -2054,10 +2717,10 @@ export default function AdminOrdersPage() {
     setSourceFilter(null);
   };
 
-  const totalUnassigned = orders.filter(isPaidUnassigned).length;
+  const totalUnassigned = orderFacts.filter(isPaidUnassigned).length;
   const unlinkedStates = Array.from(
     new Set(
-      orders
+      orderFacts
         .filter((o) => !o.doctor_email && !o.doctor_user_id && o.state && !!o.payment_intent_id && !coveredStates.has(o.state))
         .map((o) => o.state as string)
     )
@@ -2295,7 +2958,7 @@ export default function AdminOrdersPage() {
       let successCount = 0;
       let failCount = 0;
       for (const confirmationId of orderIds) {
-        const o = orders.find((x) => x.confirmation_id === confirmationId);
+        const o = lookupPool.find((x) => x.confirmation_id === confirmationId);
         if (!o) continue;
         try {
           await supabase.from("doctor_earnings").delete().eq("order_id", o.id);
@@ -2307,7 +2970,7 @@ export default function AdminOrdersPage() {
           if (error) { failCount++; } else { successCount++; }
         } catch { failCount++; }
       }
-      setOrders((prev) => prev.filter((o) => !orderIds.includes(o.confirmation_id)));
+      mutateOrders((prev) => prev.filter((o) => !orderIds.includes(o.confirmation_id)));
       setSelectedOrders(new Set());
       setBulkDeleteMsg(failCount === 0
         ? `${successCount} order${successCount !== 1 ? "s" : ""} permanently deleted (approved by admin).`
@@ -2333,7 +2996,7 @@ export default function AdminOrdersPage() {
             if (result.ok) {
               successCount++;
               const dc = doctorContacts.find((d) => d.email.toLowerCase() === doctorEmail.toLowerCase());
-              setOrders((prev) => prev.map((o) =>
+              mutateOrders((prev) => prev.map((o) =>
                 o.confirmation_id === confirmationId
                   ? { ...o, doctor_name: result.doctorName ?? dc?.full_name ?? null, doctor_email: doctorEmail, doctor_status: "pending_review" }
                   : o
@@ -2442,16 +3105,11 @@ export default function AdminOrdersPage() {
             // ambiguity to guess at. The current Orders filters/search are left
             // untouched: this sets the modal only, never the list state.
             onOpenOrder={(orderId, modalTab) => {
-              const match = orders.find((o) => o.id === orderId);
-              if (!match) {
-                // Not in the loaded snapshot (older than the loaded pages, or
-                // filtered out). Fall back to the Orders tab rather than opening
-                // the wrong order or silently doing nothing.
-                setActiveTab("orders");
-                return;
-              }
-              setOrderDetailSection(modalTab);
-              setOrderDetail(match);
+              // Resolution is by exact primary key, and a row that is not in the
+              // current page is READ rather than given up on (§13/§18). The
+              // Orders filters/search are left untouched: this sets the modal
+              // only, never the list state.
+              void openOrderById(orderId, modalTab);
             }}
             // ADMIN-NOTIFICATIONS-UNIFIED-EMAIL-...-001 — deep-link to ONE
             // inbound customer email. The destination is Communications →
@@ -2466,6 +3124,33 @@ export default function AdminOrdersPage() {
               params.set("tab", "communications");
               params.set("sub", "emails");
               params.set("submission", submissionId);
+              navigate(`/admin-orders?${params.toString()}`, { replace: false });
+              setActiveTabState("communications");
+            }}
+            // COMMAND-CENTER-NOTIFICATION-ROUTING-001 — SMS and call rows deep
+            // link to the Command Center thread that owns this communication.
+            // Same URL-FIRST ordering as the email arm above: the hub's
+            // mount-time "normalize missing ?sub=" effect would otherwise fire
+            // against the pre-navigation URL and drop the selection.
+            onOpenConversation={(communicationId) => {
+              if (!communicationId) return false;
+              const params = new URLSearchParams(location.search);
+              params.set("tab", "communications");
+              params.set("sub", "inbox");
+              params.delete("view");
+              params.delete("thread");
+              params.set("comm", communicationId);
+              navigate(`/admin-orders?${params.toString()}`, { replace: false });
+              setActiveTabState("communications");
+              return true;
+            }}
+            onOpenCommandCenter={() => {
+              const params = new URLSearchParams(location.search);
+              params.set("tab", "communications");
+              params.set("sub", "inbox");
+              params.delete("view");
+              params.delete("thread");
+              params.delete("comm");
               navigate(`/admin-orders?${params.toString()}`, { replace: false });
               setActiveTabState("communications");
             }}
@@ -2886,7 +3571,10 @@ export default function AdminOrdersPage() {
                     <span className="hidden sm:inline">{sortOrder === "desc" ? "Newest" : "Oldest"}</span>
                   </button>
                   <div className="w-px h-4 bg-gray-200 flex-shrink-0"></div>
-                  <button type="button" onClick={() => setShowAdvancedFilters((v) => !v)}
+                  <button type="button" ref={filtersButtonRef}
+                    aria-expanded={showAdvancedFilters}
+                    aria-controls="orders-filters-panel"
+                    onClick={() => setShowAdvancedFilters((v) => !v)}
                     className={`whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${showAdvancedFilters || activeFilterCount > 0 ? "bg-[#3b6ea5] text-white border-[#1a5c4f]" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
                   >
                     <i className="ri-filter-3-line"></i>
@@ -2899,10 +3587,10 @@ export default function AdminOrdersPage() {
                     className={`whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${showDuplicatesOnly ? "bg-amber-500 text-white border-amber-500" : "border-amber-200 text-amber-700 hover:bg-amber-50"}`}
                   >
                     <i className="ri-error-warning-line"></i>
-                    <span className="hidden sm:inline">Dupes</span>{duplicateCount > 0 ? ` (${duplicateCount})` : ""}
+                    <span className="hidden sm:inline">Dupes</span>{orderFactsReady ? (duplicateCount > 0 ? ` (${duplicateCount})` : "") : " (…)"}
                   </button>
                   {(() => {
-                    const nonGhlCount = orders.filter((o) => !o.ghl_synced_at).length;
+                    const nonGhlCount = orderFacts.filter((o) => !o.ghl_synced_at).length;
                     return (
                       <button
                         type="button"
@@ -2911,7 +3599,7 @@ export default function AdminOrdersPage() {
                         className={`whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${showNonGhlOnly ? "bg-amber-600 text-white border-amber-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
                       >
                         <i className="ri-radar-line"></i>
-                        <span className="hidden sm:inline">No GHL</span>{nonGhlCount > 0 ? ` (${nonGhlCount})` : ""}
+                        <span className="hidden sm:inline">No GHL</span>{orderFactsReady ? (nonGhlCount > 0 ? ` (${nonGhlCount})` : "") : " (…)"}
                       </button>
                     );
                   })()}
@@ -2936,7 +3624,7 @@ export default function AdminOrdersPage() {
                   {hideRecentFollowup ? "Hiding sent within 7d" : "Hide sent within 7 days"}
                 </button>
                 <span className="text-xs text-gray-400">
-                  {orders.filter((o) => !isLegacyOrder(o) && (!o.payment_intent_id || o.status === "lead") && o.sent_followup_at && Date.now() - new Date(o.sent_followup_at).getTime() <= 7 * 24 * 60 * 60 * 1000).length} leads received follow-up in last 7d
+                  {orderFacts.filter((o) => !isLegacyOrder(o) && (!o.payment_intent_id || o.status === "lead") && o.sent_followup_at && Date.now() - new Date(o.sent_followup_at).getTime() <= 7 * 24 * 60 * 60 * 1000).length} leads received follow-up in last 7d
                 </span>
               </div>
             )}
@@ -3005,7 +3693,8 @@ export default function AdminOrdersPage() {
 
             {/* ── Advanced filters ── */}
             {showAdvancedFilters && (
-              <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 mb-4">
+              <div id="orders-filters-panel" ref={filtersPanelRef} role="group" aria-label="Order filters and exports"
+                className="bg-white rounded-xl border border-gray-200 px-5 py-4 mb-4">
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3 items-end">
                   {/* State */}
                   <div>
@@ -3176,17 +3865,96 @@ export default function AdminOrdersPage() {
                     </div>
                   </div>
                 </div>
+                {/* ── EXPORTS ────────────────────────────────────────────
+                    ADMIN-ORDERS-CONTROL-CONSOLIDATION-001 §9. Exports live in
+                    the same panel as the filters because they obey those
+                    filters — but behind a rule and their own heading, because
+                    an export WRITES A FILE and a filter does not. They must
+                    never read as one more checkbox.
+
+                    §8 — each one pages the COMPLETE matching server-side set
+                    (fetchAllMatchingOrders), not the loaded page and not the
+                    60-day default window. */}
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <i className="ri-download-2-line text-gray-400 text-sm"></i>
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Export</span>
+                    <span className="text-xs text-gray-400">— uses the filters above, across every matching order</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => exportMetaAudience("paid")}
+                      disabled={audienceExporting}
+                      title="Download an identifiers-only CSV (email, phone, name, state, country, DOB/year/age) of PAID clients for a Meta Custom Audience. No health/ESA/order data included. Respects current filters."
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#345f8f] cursor-pointer transition-colors disabled:opacity-60"
+                    >
+                      <i className={audienceExporting ? "ri-loader-4-line animate-spin" : "ri-contacts-book-2-line"}></i>
+                      Meta Audience — Paid
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => exportMetaAudience("paid_or_refunded")}
+                      disabled={audienceExporting}
+                      title="Same identifiers-only Meta audience export, including refunded clients as well as paid."
+                      className="whitespace-nowrap flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-60"
+                    >
+                      <i className="ri-add-line"></i>Meta Audience — Paid + Refunded
+                    </button>
+                    {audienceMsg && (
+                      <span className="text-xs font-semibold text-emerald-600">{audienceMsg}</span>
+                    )}
+                  </div>
+                </div>
+
                 <p className="text-xs text-gray-400 mt-2">
-                  Showing <strong>{filteredTotalDisplay}</strong> of <strong>{orders.length}</strong> orders
+                  {ordersReady
+                    ? <>Showing <strong>{visibleOrders.length}</strong> of <strong>{filteredTotalDisplay}</strong> orders</>
+                    : <>Loading orders…</>}
                 </p>
               </div>
             )}
 
-            {loading ? (
+            {/* ── The default scope, stated plainly ──────────────────────
+                ADMIN-ORDERS-SERVER-BACKED-LOADING-001 §1/§2. A narrowed
+                list that does not say it is narrowed is a list the operator
+                will eventually be misled by, so the window is always
+                visible and always one click to leave. Searching or applying
+                any filter already drops it automatically (§3, §4). */}
+            {defaultScopeActive && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#e8f0f9] border border-[#b8cce4] text-[#3b6ea5] font-semibold">
+                  <i className="ri-focus-3-line"></i>
+                  Last {DEFAULT_SCOPE_DAYS} days + all open work
+                </span>
+                <span>Older completed orders are excluded — searching or filtering looks at every order.</span>
+                <button
+                  type="button"
+                  onClick={() => setShowAllOrders(true)}
+                  className="whitespace-nowrap font-bold text-[#3b6ea5] hover:underline cursor-pointer"
+                >
+                  Show all orders
+                </button>
+              </div>
+            )}
+            {showAllOrders && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                <span>Showing every order, oldest included.</span>
+                <button
+                  type="button"
+                  onClick={() => setShowAllOrders(false)}
+                  className="whitespace-nowrap font-bold text-[#3b6ea5] hover:underline cursor-pointer"
+                >
+                  Back to last {DEFAULT_SCOPE_DAYS} days
+                </button>
+              </div>
+            )}
+
+            {orderRowsLoading && orderRows.length === 0 ? (
               <div className="flex items-center justify-center py-24">
                 <div className="text-center">
                   <i className="ri-loader-4-line animate-spin text-3xl text-[#3b6ea5] block mb-3"></i>
-                  <p className="text-sm text-gray-500">Loading all orders...</p>
+                  <p className="text-sm text-gray-500">Loading orders…</p>
                 </div>
               </div>
             ) : ordersError && orders.length === 0 ? (
@@ -3240,34 +4008,30 @@ export default function AdminOrdersPage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-gray-400">
-                    {/* Meta Custom Audience export — identifiers-only, paid clients.
-                        Respects current filters. See lib/exportMetaAudience.ts */}
+                    {/* ADMIN-ORDERS-CONTROL-CONSOLIDATION-001 §2 — the Meta
+                        Audience exports moved OUT of this strip and into the
+                        Filters panel, where the filters they obey already live.
+                        Only their result message still surfaces here. */}
                     {audienceMsg && (
                       <span className="hidden sm:inline font-semibold text-emerald-600">{audienceMsg}</span>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => exportMetaAudience("paid")}
-                      disabled={audienceExporting}
-                      title="Download an identifiers-only CSV (email, phone, name, state, country, DOB/year/age) of PAID clients for a Meta Custom Audience. No health/ESA/order data included. Respects current filters."
-                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#345f8f] cursor-pointer transition-colors disabled:opacity-60"
-                    >
-                      <i className={audienceExporting ? "ri-loader-4-line animate-spin" : "ri-contacts-book-2-line"}></i>
-                      Export Meta Audience — Paid
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => exportMetaAudience("paid_or_refunded")}
-                      disabled={audienceExporting}
-                      title="Same identifiers-only Meta audience export, including refunded clients as well as paid."
-                      className="whitespace-nowrap flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-60"
-                    >
-                      <i className="ri-add-line"></i>+ Refunded
-                    </button>
-                    <span className="font-semibold text-gray-700">{filteredTotalDisplay}</span>
-                    <span>of</span>
-                    <span className="font-semibold text-gray-700">{orders.length}</span>
-                    <span>orders</span>
+                    {ordersReady ? (
+                      <>
+                        <span className="font-semibold text-gray-700">{visibleOrders.length}</span>
+                        <span>of</span>
+                        <span className="font-semibold text-gray-700">{filteredTotalDisplay}</span>
+                        <span>orders</span>
+                        {ordersRefreshing && (
+                          <span className="inline-flex items-center gap-1 text-[#3b6ea5]" title="Refreshing order data — the list stays live while it updates">
+                            <i className="ri-loader-4-line animate-spin"></i>Refreshing
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-1">
+                        <i className="ri-loader-4-line animate-spin"></i>Loading totals…
+                      </span>
+                    )}
                     {activeFilterCount > 0 && (
                       <button
                         type="button"
@@ -3445,10 +4209,12 @@ export default function AdminOrdersPage() {
                     </p>
                     <button
                       type="button"
-                      onClick={() => setVisibleCount((c) => c + 50)}
-                      className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-50 hover:border-gray-300 cursor-pointer transition-colors"
+                      onClick={loadMoreOrders}
+                      disabled={orderRowsAppending}
+                      className="whitespace-nowrap flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-xl hover:bg-gray-50 hover:border-gray-300 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-wait"
                     >
-                      <i className="ri-arrow-down-line"></i>Load 50 More
+                      <i className={orderRowsAppending ? "ri-loader-4-line animate-spin" : "ri-arrow-down-line"}></i>
+                      {orderRowsAppending ? "Loading…" : `Load ${ORDERS_PAGE_SIZE} More`}
                     </button>
                   </div>
                 )}
@@ -3546,7 +4312,7 @@ export default function AdminOrdersPage() {
           <div className={`${sidebarCollapsed ? "lg:ml-[52px]" : "lg:ml-[188px]"} space-y-2 transition-[margin] duration-200`}>
             {/* Lead warning strip */}
             {(() => {
-              const nonAssignableCount = orders.filter((o) =>
+              const nonAssignableCount = orderRows.filter((o) =>
                 selectedOrders.has(o.confirmation_id) && !isAssignable(o)
               ).length;
               const assignableCount = selectedOrders.size - nonAssignableCount;
@@ -3580,7 +4346,7 @@ export default function AdminOrdersPage() {
                   <>
                     {/* Assign dropdown — blocked for read_only */}
                     {(() => {
-                      const assignableCount = orders.filter((o) =>
+                      const assignableCount = orderRows.filter((o) =>
                         selectedOrders.has(o.confirmation_id) && isAssignable(o)
                       ).length;
                       const isReadOnly = adminProfile?.role === "read_only";
@@ -3639,7 +4405,7 @@ export default function AdminOrdersPage() {
                       ) : null;
                     })()}
                     {(() => {
-                      const paidUnassigned = orders.filter((o) =>
+                      const paidUnassigned = orderRows.filter((o) =>
                         selectedOrders.has(o.confirmation_id) &&
                         !!o.payment_intent_id &&
                         !o.doctor_email &&
@@ -3665,7 +4431,7 @@ export default function AdminOrdersPage() {
                 ) : (
                   <div className="flex items-center gap-3 flex-wrap">
                     {(() => {
-                      const assignableCount = orders.filter((o) =>
+                      const assignableCount = orderRows.filter((o) =>
                         selectedOrders.has(o.confirmation_id) && isAssignable(o)
                       ).length;
                       const skippedCount = selectedOrders.size - assignableCount;
@@ -3705,13 +4471,13 @@ export default function AdminOrdersPage() {
                 )}
                 {/* ── Bulk Stop Sequence — only for unpaid leads with active sequences ── */}
                 {(() => {
-                  const eligibleLeads = orders.filter((o) =>
+                  const eligibleLeads = orderRows.filter((o) =>
                     selectedOrders.has(o.confirmation_id) &&
                     (!o.payment_intent_id || o.status === "lead") &&
                     !o.followup_opt_out &&
                     (o.seq_30min_sent_at || o.seq_24h_sent_at || o.seq_3day_sent_at)
                   );
-                  const notStartedLeads = orders.filter((o) =>
+                  const notStartedLeads = orderRows.filter((o) =>
                     selectedOrders.has(o.confirmation_id) &&
                     (!o.payment_intent_id || o.status === "lead") &&
                     !o.followup_opt_out &&
@@ -3737,7 +4503,7 @@ export default function AdminOrdersPage() {
                   ) : null;
                 })()}
                 {(() => {
-                  const leadOrders = orders.filter((o) => selectedOrders.has(o.confirmation_id) && o.status === "lead");
+                  const leadOrders = orderRows.filter((o) => selectedOrders.has(o.confirmation_id) && o.status === "lead");
                   return leadOrders.length > 0 ? (
                     <button
                       type="button"
@@ -3890,13 +4656,13 @@ export default function AdminOrdersPage() {
       {/* ── Modals ── */}
       {showLeadActionsModal && (
         <LeadActionsModal
-          leads={orders.filter((o) => selectedOrders.has(o.confirmation_id) && o.status === "lead")}
+          leads={orderRows.filter((o) => selectedOrders.has(o.confirmation_id) && o.status === "lead")}
           onClose={() => setShowLeadActionsModal(false)}
         />
       )}
       {showBulkSMS && adminProfile && (
         <BulkSMSModal
-          orders={orders.filter((o) =>
+          orders={orderRows.filter((o) =>
             selectedOrders.has(o.confirmation_id) &&
             !!o.payment_intent_id &&
             !o.doctor_email &&
@@ -3935,7 +4701,7 @@ export default function AdminOrdersPage() {
           // a modal is already open.
           key={`${orderDetail.id}:${orderDetailSection ?? "overview"}`}
           order={orderDetail} doctorContacts={assignableProviders} adminProfile={adminProfile}
-          onClose={() => { setOrderDetail(null); setOrderDetailSection(undefined); }}
+          onClose={() => { setOrderDetail(null); setOrderDetailSection(undefined); clearOrderParam(); }}
           onOrderUpdated={handleOrderUpdated} onOrderDeleted={handleOrderDeleted}
           allOrders={filtered}
           initialSection={orderDetailSection}

@@ -285,7 +285,13 @@ function runChecks(f) {
     // never a client-side guess.
     && hasRe(f.bell, /const orderId = item\.link_order_id \?\? \(item\.entity_type === "order" \? item\.entity_id : null\);[\s\S]{0,200}onOpenOrder\(orderId/)
     && hasRe(f.page, /onOpenOrder=\{\(orderId, modalTab\)/)
-    && hasRe(f.page, /orders\.find\(\(o\) => o\.id === orderId\)/)
+    // ADMIN-ORDERS-SERVER-BACKED-LOADING-001 — the list is server-paged, so the
+    // destination order is usually NOT in memory. Resolution is still by exact
+    // primary key, but a miss now READS that one row instead of falling back to
+    // the Orders tab, which would otherwise have become the normal outcome.
+    && hasRe(f.page, /const local = lookupPool\.find\(\(o\) => o\.id === orderId\);/)
+    && hasRe(f.page, /\.select\(ORDERS_LIST_COLUMNS\)\s*\n\s*\.eq\("id", orderId\)/)
+    && hasRe(f.page, /void openOrderById\(orderId, modalTab\);/)
     && has(f.modal, "initialSection?: Section;"));
 
   add("P26", "opening a notification preserves the current Orders filters",
@@ -293,8 +299,10 @@ function runChecks(f) {
     !hasRe(f.page, /onOpenOrder=\{\(orderId, modalTab\)[\s\S]{0,700}(setStatusFilter|setSearch)\(/)
     // ambiguous groups fall back to a chooser (the filtered list), never a guess
     && hasRe(f.bell, /g\.items\.length === 1 && openItem\(latest\)/)
-    // no order in the loaded snapshot -> Orders tab, never the wrong order
-    && hasRe(f.page, /if \(!match\)[\s\S]{0,220}setActiveTab\("orders"\)/));
+    // an order that cannot be resolved even by primary key -> Orders tab,
+    // never the wrong order. (Was keyed on the loaded snapshot; the resolver
+    // now reads the row first, so this is the genuinely-unresolvable case.)
+    && hasRe(f.page, /if \(!row\) \{ setActiveTab\("orders"\); return; \}/));
 
   // ── LIVE INVERSE of the TEST-only suppression checks ────────────────
   // TEST asserts that three senders DO gate on testNotificationSuppression and
@@ -479,10 +487,13 @@ const CONTROLS = [
       "const orderId = null;") })],
   ["P25b", "Pending Delivery opens Overview instead of Documents",
     (f) => ({ ...f, bell: f.bell.replace('order_pending_delivery: "documents"', 'order_pending_delivery: "overview"') })],
+  // NOTE: this control must plant into the CURRENT handler body. It previously
+  // targeted `setOrderDetailSection(modalTab);`, which moved into openOrderById
+  // — leaving the control a no-op that "passed" while testing nothing.
   ["P26", "opening a notification clobbers the operator's status filter",
     (f) => ({ ...f, page: f.page.replace(
-      "              setOrderDetailSection(modalTab);",
-      '              setStatusFilter("all"); setOrderDetailSection(modalTab);') })],
+      "              void openOrderById(orderId, modalTab);",
+      '              setStatusFilter("all"); void openOrderById(orderId, modalTab);') })],
   ["R1", "the gate reader drops its authorisation check",
     (f) => ({ ...f, gateRbacSql: f.gateRbacSql.replace(
       "if not (public.is_admin_staff() or coalesce(auth.role(), '') = 'service_role') then", "if false then") })],

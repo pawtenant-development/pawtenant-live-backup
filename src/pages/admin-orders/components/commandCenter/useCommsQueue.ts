@@ -28,7 +28,7 @@ import {
 export type ChannelKind = "chat" | "sms" | "email" | "call" | "order";
 
 export type FilterKey =
-  | "all" | "needs_reply" | "ai_draft" | "escalated" | "blocked" | "legal"
+  | "all" | "unread" | "needs_reply" | "ai_draft" | "escalated" | "blocked" | "legal"
   | "chat" | "sms" | "email" | "calls" | "orders" | "unassigned" | "mine";
 
 export interface QueueChip {
@@ -61,6 +61,19 @@ export interface CommRow {
   chips: QueueChip[];
   next: string;
   facets: Set<FilterKey>;
+  /**
+   * COMMAND-CENTER-PERSISTENT-UNREAD-001 — server-authoritative, per-admin.
+   * True when this conversation's last INBOUND activity is newer than THIS
+   * admin's read watermark. Never set by an outbound send, and never derived
+   * from browser-local state, so it survives refresh and sign-out.
+   */
+  unread: boolean;
+  /**
+   * Last INBOUND activity per the server. Distinct from `when` (which is the
+   * row's display timestamp and, for chat, includes agent replies) — sorting on
+   * `when` is what let an outbound reply jump a thread back to the top.
+   */
+  lastInboundAt: string | null;
   // ── selection payload (what the center timeline loads) ──
   chatSession?: ChatSession;
   aiConversationId?: string | null;
@@ -113,6 +126,7 @@ const DECISION_ACTIONS = new Set(["auto_sent", "drafted", "escalated", "blocked"
 
 export const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "All" },
+  { key: "unread", label: "Unread" },
   { key: "needs_reply", label: "Needs Reply" },
   { key: "ai_draft", label: "AI Draft Pending" },
   { key: "escalated", label: "Escalated" },
@@ -159,7 +173,25 @@ export interface UseCommsQueueResult {
   counts: Map<FilterKey, number>;
   loading: boolean;
   refresh: () => void;
+  /**
+   * Persist "this admin has read up to now" for one conversation. Called when a
+   * conversation is OPENED — never merely because a row rendered in the queue.
+   * Optimistic locally, authoritative on the server; the watermark only ever
+   * moves forward, so a slow response cannot re-hide a newer message.
+   */
+  markRead: (key: string) => void;
 }
+
+/** One row of admin_conversation_queue_state(). */
+interface QueueStateRow {
+  conversation_key: string;
+  last_inbound_at: string | null;
+  last_read_at: string | null;
+  is_unread: boolean;
+}
+
+/** A queue row before the server unread state is attached. */
+type QueueRowDraft = Omit<CommRow, "unread" | "lastInboundAt">;
 
 export function useCommsQueue(): UseCommsQueueResult {
   const chatCtx = useAdminChat();
@@ -172,6 +204,9 @@ export function useCommsQueue(): UseCommsQueueResult {
   const [paidOrders, setPaidOrders] = useState<Array<{ id: string; confirmation_id: string; first_name: string | null; last_name: string | null; email: string; phone: string | null; state: string | null; price: number | null; created_at: string; letter_type: string | null; doctor_name: string | null; paid_at: string | null }>>([]);
   const [myAdminId, setMyAdminId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // COMMAND-CENTER-PERSISTENT-UNREAD-001 — server-authoritative read state,
+  // keyed by the SAME `key` vocabulary the rows below build.
+  const [queueState, setQueueState] = useState<Record<string, QueueStateRow>>({});
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -190,6 +225,16 @@ export function useCommsQueue(): UseCommsQueueResult {
 
   const load = useCallback(async () => {
     try {
+      // Read state first and independently: if this RPC fails the queue must
+      // still render (everything simply reads as "read"), never blank out.
+      void (async () => {
+        const { data, error } = await supabase.rpc("admin_conversation_queue_state", { p_limit: 400 });
+        if (error || !mountedRef.current) return;
+        const map: Record<string, QueueStateRow> = {};
+        for (const r of (data ?? []) as QueueStateRow[]) map[r.conversation_key] = r;
+        setQueueState(map);
+      })();
+
       const [convoRes, callRes, emailRes, orderRes] = await Promise.all([
         supabase
           .from("ai_support_conversations")
@@ -269,7 +314,9 @@ export function useCommsQueue(): UseCommsQueueResult {
   }, [load]);
 
   const rows = useMemo<CommRow[]>(() => {
-    const out: CommRow[] = [];
+    // Built without the server-derived unread fields, which are attached in one
+    // place below so all five sources get identical treatment.
+    const out: QueueRowDraft[] = [];
     const aiChatBySession = new Map<string, AiConvoRow>();
     for (const c of aiConvos) {
       if (c.channel === "chat" && c.external_session_id) aiChatBySession.set(c.external_session_id, c);
@@ -472,9 +519,37 @@ export function useCommsQueue(): UseCommsQueueResult {
       });
     }
 
-    out.sort((a, b) => new Date(b.when).getTime() - new Date(a.when).getTime());
-    return out.slice(0, 200);
-  }, [aiConvos, lastEvents, previews, calls, emails, paidOrders, chatCtx.sessions, myAdminId]);
+    // ── COMMAND-CENTER-PERSISTENT-UNREAD-001 — decorate + order ─────────────
+    //
+    // Unread and last-inbound come from the server RPC, keyed by the same
+    // `key` string the builders above produced. A row the RPC did not return
+    // (e.g. an order older than the RPC window) is simply "read" — never
+    // guessed as unread, which would manufacture phantom work.
+    const decorated: CommRow[] = out.map((r) => {
+      const st = queueState[r.key];
+      const unread = st?.is_unread === true;
+      const row: CommRow = { ...r, unread, lastInboundAt: st?.last_inbound_at ?? null };
+      if (unread) row.facets.add("unread");
+      return row;
+    });
+
+    // Required order: unread → needs-reply → latest meaningful activity.
+    // The activity key prefers the server's INBOUND timestamp so an outbound
+    // reply can neither mark a thread unread nor bump it back to the top.
+    const activityMs = (r: CommRow) => {
+      const t = new Date(r.lastInboundAt ?? r.when).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    decorated.sort((a, b) => {
+      if (a.unread !== b.unread) return a.unread ? -1 : 1;
+      const aNeeds = a.facets.has("needs_reply"), bNeeds = b.facets.has("needs_reply");
+      if (aNeeds !== bNeeds) return aNeeds ? -1 : 1;
+      const d = activityMs(b) - activityMs(a);
+      if (d !== 0) return d;
+      return a.key.localeCompare(b.key); // stable tie-break — no render churn
+    });
+    return decorated.slice(0, 200);
+  }, [aiConvos, lastEvents, previews, calls, emails, paidOrders, chatCtx.sessions, myAdminId, queueState]);
 
   const counts = useMemo(() => {
     const m = new Map<FilterKey, number>();
@@ -483,7 +558,36 @@ export function useCommsQueue(): UseCommsQueueResult {
     return m;
   }, [rows]);
 
-  return { rows, counts, loading, refresh: () => void load() };
+  // COMMAND-CENTER-PERSISTENT-UNREAD-001 — the ONLY writer. Called on OPEN, so
+  // a row merely appearing in the queue never marks itself read. Optimistic
+  // locally so the marker clears instantly; the server upsert is the authority
+  // and takes greatest(existing, new), so this can never move a watermark back.
+  const markRead = useCallback((key: string) => {
+    if (!key) return;
+    const at = new Date().toISOString();
+    setQueueState((prev) => {
+      const cur = prev[key];
+      if (cur && cur.is_unread === false) return prev; // already read — no churn
+      return {
+        ...prev,
+        [key]: {
+          conversation_key: key,
+          last_inbound_at: cur?.last_inbound_at ?? null,
+          last_read_at: at,
+          is_unread: false,
+        },
+      };
+    });
+    void supabase
+      .rpc("admin_mark_conversation_read", { p_conversation_key: key, p_read_at: at })
+      .then(({ error }) => {
+        // A failed write must not silently leave a false "read" on screen —
+        // the next poll re-reads server truth and will restore the marker.
+        if (error) void load();
+      });
+  }, [load]);
+
+  return { rows, counts, loading, refresh: () => void load(), markRead };
 }
 
 // Map a status-chip label to queue facets. Label-prefix based so the

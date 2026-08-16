@@ -284,6 +284,9 @@ export default function CommunicationsHub({
     const params = new URLSearchParams(location.search);
     params.set("tab", "communications");
     params.set("sub", next);
+    // A manual sub-tab change is not the notification deep link — drop it so
+    // returning to the inbox later does not re-open an old conversation.
+    if (next !== "inbox") params.delete("comm");
     navigate(`/admin-orders?${params.toString()}`, { replace: false });
   }, [location.search, navigate]);
 
