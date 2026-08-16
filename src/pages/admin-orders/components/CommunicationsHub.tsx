@@ -30,7 +30,6 @@ import LiveVisitorsPanel from "./LiveVisitorsPanel";
 import ChatsTab from "./ChatsTab";
 import ContactRequestsTab from "./ContactRequestsTab";
 import CommunicationsPanel from "./CommunicationsPanel";
-import ConsultationRequestsPanel from "./ConsultationRequestsPanel";
 import BroadcastModal from "./BroadcastModal";
 import BroadcastHistoryModal from "./BroadcastHistoryModal";
 import { canAccessBroadcast } from "../../../lib/adminPermissions";
@@ -52,17 +51,18 @@ type CommunicationsPanelProps = ComponentProps<typeof CommunicationsPanel>;
 type HubOrders = CommunicationsPanelProps["orders"];
 type HubOnViewOrder = CommunicationsPanelProps["onViewOrder"];
 
-type SubKey = "inbox" | "live" | "chats" | "emails" | "sms" | "ai" | "consultations" | "templates" | "settings";
+type SubKey = "inbox" | "live" | "chats" | "emails" | "sms" | "ai" | "templates" | "settings";
 
-const SUB_KEYS: SubKey[] = ["inbox", "live", "chats", "emails", "sms", "ai", "consultations", "templates", "settings"];
+const SUB_KEYS: SubKey[] = ["inbox", "live", "chats", "emails", "sms", "ai", "templates", "settings"];
 const DEFAULT_SUB: SubKey = "live";
 
 // Phase G2 — basic-access sub-tabs available to support / finance /
 // read_only roles by default. Templates + Settings stay restricted to
 // owner / admin_manager unless explicitly granted via custom_tab_access.
-// Consultations is included in the basic set so the care team (support
-// role) can work the consultation recovery funnel without extra grants.
-const BASIC_SUBS: SubKey[] = ["inbox", "live", "chats", "emails", "sms", "ai", "consultations"];
+// ADMIN-CONSULTATIONS-REMOVE-LIVE-001 — the Consultations sub-tab is removed
+// on LIVE only (it is retained on TEST). Underlying consultation data, tables
+// and backend objects are untouched; only this front-end surface is gone.
+const BASIC_SUBS: SubKey[] = ["inbox", "live", "chats", "emails", "sms", "ai"];
 
 const SUB_CONFIG: { key: SubKey; label: string; icon: string }[] = [
   { key: "inbox",         label: "Command Center",        icon: "ri-layout-grid-line" },
@@ -71,7 +71,6 @@ const SUB_CONFIG: { key: SubKey; label: string; icon: string }[] = [
   { key: "emails",        label: "Emails",                icon: "ri-mail-line" },
   { key: "sms",           label: "SMS / Calls",           icon: "ri-message-3-line" },
   { key: "ai",            label: "AI Support",            icon: "ri-robot-2-line" },
-  { key: "consultations", label: "Consultations",         icon: "ri-calendar-check-line" },
   { key: "templates",     label: "Templates",             icon: "ri-file-list-3-line" },
   { key: "settings",      label: "Settings & Automation", icon: "ri-settings-3-line" },
 ];
@@ -94,7 +93,7 @@ function isSubKey(v: string | null): v is SubKey {
  *   2. ROLE DEFAULT (no explicit child grants):
  *        owner / admin_manager       → all sub-tabs
  *        support / read_only / finance → BASIC_SUBS (live, chats, emails,
- *                                        sms, consultations)
+ *                                        sms)
  *        unknown role                → BASIC_SUBS (safe default)
  *
  *   Implications:
@@ -446,11 +445,6 @@ export default function CommunicationsHub({
             path is the human "Approve & send to chat" action, which uses the
             existing post_agent_chat_message agent path. */}
         {localActive === "ai" && <AiSupportCenterPanel />}
-
-        {/* Consultation Slot Recovery Funnel (V1) — admin-side surface for
-            unpaid lead recovery via /consultation-request submissions.
-            Standalone panel, no shared state required. */}
-        {localActive === "consultations" && <ConsultationRequestsPanel />}
 
         {/* Phase G — mount the shared CommunicationsTemplatesPanel that
             was extracted from SettingsTab. Same email_templates table,
