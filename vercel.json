@@ -14,6 +14,12 @@
         { "key": "Referrer-Policy", "value": "no-referrer" },
         { "key": "Cache-Control", "value": "no-store" }
       ]
+    },
+    {
+      "source": "/customer-login",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, follow" }
+      ]
     }
   ],
   "redirects": [
@@ -81,6 +87,11 @@
     {
       "source": "/how-to-get-esa-letter/",
       "destination": "/how-to-get-esa-letter",
+      "permanent": true
+    },
+    {
+      "source": "/esa-letter-cost/",
+      "destination": "/esa-letter-cost",
       "permanent": true
     },
     {

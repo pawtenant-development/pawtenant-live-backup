@@ -41,6 +41,14 @@ import BlogEsaLetterRequirementsPage from "@/pages/blog-esa-letter-requirements/
 import ExploreStatesPage from "@/pages/explore-states/page";
 import DoctorProfilePage from "@/pages/doctor-profile/page";
 import OurProvidersPage from "@/pages/our-providers/page";
+// AI-SEO-LIVE-SOFT-404-COMMERCIAL-ROUTES-001 — four commercial pages that
+// already had full, hand-reviewed content and correct <head> metadata but were
+// never added to the spike, so their deployed raw HTML was the empty app shell
+// and GSC classified them as Soft 404. The components are unchanged; they are
+// only being added to the existing prerender contract.
+import AreOnlineESALettersLegitPage from "@/pages/are-online-esa-letters-legit/page";
+import EsaVsPsdLetterPage from "@/pages/esa-vs-psd-letter/page";
+import ESALetterForLandlordPage from "@/pages/esa-letter-for-landlord/page";
 import { PUBLISHED_PROVIDERS, getPublicProvider } from "@/data/publicProviders";
 import { buildProviderJsonLd, buildOurProvidersJsonLd, stringifyJsonLd } from "@/lib/providerJsonLd";
 
@@ -57,6 +65,9 @@ const ROUTE_ELEMENTS: { path: string; element: React.ReactNode }[] = [
   { path: "/explore-esa-letters-all-states", element: <ExploreStatesPage /> },
   { path: "/our-providers", element: <OurProvidersPage /> },
   { path: "/doctors/:id", element: <DoctorProfilePage /> },
+  { path: "/are-online-esa-letters-legit", element: <AreOnlineESALettersLegitPage /> },
+  { path: "/esa-vs-psd-letter", element: <EsaVsPsdLetterPage /> },
+  { path: "/esa-letter-for-landlord", element: <ESALetterForLandlordPage /> },
 ];
 
 // The exact set of routes this entry can render (state routes expand to the 3
@@ -79,6 +90,11 @@ export const SPIKE_ROUTES: string[] = [
   "/doctors/henry-smith",
   "/doctors/chad-cunningham",
   "/doctors/karla-delgado",
+  // AI-SEO-LIVE-SOFT-404-COMMERCIAL-ROUTES-001
+  "/are-online-esa-letters-legit",
+  "/esa-vs-psd-letter",
+  "/esa-letter-for-landlord",
+  "/esa-letter/missouri",
 ];
 
 // Route → the page.tsx source key in the Vite manifest, so the generator can
@@ -105,6 +121,11 @@ export const ROUTE_SOURCE: Record<string, string> = {
   "/doctors/henry-smith": "src/pages/doctor-profile/page.tsx",
   "/doctors/chad-cunningham": "src/pages/doctor-profile/page.tsx",
   "/doctors/karla-delgado": "src/pages/doctor-profile/page.tsx",
+  // AI-SEO-LIVE-SOFT-404-COMMERCIAL-ROUTES-001
+  "/are-online-esa-letters-legit": "src/pages/are-online-esa-letters-legit/page.tsx",
+  "/esa-vs-psd-letter": "src/pages/esa-vs-psd-letter/page.tsx",
+  "/esa-letter-for-landlord": "src/pages/esa-letter-for-landlord/page.tsx",
+  "/esa-letter/missouri": "src/pages/state-esa/page.tsx",
 };
 
 /**
