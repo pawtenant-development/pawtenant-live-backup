@@ -46,31 +46,12 @@ import {
   type QueueChip,
 } from "./useCommsQueue";
 import BlacklistManager from "./BlacklistManager";
-import QueueFilterMenu from "./QueueFilterMenu";
 import ConversationSearchBox from "./ConversationSearchBox";
 import UnifiedThreadPane, { type ThreadTarget } from "./UnifiedThreadPane";
 import { useConversationSearch, type ConversationHit } from "./useConversation";
-import { formatPhoneDisplay, normalizeE164, isInbound as isInboundType } from "../../../../lib/conversationIdentity";
+import { formatPhoneDisplay, normalizeE164 } from "../../../../lib/conversationIdentity";
 
 const PAW20_COPY = "You can use code PAW20 for $20 off your order.";
-
-/**
- * COMMAND-CENTER-OPEN-EXACT-ORDER-001
- *
- * "Open order" used to navigate to `?tab=orders` and stop there, leaving the
- * operator to find the order by hand. This builds the DURABLE deep link that
- * Admin Orders resolves through its existing direct-lookup controller, which
- * opens the canonical OrderDetailModal — no second order-detail implementation.
- *
- * The reference may be a confirmation id (PT-…) or an orders.id UUID; the
- * lookup already routes both, reports "No matching order found." safely, and
- * shows a pick list rather than guessing when several match. Because the id
- * lives in the URL it survives refresh, back/forward and a new tab, and
- * notification links reuse the same shape.
- */
-export function orderDeepLink(orderRef: string): string {
-  return `/admin-orders?tab=orders&order=${encodeURIComponent(orderRef)}`;
-}
 
 // Canonical links the AI may share, by intent (display-only reference).
 const LINK_BY_INTENT: Record<string, { label: string; url: string }> = {
@@ -105,14 +86,9 @@ function Chip({ chip }: { chip: QueueChip }) {
   );
 }
 
-const FILTER_LABEL: Record<string, string> = Object.fromEntries(FILTERS.map((f) => [f.key, f.label]));
-const filterLabel = (k: FilterKey): string => FILTER_LABEL[k] ?? k;
-
 export default function CommandCenterPanel() {
-  const { rows, counts, loading, refresh, markRead } = useCommsQueue();
-  // COMMAND-CENTER-QUEUE-FILTER-MENU-001 — a SET, not a single key. Empty = All.
-  // One selected reproduces the old single-pill behaviour exactly; several AND.
-  const [filters, setFilters] = useState<Set<FilterKey>>(() => new Set());
+  const { rows, counts, loading, refresh } = useCommsQueue();
+  const [filter, setFilter] = useState<FilterKey>("all");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"queue" | "thread">("queue");
   const [showBlacklist, setShowBlacklist] = useState(false);
@@ -126,21 +102,7 @@ export default function CommandCenterPanel() {
   const search = useConversationSearch();
   const [searchTarget, setSearchTarget] = useState<ThreadTarget | null>(null);
 
-  const toggleFilter = useCallback((k: FilterKey) => {
-    setFilters((prev) => {
-      const next = new Set(prev);
-      if (next.has(k)) next.delete(k); else next.add(k);
-      return next;
-    });
-  }, []);
-  const clearFilters = useCallback(() => setFilters(new Set()), []);
-
-  // Empty selection = All. Several selected must ALL match (intersection), so
-  // "Unread + SMS" means unread SMS rather than the union of both.
-  const visible = useMemo(
-    () => (filters.size === 0 ? rows : rows.filter((r) => [...filters].every((f) => r.facets.has(f)))),
-    [rows, filters],
-  );
+  const visible = useMemo(() => rows.filter((r) => r.facets.has(filter)), [rows, filter]);
   const selected = useMemo(
     () => rows.find((r) => r.key === selectedKey) ?? null,
     [rows, selectedKey],
@@ -158,11 +120,7 @@ export default function CommandCenterPanel() {
     setSelectedKey(key);
     setSearchTarget(null);   // a queue pick supersedes a search pick
     setMobileView("thread");
-    // COMMAND-CENTER-PERSISTENT-UNREAD-001 — read is stamped HERE, on an
-    // explicit open. Rendering a row in the queue, polling, or auto-selecting
-    // the first row on desktop must never clear someone's unread work.
-    markRead(key);
-  }, [markRead]);
+  }, []);
 
   const onPickHit = useCallback((hit: ConversationHit) => {
     setSearchTarget({
@@ -176,57 +134,6 @@ export default function CommandCenterPanel() {
     setSelectedKey(null);
     setMobileView("thread");
   }, []);
-
-  // ── COMMAND-CENTER-NOTIFICATION-ROUTING-001 — ?comm=<communications.id> ────
-  //
-  // SMS and call notifications from the top bell used to land on the legacy
-  // Comms tab, leaving the operator to find the conversation again. They now
-  // deep-link here with the communication's own id, which we resolve to its
-  // contact and open as a real thread.
-  //
-  // Resolution is by EXACT primary key, then by the row's own generated
-  // contact_e164 — never by name, timestamp or a first-match phone guess. A row
-  // with no usable contact yields a clear message instead of an arbitrary
-  // thread, preserving the ambiguity safeguards the search path already has.
-  const [commParamError, setCommParamError] = useState<string | null>(null);
-  const commParam = useMemo(
-    () => new URLSearchParams(location.search).get("comm"),
-    [location.search],
-  );
-  const resolvedCommRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!commParam) { resolvedCommRef.current = null; setCommParamError(null); return; }
-    if (resolvedCommRef.current === commParam) return;
-    resolvedCommRef.current = commParam;
-    let alive = true;
-    void (async () => {
-      setCommParamError(null);
-      const { data, error } = await supabase
-        .from("communications")
-        .select("id, contact_e164, phone_from, phone_to, type, direction, order_id, confirmation_id")
-        .eq("id", commParam)
-        .maybeSingle();
-      if (!alive) return;
-      if (error || !data) { setCommParamError("That conversation could not be found."); return; }
-      const r = data as {
-        contact_e164: string | null; phone_from: string | null; phone_to: string | null;
-        type: string; direction: string | null; order_id: string | null; confirmation_id: string | null;
-      };
-      const e164 = normalizeE164(r.contact_e164 ?? (isInboundType(r.type, r.direction) ? r.phone_from : r.phone_to));
-      if (!e164) { setCommParamError("That message has no contact number, so no thread can be opened."); return; }
-      setSelectedKey(null);
-      setSearchTarget({
-        contactE164: e164,
-        orderId: r.order_id,
-        confirmationId: r.confirmation_id,
-        displayName: null,
-        identityState: r.order_id ? "linked" : "unknown",
-        candidateCount: r.order_id ? 1 : 0,
-      });
-      setMobileView("thread");
-    })();
-    return () => { alive = false; };
-  }, [commParam]);
 
   // A queue row becomes a thread target whenever it carries a usable phone.
   // `smsPhone` is populated for SMS conversations AND for inbound calls, so an
@@ -268,17 +175,26 @@ export default function CommandCenterPanel() {
             onPick={onPickHit}
             activeKey={activeSearchKey}
           />
-          {/* COMMAND-CENTER-QUEUE-FILTER-MENU-001 — the 12-pill strip that wrapped
-              onto four rows is now one compact dropdown. Search stays above it
-              and permanently visible; this only ever narrows the queue. */}
-          <div className="px-3 py-2.5 border-b border-slate-100">
-            <QueueFilterMenu
-              labelFor={filterLabel}
-              countFor={(k) => counts.get(k) ?? 0}
-              active={filters}
-              onToggle={toggleFilter}
-              onClear={clearFilters}
-            />
+          <div className="px-3 py-2.5 border-b border-slate-100 flex items-center gap-1.5 flex-wrap">
+            {FILTERS.map((f) => {
+              const n = counts.get(f.key) ?? 0;
+              const active = filter === f.key;
+              if (f.key !== "all" && n === 0 && !active) return null;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setFilter(f.key)}
+                  aria-pressed={active}
+                  className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${
+                    active ? "bg-[#1E293B] border-[#1E293B] text-white" : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"
+                  }`}
+                >
+                  {f.label}
+                  <span className={`ml-0.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[9px] ${active ? "bg-white/25" : "bg-slate-100 text-slate-600"}`}>{n}</span>
+                </button>
+              );
+            })}
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100 max-h-[calc(100vh-260px)]">
             {loading ? (
@@ -295,17 +211,7 @@ export default function CommandCenterPanel() {
 
         {/* CENTER — conversation / timeline */}
         <div className={`${mobileView === "queue" ? "hidden lg:flex" : "flex"} flex-col bg-white rounded-xl border border-slate-200 overflow-hidden min-h-[420px] max-h-[calc(100vh-220px)] mt-3 lg:mt-0`}>
-          {commParamError ? (
-            // COMMAND-CENTER-NOTIFICATION-ROUTING-001 — fail visibly and safely.
-            // A notification that cannot be resolved must say so, never open
-            // some other customer's conversation.
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-              <i className="ri-error-warning-line text-2xl text-orange-400" />
-              <p className="text-sm font-bold text-[#0F172A] mt-2">Conversation not opened</p>
-              <p className="text-xs text-slate-500 mt-1 max-w-sm">{commParamError}</p>
-              <p className="text-xs text-slate-400 mt-2 max-w-sm">Search above by name, email or phone to find it.</p>
-            </div>
-          ) : searchTarget ? (
+          {searchTarget ? (
             <UnifiedThreadPane target={searchTarget} onBack={() => setMobileView("queue")} />
           ) : selected ? (
             <ConversationPane
@@ -390,21 +296,7 @@ function QueueRow({ row, active, onSelect }: { row: CommRow; active: boolean; on
       }`}
     >
       <div className="flex items-baseline justify-between gap-3">
-        {/* COMMAND-CENTER-PERSISTENT-UNREAD-001 — restrained marker: one small
-            dot plus a heavier name. No badge, no colour block; the queue is
-            already dense and urgency is carried by the existing chips. */}
-        <p className={`text-sm truncate flex items-center gap-1.5 min-w-0 ${
-          row.unread ? "font-extrabold text-[#0F172A]" : "font-bold text-[#0F172A]"
-        }`}>
-          {row.unread && (
-            <span
-              aria-hidden="true"
-              className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#059669]"
-            />
-          )}
-          <span className="truncate">{row.who}</span>
-          {row.unread && <span className="sr-only">(unread)</span>}
-        </p>
+        <p className="text-sm font-bold text-[#0F172A] truncate">{row.who}</p>
         <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap tabular-nums">{fmtRelative(row.when)}</span>
       </div>
       {row.preview && (
@@ -450,34 +342,14 @@ function ConversationPane({ row, target, onBack, onChanged }: {
     return <UnifiedThreadPane target={target} onBack={onBack} />;
   }
 
-  // COMMAND-CENTER-THREAD-IDENTITY-001 — the customer's name was rendered TWICE
-  // in almost the same place: once in this toolbar and again in the identity
-  // header UnifiedThreadPane draws for itself. When the body is that pane, it
-  // owns the identity and this toolbar carries only channel + state.
-  const usesUnifiedPane = !!target
-    && !(row.kind === "chat" && row.chatSession)
-    && !(row.kind === "sms" && row.aiConversationId);
-
   return (
     <div className="flex flex-col min-h-0 h-full">
       <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-2">
         <button type="button" onClick={onBack} className="lg:hidden text-slate-500 mr-1" aria-label="Back to queue"><i className="ri-arrow-left-line text-lg" /></button>
-        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${ch.cls}`}><i className={ch.icon} />{ch.label}</span>
-        {/* Identity appears here ONLY when the body has no header of its own.
-            Name is the headline; phone and order stay secondary beneath it. */}
-        {!usesUnifiedPane && (
-          <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-extrabold text-[#0F172A] truncate leading-tight">{row.who}</p>
-            {(row.context.phone || row.orderId) && (
-              <p className="text-[11px] text-slate-500 truncate">
-                {row.context.phone ? formatPhoneDisplay(normalizeE164(row.context.phone) ?? row.context.phone) : "No phone on this thread"}
-                {row.orderId && <span> · {row.orderId}</span>}
-              </p>
-            )}
-          </div>
-        )}
+        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${ch.cls}`}><i className={ch.icon} />{ch.label}</span>
+        <span className="text-sm font-bold text-[#0F172A] truncate">{row.who}</span>
         {(row.facets.has("legal") || row.aiConversationStatus === "escalated") && (
-          <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-600 text-white"><i className="ri-alarm-warning-line" />Escalated</span>
+          <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-600 text-white"><i className="ri-alarm-warning-line" />Escalated</span>
         )}
       </div>
       {row.kind === "chat" && row.chatSession ? (
@@ -545,7 +417,7 @@ function SearchContextPane({ target }: { target: ThreadTarget }) {
         {target.confirmationId ? (
           <button
             type="button"
-            onClick={() => navigate(orderDeepLink(target.confirmationId!))}
+            onClick={() => navigate(`/admin-orders?tab=orders&q=${encodeURIComponent(target.confirmationId!)}`)}
             className="text-[12.5px] font-mono font-semibold text-[#1E293B] hover:underline break-all text-left"
           >
             {target.confirmationId}
@@ -706,11 +578,8 @@ function ChatBubble({ message, aiDecision, aiTag }: { message: ChatMsg; aiDecisi
   return (
     <div className={`flex ${isVisitor ? "justify-start" : "justify-end"}`}>
       <div className={`max-w-[80%] ${isVisitor ? "" : "items-end"} flex flex-col`}>
-        {/* COMMAND-CENTER-MESSAGE-LEGIBILITY-001 — light tints, dark text.
-            Visitor = blue, PawTenant = green; side and label still carry
-            direction so colour is never the only cue. */}
-        <div className={`rounded-2xl border px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${
-          isVisitor ? "bg-sky-50 border-sky-200 text-slate-900" : "bg-emerald-50 border-emerald-200 text-slate-900"
+        <div className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${
+          isVisitor ? "bg-white text-slate-800 border border-slate-200" : "bg-[#1E293B] text-white"
         } ${!isVisitor && aiTag ? "ring-2 ring-emerald-400/60" : ""}`} style={{ overflowWrap: "anywhere" }}>
           {message.message}
         </div>
@@ -834,8 +703,7 @@ function SmsTimeline({ row, onChanged }: { row: CommRow; onChanged: () => void }
               <div key={m.id} className="flex flex-col gap-1.5">
                 <div className={`flex ${inbound ? "justify-start" : "justify-end"}`}>
                   <div className="max-w-[80%] flex flex-col">
-                    {/* COMMAND-CENTER-MESSAGE-LEGIBILITY-001 — see ChatBubble. */}
-                    <div className={`rounded-2xl border px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${inbound ? "bg-sky-50 border-sky-200 text-slate-900" : "bg-emerald-50 border-emerald-200 text-slate-900"}`} style={{ overflowWrap: "anywhere" }}>{m.body}</div>
+                    <div className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${inbound ? "bg-white text-slate-800 border border-slate-200" : "bg-[#1E293B] text-white"}`} style={{ overflowWrap: "anywhere" }}>{m.body}</div>
                     <p className={`mt-1 text-[10px] text-slate-400 ${inbound ? "text-left" : "text-right"}`}>
                       {m.source === "ai" ? "AI" : m.source === "human" ? "Team" : inbound ? "Customer" : "Outbound"} · {fmtTime(m.sent_at ?? m.created_at)}
                     </p>
@@ -1178,19 +1046,7 @@ function ContextPane({ row }: { row: CommRow }) {
           {row.kind === "chat" && <button type="button" onClick={() => goSub("chats")} className="text-xs px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700">Open in Chats</button>}
           {(row.kind === "chat" || row.kind === "sms") && <button type="button" onClick={() => goSub("ai")} className="text-xs px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700">Open in AI Support</button>}
           {row.kind === "sms" && <button type="button" onClick={() => goSub("sms")} className="text-xs px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700">SMS / Calls</button>}
-          {/* COMMAND-CENTER-OPEN-EXACT-ORDER-001 — opens THIS order's modal, not
-              the Orders list. An unlinked or ambiguous thread has no row.orderId,
-              so the button is simply absent rather than opening a guess. */}
-          {row.orderId && (
-            <button
-              type="button"
-              onClick={() => navigate(orderDeepLink(row.orderId!))}
-              title={`Open order ${row.orderId}`}
-              className="text-xs px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
-            >
-              Open order
-            </button>
-          )}
+          {row.orderId && <button type="button" onClick={() => navigate("/admin-orders?tab=orders")} className="text-xs px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700">Open order</button>}
         </div>
       </section>
     </div>

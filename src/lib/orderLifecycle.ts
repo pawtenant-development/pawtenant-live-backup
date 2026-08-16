@@ -391,48 +391,6 @@ export function paymentStateLabel(s: PaymentState): string {
   return PAYMENT_LABEL[s];
 }
 
-/**
- * ORDER-PAID-STALE-FAILURE-SUPPRESSION-001
- *
- * True when `payment_failed_at` / `payment_failure_reason` describe an attempt
- * that has since been SUPERSEDED by a real payment, so the order needs no
- * action and the red "Payment Failed" warning is stale presentation.
- *
- * ── Why not compare timestamps ───────────────────────────────────────────────
- *
- * The obvious rule — "failure is stale if paid_at >= payment_failed_at" — is
- * WRONG on the most common real case. An abandoned Klarna tab stamps its
- * cancellation when the session finally dies, which is AFTER the customer has
- * already paid by card: observed PT-MSTCOG0E paid 12:57 AM, failure 1:00 AM.
- * Ordering says "later failure"; the truth is "stale marker". So this keys on
- * the order's CURRENT authoritative state, never on clock order.
- *
- * ── Why `paid_at` and not `payment_intent_id` ────────────────────────────────
- *
- * A cancelled checkout MINTS a PaymentIntent and never pays it, so a bare PI is
- * exactly the unpaid-failure signature we must keep warning about. `paid_at` is
- * the immutable stamp of the FIRST successful payment and is the authoritative
- * proof a charge landed. (See the `paid_at` contract at the top of this file.)
- *
- * ── Why this cannot hide something that needs action ─────────────────────────
- *
- * `orderPaymentState()` resolves `disputed` and both refund states BEFORE
- * `paid`, so a dispute, a partial refund or a full refund all fail this
- * predicate and keep their warning. And the admin "mark as unpaid/failed"
- * writer CLEARS `paid_at` while stamping `payment_failed_at` — so a genuine
- * later failure that requires action drops straight back to showing.
- *
- * Presentation only: no historical row is altered, and the failed attempt stays
- * in the Payments tab / audit history regardless of what this returns.
- */
-export function isStalePaymentFailure(o: LifecycleOrder): boolean {
-  const hasFailureMarker = !!o.payment_failed_at || !!o.payment_failure_reason;
-  if (!hasFailureMarker) return false;
-  // `paid_at` alone proves a charge landed; orderPaymentState() screens out
-  // dispute/refund, which must keep warning even though they are "paid".
-  return !!o.paid_at && orderPaymentState(o) === "paid";
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // Workflow state — INDEPENDENT of payment state
 // ═══════════════════════════════════════════════════════════════════════════

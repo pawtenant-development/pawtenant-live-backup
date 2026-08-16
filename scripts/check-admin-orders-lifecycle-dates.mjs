@@ -89,14 +89,7 @@ const REQUIRED = [
   // basis is what put JULY headings inside the August Completed view.
   { file: PAGE, label: "day ribbons group on the EFFECTIVE basis", re: /orderGroupingIso\(order, effDateBasis\)/ },
   { file: PAGE, label: "date FILTER uses the ACTIVE basis", re: /matchesBasisDateRange\(o, effDateBasis, effDateFrom, effDateTo\)/ },
-  // ADMIN-ORDERS-SERVER-BACKED-LOADING-001 — the counts no longer take an
-  // inline object literal; the faceted counts, the KPI cards AND the server row
-  // query all read ONE `listFilters` memo. The invariant is unchanged and is now
-  // stronger: the basis reaches the counts and the ROWS from the same place, so
-  // they cannot be handed different dates.
-  { file: PAGE, label: "the one filter set carries the ACTIVE basis", re: /const listFilters = useMemo<FacetFilters>\(\(\) => \(\{\s*\n\s*dateBasis: effDateBasis, dateFrom: effDateFrom, dateTo: effDateTo,/ },
-  { file: PAGE, label: "KPI counts read that same filter set", re: /fetchOrderFacetCounts\(listFilters\)/ },
-  { file: PAGE, label: "the SERVER row query reads it too", re: /applyListPredicates\(\s*\n\s*supabase\.from\("orders"\)\.select\(ORDERS_LIST_COLUMNS\),\s*\n\s*listFilters,/ },
+  { file: PAGE, label: "KPI counts receive the ACTIVE basis", re: /fetchOrderFacetCounts\(\{\s*\n?\s*dateBasis: effDateBasis,/ },
   { file: PAGE, label: "active basis is stated in the UI", re: /ORDER_DATE_BASIS_LABEL\[dateBasis\]/ },
   { file: PAGE, label: "Payment Failed stays reachable as a status FILTER tab", re: /\{ value: "payment_failed", label: "Payment Failed" \}/ },
   { file: PAGE, label: "status filter tabs apply the filter", re: /onClick=\{\(\) => onStatusTabClick\(opt\.value\)\}/ },
@@ -149,10 +142,7 @@ const REQUIRED = [
   { file: PAGE, label: "CSV filename names the EFFECTIVE basis", re: /pawtenant-orders-export-selected-\$\{effDateBasis\}/ },
   { file: PAGE, label: "the EFFECTIVE basis is named to the operator", re: /const effDateBasisLabel = ORDER_DATE_BASIS_LABEL\[effDateBasis\]/ },
   { file: PAGE, label: "KPI caption states the date the view is measured on", re: /Counted, listed, grouped and exported by \{effDateBasisLabel\}/ },
-  // Pagination is server-side now, so there is no client slice counter to reset.
-  // The equivalent (and stricter) invariant: the EFFECTIVE window is part of the
-  // list query key, so changing it restarts the server query at page 0.
-  { file: PAGE, label: "the EFFECTIVE window is part of the list query key", re: /const listQueryKey = useMemo\(\s*\n\s*\(\) => JSON\.stringify\(\[listFilters, statusFilter, effDateBasis, sortOrder, defaultScopeActive\]\)/ },
+  { file: PAGE, label: "pagination resets on the EFFECTIVE window", re: /setVisibleCount\(50\); \}, \[[^\]]*effDateBasis, effDateFrom, effDateTo/ },
   { file: EXPORTS, label: "CSV exporter accepts a date-basis label", re: /dateBasisLabel\?: string,/ },
   { file: EXPORTS, label: "Date Basis column is appended when supplied", re: /label: "Date Basis"/ },
   { file: EXPORTS, label: "Provider Payment column preserved", re: /label: "Provider Payment"/ },
