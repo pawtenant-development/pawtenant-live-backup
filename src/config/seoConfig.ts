@@ -29,6 +29,19 @@ export interface SEOEntry {
   keywords?: string;
 }
 
+// ── AI-SEO-ESA-LETTER-COST-ANSWER-INTENT-001 ────────────────────────────────
+// The /esa-letter-cost title and description carry REAL prices so the SERP
+// snippet answers "how much does an ESA letter cost?" before the click. The
+// numbers are interpolated from src/config/pricing.ts — the same canonical
+// matrix that feeds the price cards, the hero chip and Stripe checkout — so a
+// price change updates the snippet automatically and the meta can never drift
+// away from what the customer is actually charged. Never hardcode a literal
+// price in this file.
+import { ESA_PRICE_LABELS } from "./pricing";
+
+const ESA_COST_ANNUAL = ESA_PRICE_LABELS.subscription; // "$115" (first year)
+const ESA_COST_ONETIME = ESA_PRICE_LABELS.oneTime; // "$129"
+
 // ── Core static pages ────────────────────────────────────────────────────────
 export const CORE_PAGE_META: Record<string, SEOEntry> = {
   "/": {
@@ -41,8 +54,13 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Begin your ESA letter application in minutes. Answer a short questionnaire, connect with a licensed LMHP, and receive your ESA letter fast.",
   },
+  // AI-SEO-ESA-LETTER-HEAD-TERM-CONSOLIDATION-001 — this route is the single
+  // canonical organic owner of the "esa letter" / "how to get an esa letter"
+  // informational-commercial cluster (30 clicks, 1,143 impressions, GSC 28d to
+  // 2026-08-13 — the strongest of the four URLs Google was splitting it
+  // between). Title now leads with the head term itself and carries the brand.
   "/how-to-get-esa-letter": {
-    title: "How to Get an ESA Letter | Step-by-Step Licensed Evaluation",
+    title: "ESA Letter: How to Get One From a Licensed Provider | PawTenant",
     description:
       "How to get an ESA letter step by step: a licensed provider evaluation, a verifiable housing-focused letter, and a refund if you don't qualify.",
       keywords: 
@@ -54,9 +72,9 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
       "Understand your housing rights with an emotional support animal. Learn how the Fair Housing Act protects ESA owners and keeps you and your pet together.",
   },
   "/esa-letter-cost": {
-    title: "ESA Letter Cost: Online Evaluation Pricing & What's Included",
+    title: `ESA Letter Cost: ${ESA_COST_ANNUAL}/Year or ${ESA_COST_ONETIME} One-Time | PawTenant`,
     description:
-      "ESA letter cost explained: transparent pricing for a licensed provider evaluation, what's included, and a refund if you don't qualify.",
+      `How much does an ESA letter cost? ${ESA_COST_ANNUAL}/year or ${ESA_COST_ONETIME} one-time for one pet — licensed provider evaluation included, no hidden fees, and a refund if you don't qualify.`,
   },
   "/pet-rent-savings-calculator": {
     title: "Pet Rent Savings Calculator | Estimate ESA Housing Savings",
@@ -340,10 +358,16 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "What's the difference between a service animal, therapy dog, and ESA? Full comparison of legal rights, training, airline access, and housing protections in 2026.",
   },
+  // AI-SEO-ESA-LETTER-HEAD-TERM-CONSOLIDATION-001 — the /blog INDEX was one of
+  // four PawTenant URLs Google was splitting the "esa letter" head term across
+  // (29 of 89 impressions, avg position 30.4, 0 clicks — GSC 28d to 2026-08-13).
+  // A listing page cannot satisfy that query, so the title now leads with what
+  // the page actually is (a resource library) instead of the head term itself.
+  // The blog stays fully indexable — only its head-term relevance is reduced.
   "/blog": {
-    title: "ESA Letter Blog | Guides, Laws & Tips | PawTenant",
+    title: "PawTenant Resource Library | ESA & PSD Guides by State",
     description:
-      "Explore expert guides on ESA letters, emotional support animal laws, and tenant rights. Stay informed with PawTenant's blog, your trusted ESA resource.",
+      "Browse PawTenant's guides on emotional support animal and psychiatric service dog documentation, housing rules, and state-by-state tenant rights.",
   },
   "/blog/2026-hud-esa-guidelines": {
     title: "2026 HUD ESA Guidelines: Is Your ESA Letter Still Valid?",

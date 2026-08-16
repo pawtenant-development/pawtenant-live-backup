@@ -203,7 +203,7 @@ export default function AreOnlineESALettersLegitPage() {
         image="/assets/therapists/clinician-tablet-with-pet.jpg"
         alt="A licensed mental health provider reviewing a case during a telehealth visit, with a pet nearby"
         eyebrow="A real review, not a download"
-        heading="What makes it legitimate: a licensed provider who actually evaluates you"
+        heading="What makes a letter valid: a licensed provider who actually evaluates you"
         body="A genuine online ESA letter comes from a mental health provider licensed in your state who reviews your situation over telehealth — a recognized way to deliver care. The letter names the provider and can be verified. That's the difference between a real letter and a worthless “instant” one."
         bullets={[
           "Reviewed by a Licensed Mental Health Practitioner credentialed in your state.",
@@ -219,7 +219,7 @@ export default function AreOnlineESALettersLegitPage() {
             <div className="bg-white rounded-2xl p-7 border border-gray-100">
               <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <i className="ri-checkbox-circle-fill text-orange-500"></i>
-                Signs a letter is legitimate
+                Signs a letter is valid
               </h3>
               <ul className="space-y-3">
                 {greenFlags.map((item) => (
@@ -260,7 +260,7 @@ export default function AreOnlineESALettersLegitPage() {
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-orange-500 mb-3">
               Common Questions
             </span>
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Online ESA letter legitimacy FAQ</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Online ESA letter validity FAQ</h2>
           </div>
           <div className="space-y-3">
             {faqs.map((faq, i) => (

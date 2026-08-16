@@ -3,7 +3,7 @@ import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import { Link } from "react-router-dom";
-import { VeteransSupportSection, RelatedResources } from "../../components/feature/SeoKit";
+import { VeteransSupportSection, RelatedResources, AIAnswerBox } from "../../components/feature/SeoKit";
 import PetCostSavingsCalculator from "../../components/feature/PetCostSavingsCalculator";
 import PublicPageHero from "../../components/feature/PublicPageHero";
 import PlanPricingSection from "../../components/feature/PlanPricingSection";
@@ -149,6 +149,46 @@ export default function ESALetterCostPage() {
           <HeroPriceLine tone="light" />
         </div>
       </PublicPageHero>
+
+      {/* AI-SEO-ESA-LETTER-COST-ANSWER-INTENT-001 — direct answer, first screen.
+          GSC (28d) shows this page holding position ~10.6 on the whole
+          affordability cluster at ~1.2% CTR: it ranks, but the answer to the
+          literal question ("how much does an ESA letter cost?") was only
+          implied by the hero chip and the cards below the fold. Every amount is
+          read through getPrice() → the canonical pricing source, so this block
+          cannot drift from the cards, the homepage, or Stripe checkout. */}
+      <section className="pt-10 sm:pt-12 pb-2 bg-white">
+        <div className="max-w-3xl mx-auto px-5 sm:px-6">
+          <AIAnswerBox question="How much does an ESA letter cost?">
+            <p>
+              A PawTenant ESA letter is{" "}
+              <strong>
+                {getPrice("esa_subscription_annual", ESA_PRICE_LABELS.subscription)} per year
+              </strong>{" "}
+              on the annual plan, or{" "}
+              <strong>
+                {getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime)} one-time
+              </strong>{" "}
+              for a single pet. For two or three pets it is{" "}
+              {getPrice("esa_subscription_multi", ESA_PRICE_LABELS.subscriptionMultiPetTotal)}/year
+              or {getPrice("esa_multi_pet", ESA_PRICE_LABELS.oneTimeMultiPetTotal)} one-time as a
+              fixed total — not per animal.
+            </p>
+            <p>
+              That is the whole price. It covers the evaluation by a mental health professional
+              licensed in your state and, if they determine an ESA is clinically appropriate for
+              you, your housing letter with a verification code your landlord can check. There is
+              no separate letter fee, registration fee or membership. If you are not approved, you
+              get a refund.
+            </p>
+            <p className="text-[13px] text-gray-600">
+              The annual plan renews at{" "}
+              {getPrice("renewal_annual", ESA_PRICE_LABELS.renewal)}/year after the first year; the
+              one-time option does not renew. Compare both plans below.
+            </p>
+          </AIAnswerBox>
+        </div>
+      </section>
 
       {/* Canonical pricing — the EXACT homepage three-card block, same component
           and same single pricing source, so this page can never drift from the
@@ -477,6 +517,12 @@ export default function ESALetterCostPage() {
           <RelatedResources
             heading="Before you decide"
             links={[
+              // AI-SEO-INTERNAL-LINK-CLUSTER-001 — evaluation + verification companions
+              // for cost intent. /how-to-get-esa-letter is the canonical owner of the
+              // "esa letter / how to get an esa letter" cluster and is linked first.
+              { to: "/how-to-get-esa-letter", title: "How to get an ESA letter", desc: "The full evaluation path, step by step, and what a licensed provider reviews." },
+              { to: "/esa-letter-verification", title: "How a landlord verifies your letter", desc: "What the verification code on your letter does and how a housing provider checks it." },
+              { to: "/are-online-esa-letters-legit", title: "Are online ESA letters real?", desc: "What separates a provider-issued letter from a paid registration or certificate." },
               { to: "/best-online-esa-letter-service", title: "How to choose a real online ESA provider", desc: "What to check before you pay: licensed provider review, transparent pricing, and verifiable letters." },
               { to: "/how-to-get-esa-letter-online", title: "How the online ESA letter process works", desc: "The 4 steps from a short assessment to a provider-issued letter." },
               { to: "/esa-letter-for-landlord", title: "ESA letter for your landlord", desc: "How housing accommodation works and what to send." },
