@@ -93,7 +93,11 @@ const SPIKE = [
   },
   {
     path: "/how-to-get-esa-letter", file: "how-to-get-esa-letter/index.html",
-    titleHas: "How to Get an ESA Letter",
+    // AI-SEO-ESA-LETTER-HEAD-TERM-CONSOLIDATION-001 — title now leads with the
+    // head term ("ESA Letter: How to Get One From a Licensed Provider"), so the
+    // assertion pins the new tail rather than the old leading phrase. The H1 is
+    // unchanged.
+    titleHas: "How to Get One From a Licensed Provider",
     h1Has: "How to Get an ESA Letter",
     minText: 2500,
     mustLink: ["/assessment"],
@@ -215,6 +219,48 @@ const SPIKE = [
     path: "/doctors/karla-delgado", file: "doctors/karla-delgado/index.html",
     titleHas: "Karla Delgado", h1Has: "Karla Delgado", minText: 400,
     mustLink: ["/assessment", "/our-providers"], mustText: ["Karla Delgado"],
+  },
+  // ── AI-SEO-LIVE-SOFT-404-COMMERCIAL-ROUTES-001 ────────────────────────────
+  // Four commercial routes GSC classified as Soft 404 on 2026-07-31…08-08. The
+  // page components already carried full, reviewed content and correct <head>
+  // metadata — they were simply never added to the spike, so the deployed raw
+  // HTML was the ~31.7KB empty app shell. These entries are the negative
+  // control: if any of them ever falls back to a shell body, the build fails.
+  {
+    path: "/are-online-esa-letters-legit", file: "are-online-esa-letters-legit/index.html",
+    titleHas: "Real ESA Letters",
+    h1Has: "Are Online ESA Letters Real",
+    minText: 2500,
+    mustLink: ["/assessment", "/esa-letter-verification"],
+    mustText: ["licensed", "verify"],
+  },
+  {
+    path: "/esa-vs-psd-letter", file: "esa-vs-psd-letter/index.html",
+    titleHas: "ESA Letter vs PSD Letter",
+    h1Has: "ESA Letter vs PSD Letter",
+    minText: 2500,
+    mustLink: ["/assessment"],
+    // The ESA/PSD distinction must stay visible in the raw HTML: a PSD is a dog
+    // individually TRAINED to perform tasks, which is what separates ADA access
+    // from FHA housing accommodation. If that language disappears the page has
+    // started implying identical rights.
+    mustText: ["trained", "Fair Housing Act", "ADA"],
+  },
+  {
+    path: "/esa-letter-for-landlord", file: "esa-letter-for-landlord/index.html",
+    titleHas: "ESA Letter for Landlords",
+    h1Has: "How to Give Your Landlord an ESA Letter",
+    minText: 2500,
+    mustLink: ["/assessment", "/esa-letter-verification"],
+    mustText: ["reasonable accommodation", "Fair Housing Act"],
+  },
+  {
+    path: "/esa-letter/missouri", file: "esa-letter/missouri/index.html",
+    titleHas: "ESA Letter Missouri",
+    h1Has: "Get an ESA Letter in Missouri",
+    minText: 2500,
+    mustLink: ["/assessment", "/housing-rights-esa"],
+    mustText: ["Missouri ESA Laws"],
   },
 ];
 
