@@ -82,6 +82,15 @@ import {
   fetchListScopeTotal,
   DEFAULT_SCOPE_DAYS,
   type FacetFilters,
+  // ADMIN-ORDERS-SEQUENCE-FILTER-AUTHORITATIVE-COUNTS-001 — the six Sequence
+  // Status chips inside Filters. Their counts are narrow server COUNT(head)
+  // queries built from the SAME predicate the list rows are selected with; the
+  // loaded-row `orders.filter(...)` counts the external strip used are gone.
+  fetchSequenceFacetCounts,
+  emptySequenceFacetCounts,
+  SEQUENCE_FACET_KEYS,
+  SEQUENCE_FACET_LABEL,
+  type SequenceFacetCounts,
 } from "./orderFacetCounts";
 // ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §9 — the banner's SOLE data source is the
 // period-event RPC imported below.
@@ -771,6 +780,12 @@ export default function AdminOrdersPage() {
     error: false,
   });
 
+  // ADMIN-ORDERS-SEQUENCE-FILTER-AUTHORITATIVE-COUNTS-001 — the six Sequence
+  // Status chip counts (lead-scoped, faceted on every filter EXCEPT the sequence
+  // selection itself). Server-authoritative; never derived from `orderRows`.
+  const [sequenceFacetCounts, setSequenceFacetCounts] =
+    useState<SequenceFacetCounts>(emptySequenceFacetCounts);
+
   // ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §8 — the CURRENT America/New_York
   // business date ("YYYY-MM-DD"). Referentially stable all day and flipped by a
   // timer armed on the exact next New York midnight, so the Today/Yesterday
@@ -1245,6 +1260,41 @@ export default function AdminOrdersPage() {
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
   const [pendingAssign, setPendingAssign] = useState<{ confirmationId: string; doctorEmail: string; doctorName: string } | null>(null);
   const [showLeadActionsModal, setShowLeadActionsModal] = useState(false);
+
+  // ── THE SEQUENCE CHIP COUNTS ───────────────────────────────────────────────
+  //
+  // ADMIN-ORDERS-SEQUENCE-FILTER-AUTHORITATIVE-COUNTS-001.
+  //
+  // Six narrow server COUNT(head) queries in one parallel batch, built by
+  // `applySequenceFilter` — the SAME predicate `applyListPredicates` uses to
+  // select the rows. Deliberately NOT keyed on `statusFilter`: sequence outreach
+  // is lead-scoped, so the chips must keep describing the lead universe when the
+  // operator is looking at the Completed tab (the behaviour the external strip
+  // had, and the reason it was never tab-scoped).
+  //
+  // `hideRecentFollowup` narrows the LIST client-side and cannot be expressed in
+  // this predicate, so it is declared BLOCKED rather than silently ignored — an
+  // unavailable count renders as unavailable, never as a number the list would
+  // contradict.
+  //
+  // Debounced + guarded by `runLatest`, so a slow earlier response can never
+  // overwrite the counts for newer filters.
+  const sequenceCountGuard = useRef(createRequestGuard()).current;
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      void runLatest(
+        sequenceCountGuard,
+        () => fetchSequenceFacetCounts(
+          listFilters,
+          hideRecentFollowup ? ["Hide sent within 7 days"] : [],
+        ),
+        setSequenceFacetCounts,
+      );
+    }, 500);
+    return () => { window.clearTimeout(t); };
+    // aggregateReloadToken is what makes the chips react to a MUTATION (e.g. a
+    // bulk Stop Sequence) and not only to a filter change.
+  }, [listFilters, hideRecentFollowup, aggregateReloadToken, sequenceCountGuard]);
 
   // ── Bulk delete state (owner/admin_manager only) ──
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
@@ -3694,67 +3744,11 @@ export default function AdminOrdersPage() {
               </div>
             )}
 
-            {/* ── Sequence quick-filter chip bar (always visible on orders tab) ── */}
-            {!loading && (() => {
-              const leads = orders.filter((o) => !isLegacyOrder(o) && (!o.payment_intent_id || o.status === "lead"));
-              const counts = {
-                all: leads.length,
-                no_sequence: leads.filter((o) => !o.seq_30min_sent_at && !o.seq_24h_sent_at && !o.seq_3day_sent_at && !o.followup_opt_out).length,
-                "30min_sent": leads.filter((o) => !!o.seq_30min_sent_at && !o.seq_24h_sent_at && !o.seq_3day_sent_at).length,
-                "24h_sent": leads.filter((o) => !!o.seq_24h_sent_at && !o.seq_3day_sent_at).length,
-                "3day_sent": leads.filter((o) => !!o.seq_3day_sent_at).length,
-                opted_out: leads.filter((o) => !!o.followup_opt_out).length,
-              };
-              const chips: { value: string; label: string; icon: string; activeColor: string; count: number }[] = [
-                { value: "all",          label: "All Leads",      icon: "ri-group-line",          activeColor: "bg-gray-700 text-white border-gray-700",          count: counts.all },
-                { value: "no_sequence",  label: "Not Started",    icon: "ri-time-line",            activeColor: "bg-gray-500 text-white border-gray-500",          count: counts.no_sequence },
-                { value: "30min_sent",   label: "5min Sent",      icon: "ri-mail-check-line",      activeColor: "bg-sky-600 text-white border-sky-600",            count: counts["30min_sent"] },
-                { value: "24h_sent",     label: "24h Sent",       icon: "ri-mail-send-line",       activeColor: "bg-amber-500 text-white border-amber-500",        count: counts["24h_sent"] },
-                { value: "3day_sent",    label: "3-Day Sent",     icon: "ri-gift-line",            activeColor: "bg-violet-600 text-white border-violet-600",      count: counts["3day_sent"] },
-                { value: "opted_out",    label: "Opted Out",      icon: "ri-forbid-line",          activeColor: "bg-red-500 text-white border-red-500",            count: counts.opted_out },
-              ];
-              return (
-                <div className="bg-white rounded-xl border border-gray-200 px-4 py-3 mb-2">
-                  <div className="flex items-center gap-2 mb-2.5">
-                    <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-                      <i className="ri-mail-send-line text-[#3b6ea5] text-sm"></i>
-                    </div>
-                    <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Sequence Stage</span>
-                    {sequenceFilter !== "all" && (
-                      <button
-                        type="button"
-                        onClick={() => setSequenceFilter("all")}
-                        className="whitespace-nowrap ml-auto flex items-center gap-1 px-2 py-0.5 text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"
-                      >
-                        <i className="ri-close-line"></i>Clear
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {chips.map((chip) => (
-                      <button
-                        key={chip.value}
-                        type="button"
-                        onClick={() => setSequenceFilter(chip.value)}
-                        className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
-                          sequenceFilter === chip.value
-                            ? chip.activeColor
-                            : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
-                        }`}
-                      >
-                        <i className={chip.icon}></i>
-                        {chip.label}
-                        <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold ${
-                          sequenceFilter === chip.value ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"
-                        }`}>
-                          {chip.count}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
+            {/* ADMIN-ORDERS-SEQUENCE-FILTER-AUTHORITATIVE-COUNTS-001 — the
+                external "Sequence Stage" chip strip stood HERE. It is gone, not
+                moved: its counts were computed from the loaded rows, so they
+                could not survive server-backed paging. The one counted Sequence
+                Status group now lives inside the Filters panel below. */}
 
             {/* ── Advanced filters ── */}
             {showAdvancedFilters && (
@@ -3837,26 +3831,92 @@ export default function AdminOrdersPage() {
                       <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
                     </div>
                   </div>
-                  {/* Sequence Status */}
-                  <div>
+                  {/* ── Sequence Status — ONE counted chip group, inside Filters ──
+                      ADMIN-ORDERS-SEQUENCE-FILTER-AUTHORITATIVE-COUNTS-001.
+
+                      This replaces TWO controls that were both bound to
+                      `sequenceFilter`: an external "Sequence Stage" strip whose
+                      counts were `orders.filter(...)` over the loaded page, and a
+                      count-less <select> here. Once the list became server-paged
+                      the strip's numbers described ~100 rows while claiming to
+                      describe the dataset — the exact "small confident wrong
+                      number" this codebase refuses elsewhere.
+
+                      The counts now come from `fetchSequenceFacetCounts`, which
+                      reuses `applySequenceFilter` — the same predicate that
+                      SELECTS the rows. Faceted semantics: every other active
+                      filter applies, the sequence selection itself does not, so
+                      picking one chip never zeroes the other five.
+
+                      Spans the grid because six labelled+counted chips are wider
+                      than a one-column select; `flex-wrap` keeps it responsive. */}
+                  <div className="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-7">
                     <label className="block text-xs font-bold text-gray-500 mb-1.5 flex items-center gap-1">
                       Sequence Status
-                      <span title="Filter leads by their follow-up sequence stage. Only applies to unpaid leads." className="cursor-help">
+                      <span title="Filter leads by their follow-up sequence stage. Only applies to unpaid leads. Counts are server-side across every matching lead, and honour the other filters above." className="cursor-help">
                         <i className="ri-information-line text-gray-400 text-xs"></i>
                       </span>
+                      {sequenceFilter !== "all" && (
+                        <button
+                          type="button"
+                          onClick={() => setSequenceFilter("all")}
+                          className="whitespace-nowrap ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 hover:text-[#3b6ea5] text-[11px] font-bold cursor-pointer transition-colors"
+                        >
+                          <i className="ri-close-line"></i>
+                          {SEQUENCE_FACET_LABEL[sequenceFilter as keyof typeof SEQUENCE_FACET_LABEL] ?? sequenceFilter}
+                        </button>
+                      )}
                     </label>
-                    <div className="relative">
-                      <select value={sequenceFilter} onChange={(e) => setSequenceFilter(e.target.value)}
-                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
-                        <option value="all">All Sequences</option>
-                        <option value="no_sequence">No Sequence Sent</option>
-                        <option value="30min_sent">5min Email Sent</option>
-                        <option value="24h_sent">24h Email Sent</option>
-                        <option value="3day_sent">3-Day Email Sent</option>
-                        <option value="opted_out">Opted Out</option>
-                      </select>
-                      <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
+                    <div
+                      className="flex items-center gap-2 flex-wrap"
+                      role="group"
+                      aria-label="Sequence status filter"
+                    >
+                      {SEQUENCE_FACET_KEYS.map((key) => {
+                        const count = sequenceFacetCounts.counts[key];
+                        const selected = sequenceFilter === key;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setSequenceFilter(key)}
+                            aria-pressed={selected}
+                            className={`whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${
+                              selected
+                                ? "bg-[#3b6ea5] text-white border-[#1a5c4f]"
+                                : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
+                            }`}
+                          >
+                            {SEQUENCE_FACET_LABEL[key]}
+                            <span
+                              title={count === null ? "Count unavailable for this filter combination" : undefined}
+                              className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-extrabold ${
+                                selected ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              {count === null ? "—" : count}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
+                    {/* Never a silently-incomplete number: when the server cannot
+                        represent an active client-only condition the chips show
+                        "—" and say why. */}
+                    {sequenceFacetCounts.blockedClientFilters.length > 0 ? (
+                      <p className="mt-1.5 text-[10px] font-semibold text-amber-700">
+                        Lead counts unavailable while the {sequenceFacetCounts.blockedClientFilters.join(" + ")} filter
+                        {sequenceFacetCounts.blockedClientFilters.length > 1 ? "s are" : " is"} active — {sequenceFacetCounts.blockedClientFilters.length > 1 ? "they" : "it"} can&apos;t be applied server-side yet. Filtering still works.
+                      </p>
+                    ) : sequenceFacetCounts.error ? (
+                      <p className="mt-1.5 text-[10px] font-semibold text-amber-700">
+                        Lead counts could not be loaded. Filtering still works.
+                      </p>
+                    ) : (
+                      <p className="mt-1.5 text-[10px] text-gray-400">
+                        Counted across every matching unpaid lead, server-side — not just the rows on screen. Independent of the status tab above.
+                      </p>
+                    )}
                   </div>
                   {/* ── Date Basis — ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001.
                       Moved OUT of its standalone row above the list and INTO
@@ -3947,6 +4007,29 @@ export default function AdminOrdersPage() {
                     <span className="text-xs text-gray-400">— uses the filters above, across every matching order</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    {/* ── The general Orders CSV ─────────────────────────────
+                        ADMIN-ORDERS-EXPORT-PACKAGE-ADDONS-001. `exportFilteredAll`
+                        has existed since the provider-net work but was never
+                        mounted, so the only reachable rich CSV was "Export
+                        Selected" — which is, by definition, limited to rows the
+                        operator had loaded and ticked. This button is that
+                        callback's UI: it pages the COMPLETE matching server-side
+                        set through the same predicate builder as the list
+                        (fetchAllMatchingOrders, with the default window dropped),
+                        so the file contains every matching order, not a page. */}
+                    <button
+                      type="button"
+                      onClick={exportFilteredAll}
+                      disabled={exporting}
+                      title="Download the full Orders CSV for every order matching the filters above — not just the rows on screen. Includes Package / Add-ons, provider payment and attribution columns."
+                      className="whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#345f8f] cursor-pointer transition-colors disabled:opacity-60"
+                    >
+                      <i className={exporting ? "ri-loader-4-line animate-spin" : "ri-file-excel-2-line"}></i>
+                      {exporting ? "Exporting…" : "Orders CSV — All Matching"}
+                    </button>
+                    {exportMsg && (
+                      <span className="text-xs font-semibold text-red-600">{exportMsg}</span>
+                    )}
                     <button
                       type="button"
                       onClick={() => exportMetaAudience("paid")}

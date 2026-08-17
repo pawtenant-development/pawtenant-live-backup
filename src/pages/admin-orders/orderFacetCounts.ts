@@ -81,6 +81,20 @@ const CLIENT_ONLY_LABELS: Record<string, string> = {
   duplicatesOnly: "Duplicates",
 };
 
+/**
+ * The active filters the SERVER cannot faithfully represent. Collected in ONE
+ * place so every count surface (lifecycle facets, KPI cards, sequence chips)
+ * blocks on exactly the same conditions — three copies of this list is how one
+ * surface ends up publishing a number the others refuse to.
+ */
+function collectBlockedClientFilters(f: FacetFilters): string[] {
+  const blocked: string[] = [];
+  if (f.source) blocked.push(CLIENT_ONLY_LABELS.source);
+  if (f.packageFilter && f.packageFilter !== "all") blocked.push(CLIENT_ONLY_LABELS.packageFilter);
+  if (f.duplicatesOnly) blocked.push(CLIENT_ONLY_LABELS.duplicatesOnly);
+  return blocked;
+}
+
 // Escape a value for safe use inside a PostgREST `ilike.*value*` arm. Commas and
 // parentheses are the or()-filter delimiters and MUST NOT reach the parser; a
 // double-quoted value neutralises them (PostgREST unquotes it before matching).
@@ -91,6 +105,46 @@ function safeIlikeArg(raw: string): string {
 }
 
 type Q = ReturnType<ReturnType<typeof supabase.from>["select"]>;
+
+// ─── SEQUENCE: ONE PREDICATE, SHARED BY THE LIST AND THE CHIP COUNTS ─────────
+//
+// ADMIN-ORDERS-SEQUENCE-FILTER-AUTHORITATIVE-COUNTS-001.
+//
+// The Sequence Status control used to be TWO controls: an external "Sequence
+// Stage" chip strip whose counts were `orders.filter(...)` over the ~100 loaded
+// rows, and a count-less <select> inside Filters. Once the list became
+// server-paged those chip numbers described the current PAGE, not the dataset —
+// small, confident and wrong.
+//
+// The fix is not "count the loaded rows better", it is to route the counts
+// through the SAME predicate the rows are selected with. `applySequenceFilter`
+// is that one predicate: `applyNonStatusFilters` calls it for the ACTIVE
+// selection (rows), and `fetchSequenceFacetCounts` calls it once per bucket
+// (numbers). A chip count and the list it produces cannot drift apart, because
+// there is nothing to drift.
+//
+// LEAD TRUNK — sequence outreach only ever applies to leads (never paid, or
+// explicitly status='lead'). Every bucket, INCLUDING "All Leads", carries it.
+const LEAD_TRUNK_OR = "payment_intent_id.is.null,status.eq.lead";
+
+/**
+ * The sequence-stage predicate. `sequence` is one of the canonical values kept
+ * in `orders` (unchanged by this task — `30min_sent` still keys on
+ * `seq_30min_sent_at`; only its FRIENDLY LABEL reads "5min Sent"):
+ *   all | no_sequence | 30min_sent | 24h_sent | 3day_sent | opted_out
+ *
+ * "all" applies the lead trunk ALONE — that is what makes it the honest
+ * denominator for the other five buckets rather than the whole orders table.
+ */
+function applySequenceFilter(q: Q, sequence: string): Q {
+  q = q.or(LEAD_TRUNK_OR);
+  if (sequence === "no_sequence") return q.is("seq_30min_sent_at", null).is("seq_24h_sent_at", null).is("seq_3day_sent_at", null).or("followup_opt_out.is.null,followup_opt_out.eq.false");
+  if (sequence === "30min_sent") return q.not("seq_30min_sent_at", "is", null).is("seq_24h_sent_at", null).is("seq_3day_sent_at", null);
+  if (sequence === "24h_sent") return q.not("seq_24h_sent_at", "is", null).is("seq_3day_sent_at", null);
+  if (sequence === "3day_sent") return q.not("seq_3day_sent_at", "is", null);
+  if (sequence === "opted_out") return q.not("followup_opt_out", "is", null).eq("followup_opt_out", true);
+  return q; // "all" (and any unrecognised value) → the lead universe
+}
 
 // Apply every SQL-able NON-STATUS filter. Never applies statusFilter and never
 // applies the client-only filters.
@@ -131,15 +185,7 @@ function applyNonStatusFilters(q: Q, f: FacetFilters): Q {
 
   if (f.requestedProvider && f.requestedProvider !== "all") q = q.eq("selected_provider", f.requestedProvider);
 
-  if (f.sequence && f.sequence !== "all") {
-    // Sequence only applies to leads (unpaid or status=lead).
-    q = q.or("payment_intent_id.is.null,status.eq.lead");
-    if (f.sequence === "no_sequence") q = q.is("seq_30min_sent_at", null).is("seq_24h_sent_at", null).is("seq_3day_sent_at", null).or("followup_opt_out.is.null,followup_opt_out.eq.false");
-    else if (f.sequence === "30min_sent") q = q.not("seq_30min_sent_at", "is", null).is("seq_24h_sent_at", null).is("seq_3day_sent_at", null);
-    else if (f.sequence === "24h_sent") q = q.not("seq_24h_sent_at", "is", null).is("seq_3day_sent_at", null);
-    else if (f.sequence === "3day_sent") q = q.not("seq_3day_sent_at", "is", null);
-    else if (f.sequence === "opted_out") q = q.not("followup_opt_out", "is", null).eq("followup_opt_out", true);
-  }
+  if (f.sequence && f.sequence !== "all") q = applySequenceFilter(q, f.sequence);
 
   if (f.nonGhl) q = q.is("ghl_synced_at", null);
 
@@ -371,10 +417,7 @@ const NON_ARCHIVED_BUCKETS: FacetBucket[] = [
 // Fetch the universe total + every lifecycle bucket for the given non-status
 // filters, in one parallel batch of narrow COUNT queries.
 export async function fetchOrderFacetCounts(f: FacetFilters): Promise<FacetCounts> {
-  const blockedClientFilters: string[] = [];
-  if (f.source) blockedClientFilters.push(CLIENT_ONLY_LABELS.source);
-  if (f.packageFilter && f.packageFilter !== "all") blockedClientFilters.push(CLIENT_ONLY_LABELS.packageFilter);
-  if (f.duplicatesOnly) blockedClientFilters.push(CLIENT_ONLY_LABELS.duplicatesOnly);
+  const blockedClientFilters = collectBlockedClientFilters(f);
 
   const empty: FacetCounts = {
     universeTotal: null,
@@ -491,10 +534,7 @@ export async function fetchKpiCardCounts(
   f: Omit<FacetFilters, "dateBasis" | "dateFrom" | "dateTo">,
   range: { from?: string; to?: string },
 ): Promise<KpiCardCounts> {
-  const blockedClientFilters: string[] = [];
-  if (f.source) blockedClientFilters.push(CLIENT_ONLY_LABELS.source);
-  if (f.packageFilter && f.packageFilter !== "all") blockedClientFilters.push(CLIENT_ONLY_LABELS.packageFilter);
-  if (f.duplicatesOnly) blockedClientFilters.push(CLIENT_ONLY_LABELS.duplicatesOnly);
+  const blockedClientFilters = collectBlockedClientFilters(f as FacetFilters);
 
   const empty: Record<KpiCardKey, number | null> = {
     lead_unpaid: null, paid_unassigned: null, under_review: null, pending_delivery: null, completed: null,
@@ -525,6 +565,100 @@ export async function fetchKpiCardCounts(
   } catch (e) {
     console.error("[orderFacetCounts] KPI card count query failed", e);
     return { counts: empty, blockedClientFilters, error: true };
+  }
+}
+
+// ─── ADMIN-ORDERS-SEQUENCE-FILTER-AUTHORITATIVE-COUNTS-001 ───────────────────
+//
+// THE SEQUENCE CHIP COUNTS.
+//
+// COUNT UNIVERSE (documented from the behaviour the external strip had before
+// server-backed paging made it wrong):
+//
+//   • LEAD-SCOPED, NOT TAB-SCOPED. Sequence outreach exists only for unpaid
+//     leads, and the old strip counted `orders.filter(isLead)` regardless of
+//     which lifecycle tab was selected. That is preserved: `statusFilter` is
+//     NOT applied, so opening the Completed tab does not zero every chip.
+//   • FACETED ON EVERYTHING ELSE. Search, date basis/range, payment, state,
+//     assigned/requested provider, referred-by and no-GHL ARE applied — the
+//     chips describe the operator's current selection, not the whole table.
+//   • THE SEQUENCE FILTER ITSELF IS EXCLUDED. Standard faceted-search
+//     semantics: selecting "24h Sent" must not collapse the other five chips to
+//     zero, because their whole purpose is to say where you could go next.
+//   • Archived rows are excluded, exactly as the list hides them.
+//
+// One narrow COUNT(head) per chip, all six in parallel — no N+1 over rows, no
+// row download, and no second definition of "what a sequence stage is".
+export type SequenceFacetKey =
+  | "all" | "no_sequence" | "30min_sent" | "24h_sent" | "3day_sent" | "opted_out";
+
+export const SEQUENCE_FACET_KEYS: SequenceFacetKey[] = [
+  "all", "no_sequence", "30min_sent", "24h_sent", "3day_sent", "opted_out",
+];
+
+/**
+ * Friendly chip labels. `30min_sent` reads "5min Sent" because the first
+ * follow-up now goes out at ~5 minutes; the STORED VALUE and the
+ * `seq_30min_sent_at` column are deliberately untouched (renaming them would be
+ * a data migration for a caption).
+ */
+export const SEQUENCE_FACET_LABEL: Record<SequenceFacetKey, string> = {
+  all: "All Leads",
+  no_sequence: "Not Started",
+  "30min_sent": "5min Sent",
+  "24h_sent": "24h Sent",
+  "3day_sent": "3-Day Sent",
+  opted_out: "Opted Out",
+};
+
+export interface SequenceFacetCounts {
+  counts: Record<SequenceFacetKey, number | null>;
+  blockedClientFilters: string[];
+  error: boolean;
+}
+
+const EMPTY_SEQUENCE_COUNTS: Record<SequenceFacetKey, number | null> = {
+  all: null, no_sequence: null, "30min_sent": null, "24h_sent": null, "3day_sent": null, opted_out: null,
+};
+
+export function emptySequenceFacetCounts(): SequenceFacetCounts {
+  return { counts: { ...EMPTY_SEQUENCE_COUNTS }, blockedClientFilters: [], error: false };
+}
+
+/**
+ * `extraBlockedLabels` carries client-only narrowings that live in page state
+ * rather than in FacetFilters (today: "Hide sent within 7 days"). They block the
+ * same way a client-only filter does — the contract is that an unavailable count
+ * renders as unavailable, never as a confident number the list cannot reproduce.
+ */
+export async function fetchSequenceFacetCounts(
+  f: FacetFilters,
+  extraBlockedLabels: string[] = [],
+): Promise<SequenceFacetCounts> {
+  const blockedClientFilters = [...collectBlockedClientFilters(f), ...extraBlockedLabels];
+  if (blockedClientFilters.length > 0) {
+    return { counts: { ...EMPTY_SEQUENCE_COUNTS }, blockedClientFilters, error: false };
+  }
+
+  try {
+    const results = await Promise.all(
+      SEQUENCE_FACET_KEYS.map((k) =>
+        runCount(
+          applySequenceFilter(
+            // `sequence: "all"` is the faceting step: every other active filter
+            // is applied, the sequence selection is not.
+            applyNonStatusFilters(newCountQuery().neq("status", "archived"), { ...f, sequence: "all" }),
+            k,
+          ),
+        ),
+      ),
+    );
+    const counts = { ...EMPTY_SEQUENCE_COUNTS };
+    SEQUENCE_FACET_KEYS.forEach((k, i) => { counts[k] = results[i]; });
+    return { counts, blockedClientFilters, error: false };
+  } catch (e) {
+    console.error("[orderFacetCounts] sequence facet count query failed", e);
+    return { counts: { ...EMPTY_SEQUENCE_COUNTS }, blockedClientFilters, error: true };
   }
 }
 
