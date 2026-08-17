@@ -200,6 +200,159 @@ function applyBucket(q: Q, bucket: FacetBucket): Q {
   }
 }
 
+// ─── ADMIN-ORDERS-SERVER-BACKED-LOADING-001 ─────────────────────────────────
+//
+// The Orders LIST is server-paged through the SAME predicate pair the counts
+// above use (applyNonStatusFilters + applyBucket). That is the whole point:
+// there is ONE predicate builder, so a row the server returns for a tab and the
+// number that tab shows cannot drift apart. Re-implementing these buckets in
+// SQL would have made parity something we assert instead of something that is
+// true by construction — the exact failure this module was written to end.
+//
+// Two things live here rather than in page.tsx so the row read and the count
+// read cannot diverge:
+//   • the DEFAULT SCOPE window (below), and
+//   • applyListStatus / applyListPredicates, the single row-read entry point.
+
+/**
+ * Default scope: the operator opens Orders and gets the recent working set plus
+ * everything still operationally open — NOT the whole table.
+ *
+ * Measured on TEST at 609 orders: 120 rows instead of 609, and 35 of those 120
+ * are older than the window but still actionable (they would otherwise have
+ * vanished — the regression §17 forbids).
+ *
+ * Deliberately NOT "every non-terminal row": unpaid leads never terminate, so
+ * that definition returned 511 of 609 and defeated the purpose. "Actionable"
+ * here is the PAID operational queue — Paid/Unassigned ∪ Under Review ∪ Pending
+ * Delivery — which is what an operator actually has to work. Recent leads still
+ * arrive through the date arms.
+ */
+export const DEFAULT_SCOPE_DAYS = 60;
+
+export function defaultScopeCutoffIso(now: Date = new Date()): string {
+  return new Date(now.getTime() - DEFAULT_SCOPE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+}
+
+/**
+ * The paid operational queue, as ONE PostgREST and() arm. Mirrors the
+ * paid_unassigned / under_review / pending_delivery buckets' shared trunk:
+ * paid, not a lead, not refunded/cancelled, not already delivered.
+ */
+function paidOpenQueueArm(): string {
+  return [
+    "and(payment_intent_id.not.is.null",
+    "status.neq.lead",
+    "status.neq.cancelled",
+    "status.neq.refunded",
+    "doctor_status.neq.patient_notified",
+    "refunded_at.is.null",
+    "or(refund_status.is.null,refund_status.neq.full))",
+  ].join(",");
+}
+
+/**
+ * Recent-by-creation OR recent-by-activity OR still in the paid open queue.
+ *
+ * The activity arm matters: an old order touched last week is part of the
+ * working set even when it is already completed, and would otherwise be
+ * reachable only by search.
+ */
+export function applyDefaultScope(q: Q, cutoffIso: string): Q {
+  return q.or(
+    `created_at.gte."${cutoffIso}",last_meaningful_activity_at.gte."${cutoffIso}",${paidOpenQueueArm()}`,
+  );
+}
+
+const FACET_BUCKET_SET = new Set<string>([
+  "lead_unpaid", "paid_unassigned", "under_review", "pending_delivery", "completed",
+  "refunded", "disputed", "cancelled", "payment_failed", "archived",
+]);
+
+/**
+ * The status TAB, server-side. Mirrors the list's client predicate exactly,
+ * including its two structural rules: archived rows are hidden on every tab
+ * except Archived, and an unrecognised tab falls back to matching the raw
+ * status / doctor_status value.
+ *
+ * `orders.status` and `orders.doctor_status` are NOT NULL on both projects
+ * (verified: 0 nulls in 609 rows), so .neq() cannot silently drop rows here.
+ */
+export function applyListStatus(q: Q, statusFilter: string): Q {
+  if (statusFilter === "archived") return applyBucket(q, "archived");
+  q = q.neq("status", "archived");
+  if (statusFilter === "all") return q;
+  if (FACET_BUCKET_SET.has(statusFilter)) return applyBucket(q, statusFilter as FacetBucket);
+  return q.or(`status.eq.${statusFilter},doctor_status.eq.${statusFilter}`);
+}
+
+/**
+ * Whether the 60-day default scope may narrow the list.
+ *
+ * It applies ONLY to the untouched default view. The moment the operator
+ * searches, picks a tab, opens a filter, sets a date range or clicks a KPI
+ * card, the window is dropped and the query runs against the COMPLETE dataset
+ * (§3 and §4). That is also what keeps the tab counts honest: a tab count is a
+ * full-dataset number, and selecting that tab shows a full-dataset list.
+ */
+export function isDefaultScopeEligible(f: FacetFilters, statusFilter: string): boolean {
+  if (statusFilter !== "all") return false;
+  if ((f.search ?? "").trim()) return false;
+  if (f.dateFrom || f.dateTo) return false;
+  if (f.payment && f.payment !== "all") return false;
+  if (f.state && f.state !== "all") return false;
+  if (f.referredBy && f.referredBy !== "all") return false;
+  if (f.assignedProvider && f.assignedProvider !== "all") return false;
+  if (f.requestedProvider && f.requestedProvider !== "all") return false;
+  if (f.sequence && f.sequence !== "all") return false;
+  if (f.nonGhl) return false;
+  if (f.source) return false;
+  if (f.packageFilter && f.packageFilter !== "all") return false;
+  if (f.duplicatesOnly) return false;
+  return true;
+}
+
+/**
+ * THE row-read predicate entry point. page.tsx supplies the projection + the
+ * ordering + the page window; every WHERE clause comes from here.
+ */
+// Generic in the builder type: the COUNT query (`select("id",{head})`) and the
+// ROW query (`select(ORDERS_LIST_COLUMNS)`) are different PostgREST generics but
+// identical filter surfaces. Keeping one implementation is the whole point, so
+// the cast lives here once instead of at every call site.
+export function applyListPredicates<T>(
+  q: T,
+  f: FacetFilters,
+  statusFilter: string,
+  opts: { defaultScopeCutoff?: string | null } = {},
+): T {
+  let out = applyListStatus(q as unknown as Q, statusFilter);
+  out = applyNonStatusFilters(out, f);
+  if (opts.defaultScopeCutoff) out = applyDefaultScope(out, opts.defaultScopeCutoff);
+  return out as unknown as T;
+}
+
+/**
+ * Total rows the CURRENT list query matches, server-side. This is the "Y" the
+ * list shows while the default scope is narrowing it — a full-dataset count
+ * would claim 609 while 120 rows were on screen.
+ *
+ * The KPI cards and status-tab facets deliberately do NOT use this: they stay
+ * full-dataset (§15).
+ */
+export async function fetchListScopeTotal(
+  f: FacetFilters,
+  statusFilter: string,
+  opts: { defaultScopeCutoff?: string | null } = {},
+): Promise<number | null> {
+  try {
+    return await runCount(applyListPredicates(newCountQuery(), f, statusFilter, opts));
+  } catch (e) {
+    console.error("[orderFacetCounts] list scope total failed", e);
+    return null;
+  }
+}
+
 function newCountQuery(): Q {
   return supabase.from("orders").select("id", { count: "exact", head: true });
 }

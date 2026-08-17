@@ -50,6 +50,16 @@ interface CompanyNotificationsBellProps {
    * the group still navigates to Contact Requests, just not deep.
    */
   onOpenContactSubmission?: (submissionId: string) => void;
+  /**
+   * COMMAND-CENTER-NOTIFICATION-ROUTING-001 — open the Communications Command
+   * Center on the conversation this communication belongs to. Receives
+   * communications.id (what sms/call notification rows carry in entity_id), so
+   * the destination is resolved by exact primary key rather than a phone guess.
+   * Returns true when the caller actually navigated.
+   */
+  onOpenConversation?: (communicationId: string) => boolean;
+  /** Open the Command Center queue itself (group header, no single thread). */
+  onOpenCommandCenter?: () => void;
 }
 
 /** Inline bell — icon-font independent so the trigger never renders as a blank box. */
@@ -123,7 +133,14 @@ function fmtTime(ts: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, onOpenApprovals, onOpenOrder, onOpenContactSubmission }: CompanyNotificationsBellProps) {
+/**
+ * COMMAND-CENTER-NOTIFICATION-ROUTING-001 — notification groups whose rows are
+ * conversations, and therefore belong in the Command Center rather than the
+ * legacy Comms list their stored target_tab points at.
+ */
+const COMMAND_CENTER_GROUPS = new Set(["sms", "call"]);
+
+export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, onOpenApprovals, onOpenOrder, onOpenContactSubmission, onOpenConversation, onOpenCommandCenter }: CompanyNotificationsBellProps) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<CompanyNotification[]>([]);
   const [loading, setLoading] = useState(false);
@@ -180,6 +197,18 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
   // OPENED is the order whose confirmation id was DISPLAYED — never a
   // latest-order guess, and never a different order from the one on screen.
   const openItem = useCallback((item: CompanyNotification): boolean => {
+    // COMMAND-CENTER-NOTIFICATION-ROUTING-001 — an SMS or call row identifies an
+    // exact conversation, so it opens the Command Center thread rather than the
+    // legacy Comms list its stored target_tab points at. Read is stamped only
+    // AFTER a successful navigation, so a failed resolve leaves the badge up.
+    if (COMMAND_CENTER_GROUPS.has(item.group_key) && item.entity_id && onOpenConversation) {
+      if (onOpenConversation(item.entity_id)) {
+        markGroupRead(item.group_key);
+        setOpen(false);
+        return true;
+      }
+      return false;
+    }
     markGroupRead(item.group_key);
     // ADMIN-NOTIFICATIONS-UNIFIED-EMAIL-...-001 — an inbound email identifies an
     // exact message, so open THAT. Checked BEFORE the order branch: a resolved
@@ -199,9 +228,18 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
     return false;
   // MODAL_TAB is a module-stable literal; listing it would churn the identity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markGroupRead, onOpenOrder, onOpenContactSubmission]);
+  }, [markGroupRead, onOpenOrder, onOpenContactSubmission, onOpenConversation]);
 
   const navigateForGroup = useCallback((groupKey: string, targetTab: string) => {
+    // COMMAND-CENTER-NOTIFICATION-ROUTING-001 — a GROUP header for SMS/calls has
+    // no single conversation to open, so it lands on the Command Center queue
+    // (where those rows now sort unread-first) rather than the legacy Comms tab.
+    if (COMMAND_CENTER_GROUPS.has(groupKey) && onOpenCommandCenter) {
+      markGroupRead(groupKey);
+      setOpen(false);
+      onOpenCommandCenter();
+      return;
+    }
     markGroupRead(groupKey);
     setOpen(false);
     if (groupKey === "order_paid") onOrdersFilter("paid_unassigned");
@@ -212,7 +250,7 @@ export default function CompanyNotificationsBell({ onNavigate, onOrdersFilter, o
     // so the dropdown count and the inbox always show the same items.
     else if (groupKey === "approval" && onOpenApprovals) onOpenApprovals();
     else onNavigate(targetTab);
-  }, [markGroupRead, onNavigate, onOrdersFilter, onOpenApprovals]);
+  }, [markGroupRead, onNavigate, onOrdersFilter, onOpenApprovals, onOpenCommandCenter]);
 
   const unreadTotal = rows.filter((r) => r.is_unread).length;
 

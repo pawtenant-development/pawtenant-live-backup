@@ -84,25 +84,39 @@ function MessageBubble({ ev }: { ev: ThreadEvent }) {
   const failed = ev.status === "failed" || ev.status === "terminal_failed" || !!ev.failureCode;
   const sync = ghlSyncLabel(ev.ghlSyncState);
 
+  // COMMAND-CENTER-MESSAGE-LEGIBILITY-001 — bubbles were near-black (#1E293B)
+  // with white text, which read as heavy and hostile across a long thread.
+  // Direction now carries a LIGHT tint with dark text: customer = blue,
+  // PawTenant = green, email = amber, call = violet. Direction is still
+  // reinforced by side (left/right), corner notch and the labels below, so the
+  // colour is not the only cue. All AA-contrast dark-on-light pairings.
+  const channel = channelOf(ev.type);
+  const isEmail = channel === "email";
+  const isCall = channel === "call";
+  const tone = failed
+    ? { box: "bg-orange-50 border-orange-200", body: "text-orange-900", meta: "text-orange-700" }
+    : isCall
+    ? { box: "bg-violet-50 border-violet-200", body: "text-violet-950", meta: "text-violet-700" }
+    : isEmail
+    ? { box: "bg-amber-50 border-amber-200", body: "text-amber-950", meta: "text-amber-700" }
+    : inbound
+    ? { box: "bg-sky-50 border-sky-200", body: "text-slate-900", meta: "text-sky-800" }
+    : { box: "bg-emerald-50 border-emerald-200", body: "text-slate-900", meta: "text-emerald-800" };
+
   return (
     <div className={`flex ${inbound ? "justify-start" : "justify-end"} w-full`}>
-      <div className={`max-w-[85%] sm:max-w-[75%] min-w-0 rounded-2xl px-3.5 py-2.5 ${
-        inbound
-          ? "bg-white border border-slate-200 rounded-tl-sm"
-          : failed
-          ? "bg-orange-50 border border-orange-200 rounded-tr-sm"
-          : "bg-[#1E293B] text-white rounded-tr-sm"
+      <div className={`max-w-[85%] sm:max-w-[75%] min-w-0 rounded-2xl border px-3.5 py-2.5 ${tone.box} ${
+        inbound ? "rounded-tl-sm" : "rounded-tr-sm"
       }`}>
         {/* whitespace-pre-wrap preserves the customer's line breaks; break-words
             stops a 400-character URL from forcing the pane to scroll sideways. */}
-        <p className={`text-[13.5px] leading-relaxed whitespace-pre-wrap break-words ${
-          inbound ? "text-slate-800" : failed ? "text-orange-900" : "text-white"
-        }`}>
+        <p
+          className={`text-[13.5px] leading-relaxed whitespace-pre-wrap break-words ${tone.body}`}
+          style={{ overflowWrap: "anywhere" }}
+        >
           {text || <span className="italic opacity-60">(no message body)</span>}
         </p>
-        <div className={`flex items-center gap-1.5 flex-wrap mt-1.5 text-[10px] ${
-          inbound ? "text-slate-400" : failed ? "text-orange-700" : "text-white/60"
-        }`}>
+        <div className={`flex items-center gap-1.5 flex-wrap mt-1.5 text-[10px] ${tone.meta}`}>
           <span>{fmtStamp(ev.createdAt)}</span>
           {!inbound && ev.sentBy && <span>· {ev.sentBy}</span>}
           {ev.status && <span>· {ev.status}</span>}
@@ -445,7 +459,10 @@ export default function UnifiedThreadPane({
           </button>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-[13.5px] font-bold text-[#0F172A] truncate">{title}</p>
+          {/* COMMAND-CENTER-THREAD-IDENTITY-001 — the single place the customer
+              is named in this pane. Slightly larger + heavier than the metadata
+              line beneath it, which keeps phone and order clearly secondary. */}
+          <p className="text-[15px] font-extrabold text-[#0F172A] truncate leading-tight">{title}</p>
           <p className="text-[11px] text-slate-500 truncate">
             {target.contactE164 ? formatPhoneDisplay(target.contactE164) : "No phone on this thread"}
             {target.confirmationId && <span> · {target.confirmationId}</span>}
