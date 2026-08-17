@@ -145,6 +145,60 @@ export function packageChipMeta(cat: OrderPackageCategory): PackageChipMeta {
   }
 }
 
+// ── Export label: "Package / Add-ons" ───────────────────────────────────────
+//
+// ADMIN-ORDERS-EXPORT-PACKAGE-ADDONS-001. ONE human-readable string naming
+// everything the order is currently entitled to, e.g.
+//
+//   ESA · PSD · ESA + RA · PSD + RA · RA Add-on
+//   ESA + Additional Pet · ESA + RA + Additional Pet · RA Add-on + Additional Pet
+//   Unknown
+//
+// Built from the SAME classifier the Orders list chips and the Package filter
+// use (classifyOrderPackage) plus the canonical child-row entitlements from
+// src/lib/orderAddonEntitlements.ts — never a second package definition, never
+// price, never an uploaded document, never a pending or unwound request.
+//
+// DETERMINISTIC ORDER (stable across exports and rows):
+//   1. base product (or the standalone add-on's own name)
+//   2. RA           — already folded into the base token by the classifier
+//   3. Additional Pet
+//   4. Notarization — no such entitlement exists in the schema today; the slot
+//      is named so a future one lands in a fixed position instead of wherever
+//      the next author appends it.
+//   5. any further canonical add-ons
+//
+// A row with no explicit saved identity exports "Unknown" — historical
+// indeterminacy is reported, never guessed into ESA.
+
+/** The base token for each classified category. Combos already carry their RA. */
+const PACKAGE_EXPORT_BASE: Record<OrderPackageCategory, string> = {
+  esa: "ESA",
+  psd: "PSD",
+  esa_ra: "ESA + RA",
+  psd_ra: "PSD + RA",
+  ra_addon: "RA Add-on",
+  unknown: "Unknown",
+};
+
+/** The entitlement overlay this label needs, structurally matching AddonEntitlement. */
+export interface PackageAddonEntitlement {
+  raAddonPaid: boolean;
+  additionalPet: boolean;
+}
+
+export function packageAddonsLabel(
+  o: PackageClassifiable,
+  ent: PackageAddonEntitlement,
+): string {
+  const cat = classifyOrderPackage(o, { hasPaidStandaloneAddon: ent.raAddonPaid });
+  const parts: string[] = [PACKAGE_EXPORT_BASE[cat]];
+  // 3 — Additional Pet. Appended AFTER the base/RA token, always.
+  if (ent.additionalPet) parts.push("Additional Pet");
+  // 4/5 — reserved: Notarization and any further canonical add-ons slot in here.
+  return parts.join(" + ");
+}
+
 // ── RA documentation state (secondary row chip) ─────────────────────────────
 export type RaDocState = "missing" | "uploaded" | "in_review" | "completed" | null;
 

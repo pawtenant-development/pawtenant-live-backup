@@ -9,6 +9,11 @@ import {
   isRefundTerminal,
   type ClassifiableOrder,
 } from "./orderClassification";
+// ADMIN-ORDERS-EXPORT-PACKAGE-ADDONS-001 — the CANONICAL package classifier the
+// Orders list chips and the Package filter already use. Imported rather than
+// re-implemented so the CSV can never grow a competing definition of "ESA + RA".
+import { packageAddonsLabel, type PackageClassifiable } from "../pages/admin-orders/orderPackage";
+import { NO_ADDON_ENTITLEMENT, type AddonEntitlement } from "./orderAddonEntitlements";
 
 export interface ExportableOrder {
   [key: string]: unknown;
@@ -25,9 +30,32 @@ function attr(o: ExportableOrder): ResolvedAttribution {
   return resolved;
 }
 
+// ── Spreadsheet formula-injection protection (ADMIN-ORDERS-EXPORT-PACKAGE-ADDONS-001)
+//
+// Quoting alone does NOT protect a spreadsheet: Excel/Sheets still evaluate a
+// cell whose text begins with = + - @ (or a leading tab/CR), so a customer-typed
+// name of `=HYPERLINK("http://evil","refund")` becomes a live formula in an
+// admin's workbook. Every cell in this export carries customer-controlled text
+// somewhere, so the neutralisation is applied to ALL of them, not to a chosen few.
+//
+// NUMERIC-SAFE BY DESIGN: the financial columns emit bare 2-dp numbers and
+// "Net After Provider Deduction" is legitimately NEGATIVE on a completed-then-
+// refunded order. A blanket "prefix everything starting with -" would turn those
+// into text and break every downstream sum, so a value that parses as a plain
+// number is left exactly as it was.
+const FORMULA_LEAD = /^[=+\-@\t\r]/;
+const PLAIN_NUMBER = /^[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?$/;
+
+export function neutralizeFormula(s: string): string {
+  if (!FORMULA_LEAD.test(s)) return s;
+  if (PLAIN_NUMBER.test(s)) return s; // a real number, not a formula
+  return `'${s}`;
+}
+
 function csvEscape(value: unknown): string {
   if (value === null || value === undefined) return "";
-  const s = typeof value === "string" ? value : String(value);
+  const raw = typeof value === "string" ? value : String(value);
+  const s = neutralizeFormula(raw);
   // Escape double-quotes by doubling them; wrap whole field in quotes.
   return `"${s.replace(/"/g, '""')}"`;
 }
@@ -126,6 +154,10 @@ function addons(o: ExportableOrder): string {
 // provider payment per order (already gated + summed; see providerPaymentExport.ts).
 interface ExportCtx {
   providerPayment: (o: ExportableOrder) => number;
+  // ADMIN-ORDERS-EXPORT-PACKAGE-ADDONS-001 — the canonical package + add-on
+  // label. Delegates to packageAddonsLabel(); the entitlement overlay comes from
+  // the caller's batched child-row read.
+  packageAddons: (o: ExportableOrder) => string;
 }
 
 // label : value accessor. Order here is the column order in the CSV.
@@ -179,6 +211,11 @@ const EXPORT_COLUMNS: { label: string; get: (o: ExportableOrder, ctx: ExportCtx)
   { label: "Document Status", get: (o) => documentStatus(o) },
   { label: "State", get: (o) => o.state },
   { label: "Service Type", get: (o) => serviceType(o) },
+  // ADMIN-ORDERS-EXPORT-PACKAGE-ADDONS-001 — sits with the other product
+  // columns, immediately after Service Type (ESA/PSD) and before Plan Type.
+  // Reports the canonical package PLUS every currently-valid add-on entitlement
+  // in a fixed order; "Unknown" when the row carries no explicit saved identity.
+  { label: "Package / Add-ons", get: (o, ctx) => ctx.packageAddons(o) },
   { label: "Plan Type", get: (o) => o.plan_type },
   { label: "Add-on Services", get: (o) => addons(o) },
   { label: "Delivery Speed", get: (o) => o.delivery_speed },
@@ -233,16 +270,29 @@ export function exportOrdersToCSV(
   filenamePrefix = "orders",
   // Canonical provider payment per order.id (gated + summed). Absent/unknown → 0.
   providerPaymentByOrderId?: Map<string, number>,
+  // ADMIN-ORDERS-EXPORT-PACKAGE-ADDONS-001 — currently-valid child-row add-on
+  // entitlements per order.id (see lib/orderAddonEntitlements.ts). Absent/unknown
+  // → NO_ADDON_ENTITLEMENT, i.e. the base package only. Callers fetch this first
+  // and let a query failure CANCEL the export, exactly as they do for provider
+  // payments, so the column can never silently under-report.
+  addonEntitlementsByOrderId?: Map<string, AddonEntitlement>,
   // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — the Admin Orders date basis this
   // export was FILTERED and ORDERED on ("Latest activity" | "Created date" |
   // "First paid date" | "Completed date"). Appended as a trailing column so a
   // downstream reader can never mistake which date universe the file represents.
   // Omitted → the column is not emitted at all, so every existing caller
   // (including the Meta-audience path) keeps its exact current header set.
+  // Stays LAST so the optional add-on map never forces callers to pass a
+  // placeholder for it.
   dateBasisLabel?: string,
 ): void {
   const ctx: ExportCtx = {
     providerPayment: (o) => providerPaymentByOrderId?.get(str(o.id)) ?? 0,
+    packageAddons: (o) =>
+      packageAddonsLabel(
+        o as PackageClassifiable,
+        addonEntitlementsByOrderId?.get(str(o.id)) ?? NO_ADDON_ENTITLEMENT,
+      ),
   };
   const columns = dateBasisLabel
     ? [...EXPORT_COLUMNS, { label: "Date Basis", get: () => dateBasisLabel }]

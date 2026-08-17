@@ -212,6 +212,18 @@ function assert(cond, msg, failures) {
   if (!cond) failures.push(msg);
 }
 
+// The column-ORDER assertion below resolves offsets with indexOf, so a COMMENT
+// that names a column would be found before the column itself. It was: adding an
+// unrelated header comment that quoted "Net After Provider Deduction" flipped the
+// resolved order and failed the guard while the real columns were untouched.
+// Order is a property of the column LIST, so measure it on comment-stripped source.
+function stripComments(x) {
+  return x
+    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
+}
+
 function runStatic() {
   const failures = [];
   const lib = readFileSync(F_LIB, "utf8");
@@ -247,10 +259,12 @@ function runStatic() {
   assert(/label: "Net After Provider Deduction"/.test(exp),
     'exportOrders must define the exact "Net After Provider Deduction" column', failures);
   // Placement: both new columns fall between "Net After Refund (USD)" and "Coupon Code".
-  const iNet = exp.indexOf('"Net After Refund (USD)"');
-  const iProv = exp.indexOf('"Provider Payment"');
-  const iDed = exp.indexOf('"Net After Provider Deduction"');
-  const iCoupon = exp.indexOf('"Coupon Code"');
+  // Measured on comment-stripped source — see stripComments above.
+  const expCode = stripComments(exp);
+  const iNet = expCode.indexOf('"Net After Refund (USD)"');
+  const iProv = expCode.indexOf('"Provider Payment"');
+  const iDed = expCode.indexOf('"Net After Provider Deduction"');
+  const iCoupon = expCode.indexOf('"Coupon Code"');
   assert(iNet >= 0 && iProv > iNet && iDed > iProv && iCoupon > iDed,
     "column order must be: Net After Refund → Provider Payment → Net After Provider Deduction → Coupon Code", failures);
   assert(/ctx\.providerPayment\(o\)\.toFixed\(2\)/.test(exp),

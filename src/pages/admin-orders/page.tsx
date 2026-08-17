@@ -59,6 +59,10 @@ import {
 } from "../../lib/orderLifecycle";
 import { exportOrdersToCSV, type ExportableOrder } from "../../lib/exportOrders";
 import { fetchProviderPaymentsForExport } from "../../lib/providerPaymentExport";
+// ADMIN-ORDERS-EXPORT-PACKAGE-ADDONS-001 — currently-valid child-row add-on
+// entitlements (paid RA add-on, paid/included Additional Pet) for the CSV's
+// "Package / Add-ons" column. Batched, never per-row.
+import { fetchAddonEntitlementsForExport } from "../../lib/orderAddonEntitlements";
 import {
   fetchOrderFacetCounts,
   filteredTotalFor,
@@ -2635,18 +2639,25 @@ export default function AdminOrdersPage() {
       // taken with a KPI card active is ordered and stamped with the same column
       // the card counted, the rows were selected on and the ribbons grouped by.
       }).sort(orderComparator(effDateBasis));
-      const providerPayments = await fetchProviderPaymentsForExport(matched as unknown as ExportableOrder[]);
+      // Both overlays are fetched BEFORE any file is written, and both throw on a
+      // query error, so a failure cancels the export instead of emitting a CSV
+      // with an all-zero provider column or an under-reported add-on column.
+      const [providerPayments, addonEntitlements] = await Promise.all([
+        fetchProviderPaymentsForExport(matched as unknown as ExportableOrder[]),
+        fetchAddonEntitlementsForExport(matched as unknown as ExportableOrder[]),
+      ]);
       exportOrdersToCSV(
         matched as unknown as ExportableOrder[],
         `pawtenant-orders-export-filtered-${effDateBasis}`,
         providerPayments,
+        addonEntitlements,
         // Stamped into every row so a downstream reader can never mistake which
         // date the export was filtered and ordered on.
         ORDER_DATE_BASIS_LABEL[effDateBasis],
       );
     } catch (e) {
       console.error("[exportFilteredAll] failed", e);
-      setExportMsg("Export cancelled — provider earnings could not be loaded. Please retry.");
+      setExportMsg("Export cancelled — provider earnings or add-on entitlements could not be loaded. Please retry.");
     } finally {
       setExporting(false);
     }
@@ -2665,11 +2676,19 @@ export default function AdminOrdersPage() {
     setExporting(true);
     setExportMsg("");
     try {
-      const providerPayments = await fetchProviderPaymentsForExport(selected as unknown as ExportableOrder[]);
-      exportOrdersToCSV(selected as unknown as ExportableOrder[], "pawtenant-orders-export-selected", providerPayments);
+      const [providerPayments, addonEntitlements] = await Promise.all([
+        fetchProviderPaymentsForExport(selected as unknown as ExportableOrder[]),
+        fetchAddonEntitlementsForExport(selected as unknown as ExportableOrder[]),
+      ]);
+      exportOrdersToCSV(
+        selected as unknown as ExportableOrder[],
+        "pawtenant-orders-export-selected",
+        providerPayments,
+        addonEntitlements,
+      );
     } catch (e) {
       console.error("[exportSelected] failed", e);
-      setExportMsg("Export cancelled — provider earnings could not be loaded. Please retry.");
+      setExportMsg("Export cancelled — provider earnings or add-on entitlements could not be loaded. Please retry.");
     } finally {
       setExporting(false);
     }
@@ -4690,16 +4709,20 @@ export default function AdminOrdersPage() {
                     setExporting(true);
                     setExportMsg("");
                     try {
-                      const providerPayments = await fetchProviderPaymentsForExport(selected as unknown as ExportableOrder[]);
+                      const [providerPayments, addonEntitlements] = await Promise.all([
+                        fetchProviderPaymentsForExport(selected as unknown as ExportableOrder[]),
+                        fetchAddonEntitlementsForExport(selected as unknown as ExportableOrder[]),
+                      ]);
                       exportOrdersToCSV(
                         selected as unknown as ExportableOrder[],
                         `pawtenant-orders-export-selected-${effDateBasis}`,
                         providerPayments,
+                        addonEntitlements,
                         ORDER_DATE_BASIS_LABEL[effDateBasis],
                       );
                     } catch (e) {
                       console.error("[exportSelected] failed", e);
-                      setExportMsg("Export cancelled — provider earnings could not be loaded. Please retry.");
+                      setExportMsg("Export cancelled — provider earnings or add-on entitlements could not be loaded. Please retry.");
                     } finally {
                       setExporting(false);
                     }
