@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { packageEntitlementPatch } from "../_shared/packageEntitlement.ts";
 import {
   oneTimeCents,
+  esaOneTimeCents,
   firstYearPriceId,
   COMBO_ONE_TIME_CENTS,
   COMBO_ANNUAL_CENTS,
@@ -12,6 +13,19 @@ import { resolveTrustedQuote, issueTrustedQuote } from "../_shared/priceQuote.ts
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+// ESA-TWO-PET-129-PRICING-001 — strict pet-count parsing at the REQUEST boundary.
+// No package has ever covered 0 or 4+ pets, so a value outside 1-3 is rejected
+// outright instead of clamped. Clamping is what let a manipulated count silently
+// land on a tier the customer did not qualify for (old code: Math.max(1, ...)
+// promoted 0 to 1 and passed 4 straight through to a $149 tier).
+// An absent value still defaults to a single pet, so legacy callers are unaffected.
+function parsePetCount(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === "") return 1;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 3) return null;
+  return n;
+}
 
 /**
  * Returns the paid-order row for this email if and only if the paid order
@@ -85,8 +99,10 @@ function buildESASubscriptionLineItems(
 // `price_data` computed server-side (no Stripe one-time Price IDs). Mirrors
 // getESAOneTimeAmount in create-payment-intent so card, Klarna and QR always
 // charge identical totals. 1 pet = $129; 2 or 3 pets = $149 fixed total.
+// ESA-TWO-PET-129-PRICING-001: 1-2 pets = $129; exactly 3 pets = $149 fixed
+// total. Deliberately NOT oneTimeCents(), which still tiers PSD at 2-3 dogs.
 function getESAOneTimeAmountCents(petCount: number): number {
-  return oneTimeCents(petCount);
+  return esaOneTimeCents(petCount);
 }
 
 function buildESAOneTimeInlineLineItem(petCount: number) {
@@ -256,12 +272,14 @@ const PRICING_V2_LAUNCH_AT = new Date(
 async function resolveLegacyQuoteLock(
   confirmationId: string,
   configBaseCents: number,
+  petCount?: number | null,
 ): Promise<{ baseCents: number; pricingSource: string; savedPriceCents: number | null }> {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return { baseCents: configBaseCents, pricingSource: "current_pricing", savedPriceCents: null };
   }
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const q = await resolveTrustedQuote(supabase, confirmationId, configBaseCents);
+  // Pass the pet count so a quote issued for a DIFFERENT count is not honoured.
+  const q = await resolveTrustedQuote(supabase, confirmationId, configBaseCents, petCount);
   return {
     baseCents: q.baseCents,
     pricingSource: q.pricingSource,
@@ -284,7 +302,10 @@ Deno.serve(async (req: Request) => {
   catch { return json({ error: "Invalid JSON body" }, 400); }
 
   const letterType     = (body.letterType     as string) ?? "esa";
-  const petCount       = Math.max(1, Number(body.petCount   ?? 1));
+  const petCount       = parsePetCount(body.petCount);
+  if (petCount === null) {
+    return json({ error: "petCount must be 1, 2 or 3" }, 400);
+  }
   const deliverySpeed  = (body.deliverySpeed  as string) ?? "2-3days";
   const email          = (body.email          as string) ?? "";
   const firstName      = (body.firstName      as string) ?? "";
@@ -484,7 +505,7 @@ Deno.serve(async (req: Request) => {
     const configBaseCents = oneTimeLineItems[0].price_data.unit_amount;
     const quoteLock = isBundle
       ? { baseCents: configBaseCents, pricingSource: "bundle_flat" }
-      : await resolveLegacyQuoteLock(confirmationId, configBaseCents);
+      : await resolveLegacyQuoteLock(confirmationId, configBaseCents, petCount);
     if (quoteLock.baseCents !== configBaseCents) {
       oneTimeLineItems[0].price_data.unit_amount = quoteLock.baseCents;
       console.info(`[create-checkout-session] legacy price lock: ${confirmationId} $${configBaseCents / 100} → $${quoteLock.baseCents / 100} (${quoteLock.pricingSource})`);

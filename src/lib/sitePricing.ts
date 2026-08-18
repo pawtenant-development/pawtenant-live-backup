@@ -82,8 +82,8 @@ function fb(
 }
 
 export const PRICING_FALLBACKS: SitePricingRow[] = [
-  fb(PRICING_KEYS.esaSinglePet, "ESA Letter — One-Time (single pet)", "esa", ESA_PRICING.oneTime * 100, 10),
-  fb(PRICING_KEYS.esaMultiPet, "ESA Letter — 2 or 3 Pets (fixed total)", "esa", ESA_PRICING.oneTimeMultiPetTotal * 100, 11),
+  fb(PRICING_KEYS.esaSinglePet, "ESA Letter — One-Time (up to 2 pets)", "esa", ESA_PRICING.oneTime * 100, 10),
+  fb(PRICING_KEYS.esaMultiPet, "ESA Letter — 3 Pets (fixed total)", "esa", ESA_PRICING.oneTimeMultiPetTotal * 100, 11),
   fb(PRICING_KEYS.esaSubscriptionAnnual, "ESA Annual Subscription (single pet)", "subscription", ESA_PRICING.subscription * 100, 12),
   fb(PRICING_KEYS.esaSubscriptionMulti, "ESA Annual — 2 or 3 Pets (fixed total/yr)", "subscription", ESA_PRICING.subscriptionMultiPetTotal * 100, 13),
   fb(PRICING_KEYS.psdStandard, "PSD Letter — Standard (1 dog)", "psd", PSD_PRICING.oneTime * 100, 20),

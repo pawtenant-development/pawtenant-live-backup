@@ -7,7 +7,8 @@
  * supabase/functions/create-payment-intent (server-side canonical amounts).
  *
  * FINAL structure (owner-approved 2026-07, phased subscriptions):
- *   ESA/PSD one-time:      1 pet/dog $129 · 2–3 pets/dogs $149 fixed total
+ *   ESA one-time:          1–2 pets $129 · exactly 3 pets $149 fixed total
+ *   PSD one-time:          1 dog $129 · 2–3 dogs $149 fixed total
  *   ESA/PSD subscription:  FIRST YEAR  1 → $115 · 2–3 → $135 fixed total
  *                          RENEWAL yr2+ 1 → $100 · 2–3 → $115 fixed total
  *   ESA/PSD + RA Combo:    one-time $179 · annual $159 FLAT (no year-two drop)
@@ -48,6 +49,26 @@ const COMBO_MATRIX = Object.freeze({
 export function petTier(petCount: number): Tier {
   const n = Math.max(1, Math.min(3, Math.floor(petCount || 1)));
   return n === 1 ? "single" : "multi";
+}
+
+/**
+ * ESA-TWO-PET-129-PRICING-001 — ESA Standard ONE-TIME tier rule.
+ *
+ * The ESA Standard one-time package covers UP TO TWO pets at the single rate
+ * ($129); the multi rate ($149) is reserved for EXACTLY three pets.
+ *
+ * This deliberately differs from petTier(): PSD one-time, every subscription
+ * first-year amount and every renewal still tier at two pets. Scope this rule
+ * to the ESA Standard one-time package ONLY — never reuse it elsewhere.
+ *
+ * Valid counts are the integers 1, 2 and 3. Anything else (0, 4+, decimals,
+ * negatives, NaN, non-numeric) is INVALID and yields null. Callers must reject
+ * rather than clamp, so a manipulated pet count can never buy a cheaper tier.
+ */
+export function esaOneTimeTier(petCount: unknown): Tier | null {
+  if (typeof petCount !== "number" || !Number.isInteger(petCount)) return null;
+  if (petCount < 1 || petCount > 3) return null;
+  return petCount <= 2 ? "single" : "multi";
 }
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -151,7 +172,15 @@ export function packageProduct(packageKey: PackageKey): Product {
  * ─────────────────────────────────────────────────────────────────────────── */
 
 export function getEsaOneTimeTotal(petCount: number): number {
-  return STANDARD_MATRIX.oneTime[petTier(petCount)];
+  // ESA-TWO-PET-129-PRICING-001: 1–2 pets → $129, exactly 3 → $149. Strict —
+  // an out-of-range count is a bug, never a cheaper tier.
+  const tier = esaOneTimeTier(petCount);
+  if (tier === null) {
+    throw new RangeError(
+      `getEsaOneTimeTotal: ESA Standard one-time covers 1–3 pets; got ${String(petCount)}`,
+    );
+  }
+  return STANDARD_MATRIX.oneTime[tier];
 }
 export function getPsdOneTimeTotal(dogCount: number): number {
   return STANDARD_MATRIX.oneTime[petTier(dogCount)];
@@ -261,10 +290,17 @@ export function quotePackage(
   const amountDueToday = plan === "annual" ? firstYearPrice : oneTimePrice;
   // Public coupons apply to one-time purchases only.
   const discountAmount = plan === "one_time" ? Math.max(0, Math.min(couponDiscount, amountDueToday)) : 0;
+  // ESA-TWO-PET-129-PRICING-001: report the tier that actually priced
+  // amountDueToday. ESA Standard one-time tiers at 2 (esaOneTimeTier); every
+  // other package/plan still tiers at 2-3 (petTier).
+  const pricedTier =
+    plan === "one_time" && packageKey === "esa_standard" && !isCombo
+      ? (esaOneTimeTier(petCount) ?? petTier(petCount))
+      : petTier(petCount);
   return {
     packageKey,
     plan,
-    tier: petTier(petCount),
+    tier: pricedTier,
     isCombo,
     oneTimePrice,
     firstYearPrice,

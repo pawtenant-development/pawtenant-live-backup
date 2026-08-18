@@ -169,10 +169,11 @@ export default function ESALetterCostPage() {
               <strong>
                 {getPrice("esa_single_pet", ESA_PRICE_LABELS.oneTime)} one-time
               </strong>{" "}
-              for a single pet. For two or three pets it is{" "}
+              for up to two pets. A third pet makes the one-time price{" "}
+              {getPrice("esa_multi_pet", ESA_PRICE_LABELS.oneTimeMultiPetTotal)} as a fixed total —
+              not per animal. On the annual plan, two or three pets are{" "}
               {getPrice("esa_subscription_multi", ESA_PRICE_LABELS.subscriptionMultiPetTotal)}/year
-              or {getPrice("esa_multi_pet", ESA_PRICE_LABELS.oneTimeMultiPetTotal)} one-time as a
-              fixed total — not per animal.
+              as a fixed total.
             </p>
             <p>
               That is the whole price. It covers the evaluation by a mental health professional

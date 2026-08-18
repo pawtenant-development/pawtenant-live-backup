@@ -7,9 +7,11 @@
 // Mirrors src/config/pricing.ts exactly — scripts/check-pricing-parity.mjs fails
 // the build if the two disagree, so keep them in lock-step.
 //
-// Whole-dollar amounts (helpers below expose cents). Standard: same numbers for
-// ESA and PSD. Combo (RA bundle) is flat with NO year-two drop and uses inline
-// price_data (no Price ID).
+// Whole-dollar amounts (helpers below expose cents). Combo (RA bundle) is flat
+// with NO year-two drop and uses inline price_data (no Price ID).
+//
+// ESA-TWO-PET-129-PRICING-001: the AMOUNTS below are shared by ESA and PSD, but
+// the ESA Standard ONE-TIME tier RULE is not — see esaOneTimeTier() below.
 //
 // Pure module — NO imports — so both Deno edge functions AND the node parity
 // script can read it.
@@ -35,7 +37,37 @@ export function petTier(petCount: number): Tier {
   return n === 1 ? "single" : "multi";
 }
 
+// ── ESA-TWO-PET-129-PRICING-001 ───────────────────────────────
+// ESA Standard ONE-TIME tier rule: up to TWO pets bill at the single rate
+// ($129); the multi rate ($149) is reserved for EXACTLY three pets.
+//
+// This deliberately differs from petTier(): PSD one-time, every subscription
+// first-year amount and every renewal still tier at two. Scope to the ESA
+// Standard one-time package ONLY — never reuse for PSD or any subscription.
+//
+// Valid counts are the integers 1, 2 and 3. Anything else (0, 4+, decimals,
+// negatives, NaN) is INVALID and yields null — the caller must REJECT, never
+// clamp, so a manipulated pet count can never buy a cheaper tier.
+export function esaOneTimeTier(petCount: unknown): Tier | null {
+  if (typeof petCount !== "number" || !Number.isInteger(petCount)) return null;
+  if (petCount < 1 || petCount > 3) return null;
+  return petCount <= 2 ? "single" : "multi";
+}
+
+/** ESA Standard one-time amount in CENTS. Throws on an invalid pet count. */
+export function esaOneTimeCents(petCount: number): number {
+  const tier = esaOneTimeTier(petCount);
+  if (tier === null) {
+    throw new RangeError(
+      `esaOneTimeCents: ESA Standard one-time covers 1-3 pets; got ${String(petCount)}`,
+    );
+  }
+  return STANDARD_MATRIX.oneTime[tier] * 100;
+}
+
 // ── Amount getters (cents) ──────────────────────────────────────────────────
+/** One-time cents on the LEGACY 1 / 2-3 tiering. PSD one-time only — ESA
+ *  Standard one-time must use esaOneTimeCents() (1-2 -> $129, 3 -> $149). */
 export function oneTimeCents(petCount: number): number {
   return STANDARD_MATRIX.oneTime[petTier(petCount)] * 100;
 }

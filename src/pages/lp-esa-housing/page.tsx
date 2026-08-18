@@ -59,7 +59,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "How much does an ESA letter cost?",
-    a: "PawTenant's housing ESA letter is $129 for one pet, valid for one year; 2 or 3 pets are covered at a fixed $149 total (up to three per document). The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not lead to a letter. Klarna is also available at checkout, subject to eligibility and Klarna's payment terms.",
+    a: "PawTenant's housing ESA letter is $129 for up to two pets, valid for one year; three pets are covered at a fixed $149 total (up to three per document). The fee covers the full clinical assessment and licensed provider review. If you do not qualify after review, your payment is refunded — there is no charge for an evaluation that does not lead to a letter. Klarna is also available at checkout, subject to eligibility and Klarna's payment terms.",
   },
   {
     q: "How do I know if an online ESA letter provider is legitimate?",
@@ -769,10 +769,10 @@ export default function LpEsaHousingPage() {
               <div className="text-[11px] tracking-wider uppercase text-slate-500 mb-2">ESA Letter — one-time</div>
               <div className="flex items-baseline gap-2 mb-1">
                 <div className="text-4xl md:text-5xl font-medium tracking-tight text-slate-900">$129</div>
-                <div className="text-xs text-slate-500">for 1 pet · valid 1 year</div>
+                <div className="text-xs text-slate-500">for up to 2 pets · valid 1 year</div>
               </div>
               <div className="text-xs text-slate-500 mb-3">
-                2 or 3 pets covered at a <span className="text-slate-900 font-medium">fixed $149 total</span> · up to 3 pets per document
+                3 pets covered at a <span className="text-slate-900 font-medium">fixed $149 total</span> · up to 3 pets per document
               </div>
 
               {/* Klarna chip — Klarna brand pink */}
@@ -788,7 +788,7 @@ export default function LpEsaHousingPage() {
                 <PriceFeat>Scan-to-verify QR code with landlord verification support</PriceFeat>
                 <PriceFeat>Secure PDF delivery — typically within 24 hours</PriceFeat>
                 <PriceFeat>Refund if you do not qualify after clinical review</PriceFeat>
-                <PriceFeat>Covers 2 or 3 pets at a fixed $149 total</PriceFeat>
+                <PriceFeat>Covers up to 2 pets — 3 pets at a fixed $149 total</PriceFeat>
                 <PriceFeat>Klarna available at checkout (subject to eligibility)</PriceFeat>
               </ul>
 

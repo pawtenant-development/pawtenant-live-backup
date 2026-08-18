@@ -36,7 +36,9 @@ type SupabaseLike = { rpc: (fn: string, args: Record<string, unknown>) => Promis
  * Resolve the charge base for an order.
  *
  * Honours a server-issued quote when one exists (this is what preserves a
- * legitimate retired price for a customer resuming an old lead). Otherwise
+ * legitimate retired price for a customer resuming an old lead) — but only when
+ * the quote was issued for the SAME pet count, so a changed pet count always
+ * reprices. Otherwise
  * falls back to the caller's canonical amount computed from the shared pricing
  * matrix. Never trusts a client-writable column, and never returns a
  * non-positive amount.
@@ -45,6 +47,7 @@ export async function resolveTrustedQuote(
   supabase: SupabaseLike,
   confirmationId: string,
   configBaseCents: number,
+  petCount?: number | null,
 ): Promise<QuoteResolution> {
   const canonical: QuoteResolution = {
     baseCents: configBaseCents,
@@ -55,9 +58,19 @@ export async function resolveTrustedQuote(
   if (!confirmationId) return canonical;
 
   try {
-    const { data, error } = await supabase.rpc("trusted_price_quote_cents", {
-      p_confirmation_id: confirmationId,
-    });
+    // ESA-TWO-PET-129-PRICING-001: when the caller knows the pet count, honour a
+    // stored quote ONLY if it was issued for that same count. Without this, a
+    // customer quoted at 3 pets ($149) who then removes a pet would resume at
+    // the stale $149 instead of the correct $129. Legacy quotes carrying a NULL
+    // pet_count are still honoured, so no existing unpaid lead is repriced.
+    const { data, error } = typeof petCount === "number"
+      ? await supabase.rpc("trusted_price_quote_cents", {
+        p_confirmation_id: confirmationId,
+        p_pet_count: petCount,
+      })
+      : await supabase.rpc("trusted_price_quote_cents", {
+        p_confirmation_id: confirmationId,
+      });
     if (error) return canonical;
 
     const cents = typeof data === "number" ? data : Number(data);

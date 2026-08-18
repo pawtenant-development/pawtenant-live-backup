@@ -30,9 +30,9 @@ const renewalPlans = [
   },
   {
     name: "2 Pets",
-    oneTime: "$149",
+    oneTime: "$129",
     annual: "$115",
-    annualSavings: "Save $34/yr",
+    annualSavings: "Save $14/yr",
     pets: "Renew for up to 2 emotional support animals",
     popular: true,
     features: [

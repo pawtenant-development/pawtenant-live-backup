@@ -51,17 +51,18 @@ export const PSD_PLAN_COPY: PlanSectionCopy = {
     "*Multi-dog letters cover up to three dogs on one letter where clinically appropriate. Annual plans renew automatically at the renewal price shown; cancel anytime from your account portal.",
 };
 
-/** ESA 3-card plan set (1 pet · annual · 2–3 pets). `ctaHref` routes every card
+/** ESA 3-card plan set (1–2 pets · annual · 3 pets). `ctaHref` routes every card
  *  to the ESA assessment; callers append a state/ref source where relevant. */
 export function buildEsaPlanCards(ctaHref = "/assessment"): PlanCard[] {
   return [
     {
       name: "ESA Letter",
-      scope: "For 1 pet",
-      price: getEsaOneTimeTotal(1), // $129
+      scope: "For up to 2 pets",
+      price: getEsaOneTimeTotal(1), // $129 — covers 1 OR 2 pets
       priceSuffix: "one-time",
       features: [
         "Licensed provider evaluation",
+        "Covers up to 2 animals on one letter",
         "Signed, FHA-compliant ESA letter",
         "Typically delivered within 24 hours",
         "Scan-to-verify QR code on the letter",
@@ -90,11 +91,11 @@ export function buildEsaPlanCards(ctaHref = "/assessment"): PlanCard[] {
       ctaHref,
     },
     {
-      name: "Multi-Pet ESA Letter",
-      scope: "For 2 or 3 pets",
-      price: getEsaOneTimeTotal(2), // $149 one-time fixed total
+      name: "Three-Pet ESA Letter",
+      scope: "For 3 pets",
+      price: getEsaOneTimeTotal(3), // $149 one-time fixed total (exactly 3 pets)
       priceSuffix: "one-time · fixed total",
-      subNote: `Prefer annual for multiple pets? $${getEsaAnnualTotal(2)} first year, then $${getEsaRenewalTotal(2)}/year.`, // $135 → $115
+      subNote: `Prefer annual for multiple pets? $${getEsaAnnualTotal(3)} first year, then $${getEsaRenewalTotal(3)}/year.`, // $135 → $115
       // Superset of the single-pet ESA Letter card (all six of its benefits) PLUS
       // the multi-pet coverage line, so the higher tier visibly offers MORE.
       features: [
@@ -106,7 +107,7 @@ export function buildEsaPlanCards(ctaHref = "/assessment"): PlanCard[] {
         "Landlord verification support",
         "Full refund if you don't qualify",
       ],
-      ctaLabel: "Start Multi-Pet",
+      ctaLabel: "Start Three-Pet",
       ctaHref,
     },
   ];

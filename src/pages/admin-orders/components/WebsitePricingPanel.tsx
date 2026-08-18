@@ -79,8 +79,8 @@ const CANONICAL_CENTS: Record<string, number> = {
 // deliberately separate rows so the difference is unmistakable.
 const CANONICAL_REFERENCE: { group: string; note?: string; rows: { label: string; dollars: number; suffix: string }[] }[] = [
   { group: "ESA — One-Time", rows: [
-    { label: "1 pet", dollars: ESA_PRICING.oneTime, suffix: "one-time" },
-    { label: "2 or 3 pets (fixed total)", dollars: ESA_PRICING.oneTimeMultiPetTotal, suffix: "one-time" },
+    { label: "1 or 2 pets", dollars: ESA_PRICING.oneTime, suffix: "one-time" },
+    { label: "3 pets (fixed total)", dollars: ESA_PRICING.oneTimeMultiPetTotal, suffix: "one-time" },
   ]},
   { group: "ESA — Subscription · First Year", rows: [
     { label: "1 pet", dollars: ESA_PRICING.subscription, suffix: "first year" },

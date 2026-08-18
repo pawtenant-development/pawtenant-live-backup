@@ -650,8 +650,14 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
             // no intake detail. Blank entries are never rendered because
             // checkout resume does not show the assessment.
             assessment_answers: {
-              pets: Array.from({ length: Math.max(Number(cr.petCount ?? 1) || 1, 1) },
-                () => ({ name: "", age: "", breed: "", type: "", weight: "" })),
+              // ESA-TWO-PET-129-PRICING-001: bound the restored list to 1-3, the
+              // only counts the package has ever covered. Previously this had no
+              // upper bound, so a malformed recovery record could hydrate 4+ pets
+              // and drive the (now strict) price resolver out of range.
+              pets: Array.from(
+                { length: Math.min(3, Math.max(1, Math.floor(Number(cr.petCount ?? 1)) || 1)) },
+                () => ({ name: "", age: "", breed: "", type: "", weight: "" }),
+              ),
             },
             already_paid: false,
           };

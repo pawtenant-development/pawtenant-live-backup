@@ -32,7 +32,7 @@ const jiti = createJiti(import.meta.url);
 // Owner-approved offer matrix (2026-07). payable = canonical one-time total.
 const OFFER = [
   { payable: 129, compareAt: 159, savings: 30, installment: "32.25" }, // 1 pet/dog standard
-  { payable: 149, compareAt: 179, savings: 30, installment: "37.25" }, // 2-3 standard
+  { payable: 149, compareAt: 179, savings: 30, installment: "37.25" }, // ESA 3 pets / PSD 2-3 dogs
   { payable: 179, compareAt: 209, savings: 30, installment: "44.75" }, // RA combo (flat)
 ];
 
@@ -88,26 +88,41 @@ async function main() {
     }
   }
 
-  // ── Behavioral: canonical one-time prices + pet-count switch + ESA/PSD parity ─
+  // ── Behavioral: canonical one-time prices + pet-count switch ────────────────
+  // ESA-TWO-PET-129-PRICING-001: ESA and PSD one-time NO LONGER share a tier
+  // table. ESA Standard covers up to TWO pets at $129 and reserves $149 for
+  // exactly three; PSD is unchanged at 1 dog $129 / 2-3 dogs $149. The old
+  // blanket ESA/PSD parity assertion encoded the superseded shared rule.
   if (typeof getPackageTotal === "function") {
-    const expect = { 1: 129, 2: 149, 3: 149 };
+    const expect = {
+      esa_standard: { 1: 129, 2: 129, 3: 149 },
+      psd_standard: { 1: 129, 2: 149, 3: 149 },
+    };
     for (const [product, stdKey, bundleKey] of [
       ["esa", "esa_standard", "esa_ra_bundle"],
       ["psd", "psd_standard", "psd_ra_bundle"],
     ]) {
       for (const n of [1, 2, 3]) {
         const std = getPackageTotal(stdKey, "one_time", n);
-        if (std !== expect[n]) problems.push(`${product} standard one_time (${n}) = ${std} ≠ ${expect[n]}`);
+        const want = expect[stdKey][n];
+        if (std !== want) problems.push(`${product} standard one_time (${n}) = ${std} ≠ ${want}`);
         const bundle = getPackageTotal(bundleKey, "one_time", n);
         if (bundle !== 179) problems.push(`${product} combo one_time (${n}) = ${bundle} ≠ 179 (flat)`);
       }
     }
-    // ESA and PSD standard one-time prices must match (parity) at each count.
-    for (const n of [1, 2, 3]) {
+    // ESA and PSD still agree at 1 and 3 pets...
+    for (const n of [1, 3]) {
       const e = getPackageTotal("esa_standard", "one_time", n);
       const p = getPackageTotal("psd_standard", "one_time", n);
       if (e !== p) problems.push(`ESA/PSD standard one_time parity broken at ${n}: ${e} vs ${p}`);
     }
+    // ...and MUST diverge at exactly 2, so PSD can never silently follow the ESA
+    // two-pet rule (or ESA silently revert to the PSD one).
+    const e2 = getPackageTotal("esa_standard", "one_time", 2);
+    const p2 = getPackageTotal("psd_standard", "one_time", 2);
+    if (e2 !== 129) problems.push(`ESA standard one_time (2) must be 129, got ${e2}`);
+    if (p2 !== 149) problems.push(`PSD standard one_time (2) must stay 149, got ${p2}`);
+    if (e2 === p2) problems.push(`ESA/PSD one_time must DIVERGE at 2 pets; both are ${e2}`);
   }
 
   // ── Static: card renders the offer via the helper (never raw literals) ───────
