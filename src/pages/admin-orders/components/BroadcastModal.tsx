@@ -653,7 +653,7 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
 
           <!-- Header -->
           <div style="background:#3b6ea5;padding:28px 32px;text-align:center;">
-            <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="160" alt="PawTenant" style="display:block;margin:0 auto 10px;height:auto;" />
+            <img src="https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png" width="160" height="56" alt="PawTenant logo" style="display:block;margin:0 auto 10px;height:auto;" />
             <span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.75);letter-spacing:0.05em;">ESA &amp; PSD Letter Consultations</span>
           </div>
 

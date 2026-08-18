@@ -125,7 +125,7 @@ Deno.serve(async (req: Request) => {
         <!-- Header -->
         <tr>
           <td style="background:#1a5c4f;padding:28px 32px;">
-            <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" alt="PawTenant" height="36" style="display:block;">
+            <img src="https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png" alt="PawTenant" height="36" style="display:block;">
           </td>
         </tr>
         <!-- Body -->

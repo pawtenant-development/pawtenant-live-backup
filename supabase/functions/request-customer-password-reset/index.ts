@@ -320,7 +320,7 @@ function buildResetEmailHtml(subject: string, firstName: string, actionLink: str
       <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:560px;width:100%;">
         <tr>
           <td style="background:#1a5c4f;padding:28px 32px;text-align:center;">
-            <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" alt="PawTenant" height="36" style="height:36px;display:block;margin:0 auto;" />
+            <img src="https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png" alt="PawTenant" height="36" style="height:36px;display:block;margin:0 auto;" />
             <p style="color:rgba(255,255,255,0.8);font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:10px 0 0 0;">Customer Portal</p>
           </td>
         </tr>

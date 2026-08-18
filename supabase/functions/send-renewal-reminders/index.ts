@@ -6,7 +6,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const FROM_EMAIL = "PawTenant <hello@pawtenant.com>";
 const SITE_URL = "https://www.pawtenant.com";
-const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
+const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png";
 
 const HEADER_BG = "#4a9e8a";
 const ACCENT = "#1a5c4f";

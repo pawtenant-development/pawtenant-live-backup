@@ -15,7 +15,7 @@ const HEADER_BG = "#4a9e8a";
 const HEADER_SUB = "rgba(255,255,255,0.82)";
 const ACCENT = "#1a5c4f";
 const ORANGE = "#f97316";
-const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
+const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });

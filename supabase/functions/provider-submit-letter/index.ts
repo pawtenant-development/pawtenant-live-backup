@@ -421,7 +421,7 @@ async function notifyAdminLetterSubmitted(opts: {
 <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;">
 <tr><td style="background:#1a5c4f;padding:24px 32px;text-align:center;">
-<img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="140" alt="PawTenant" style="display:block;margin:0 auto 12px;height:auto;" />
+<img src="https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png" width="140" alt="PawTenant" style="display:block;margin:0 auto 12px;height:auto;" />
 <div style="display:inline-block;background:rgba(255,255,255,0.2);color:#fff;padding:4px 14px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">Pending Admin Approval</div>
 <h1 style="margin:0;font-size:20px;font-weight:800;color:#fff;">Provider Submitted a Letter</h1>
 <p style="margin:8px 0 0;font-size:13px;color:#d6e9e4;">The customer has NOT been notified. Review and approve to deliver.</p>

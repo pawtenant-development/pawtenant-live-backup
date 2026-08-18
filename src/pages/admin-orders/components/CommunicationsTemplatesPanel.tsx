@@ -94,7 +94,7 @@ Thank you for trusting PawTenant with your ESA needs.`,
     <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
       <tr>
         <td style="background:#4a9e8a;padding:32px;text-align:center;">
-          <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="180" alt="PawTenant" style="display:block;margin:0 auto 16px;height:auto;" />
+          <img src="https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png" width="180" height="63" alt="PawTenant logo" style="display:block;margin:0 auto 16px;height:auto;" />
           <div style="display:inline-block;background:rgba(255,255,255,0.22);color:#ffffff;padding:5px 16px;border-radius:99px;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">Documents Ready</div>
           <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#ffffff;line-height:1.3;">Your ESA Letter is here!</h1>
           <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.82);">Your signed documents are ready for download</p>
@@ -380,7 +380,7 @@ function buildEmailHtml(subject: string, body: string, ctaLabel: string, ctaUrl:
       <td align="center">
         <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
           <div style="background:#3b6ea5;padding:28px 32px;text-align:center;">
-            <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="160" alt="PawTenant" style="display:block;margin:0 auto 10px;height:auto;" />
+            <img src="https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png" width="160" height="56" alt="PawTenant logo" style="display:block;margin:0 auto 10px;height:auto;" />
             <span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.75);letter-spacing:0.05em;">ESA &amp; PSD Letter Consultations</span>
           </div>
           <div style="padding:32px 36px;">

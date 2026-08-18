@@ -9,7 +9,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
+const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png";
 const SITE_URL = "https://www.pawtenant.com";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const ACCENT = "#1a5c4f";

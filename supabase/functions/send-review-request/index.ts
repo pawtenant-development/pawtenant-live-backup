@@ -73,7 +73,7 @@ const FALLBACK_LAYOUT = `<!DOCTYPE html>
   <tr><td align="center">
     <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
       <tr><td style="background:#3b6ea5;padding:28px 32px;text-align:center;">
-        <img src="https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png" width="160" alt="PawTenant" style="display:block;margin:0 auto 10px;height:auto;" />
+        <img src="https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png" width="160" alt="PawTenant" style="display:block;margin:0 auto 10px;height:auto;" />
         <span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.75);letter-spacing:0.05em;">ESA &amp; PSD Letter Consultations</span>
       </td></tr>
       <tr><td style="padding:32px 36px;">{{content}}</td></tr>

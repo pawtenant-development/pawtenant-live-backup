@@ -8,7 +8,7 @@ const corsHeaders = {
 const COMPANY_NAME = "PawTenant";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
 const FROM_ADDRESS = `${COMPANY_NAME} <${SUPPORT_EMAIL}>`;
-const LOGO_URL = "https://static.readdy.ai/image/0ebec347de900ad5f467b165b2e63531/65581e17205c1f897a31ed7f1352b5f3.png";
+const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png";
 
 function generateOTP(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
