@@ -6,8 +6,24 @@
 // surfaces only; non-admins receive null. Never throws.
 
 import { supabase } from "./supabaseClient";
+import {
+  orderWorkflowState,
+  orderPaymentState,
+  isStalePaymentFailure,
+  type LifecycleOrder,
+} from "./orderLifecycle";
+import { isPartialRefund, isFullRefund } from "./orderClassification";
 
-export interface LinkedOrder {
+/**
+ * The linked-order projection. Extends LifecycleOrder so the CANONICAL
+ * classifier can consume it directly — the fields below the identity block are
+ * exactly what orderWorkflowState() / orderPaymentState() read, and they are
+ * returned by the `admin_find_order_for_contact(s)` RPCs as of migration
+ * 20260820120000. Dropping any of them silently degrades the classification
+ * rather than failing, which is why they live in the type rather than being
+ * spread in at the call site.
+ */
+export interface LinkedOrder extends LifecycleOrder {
   match_basis: "confirmation_id" | "session" | "email" | "phone" | null;
   confidence: "high" | "medium" | "low" | null;
   match_count: number;
@@ -26,6 +42,17 @@ export interface LinkedOrder {
   paid_at: string | null;
   payment_intent_id: string | null;
   created_at: string;
+  // ── canonical-lifecycle inputs (migration 20260820120000) ──
+  doctor_email: string | null;
+  doctor_user_id: string | null;
+  refund_status: string | null;
+  refunded_at: string | null;
+  refund_amount: number | null;
+  dispute_id: string | null;
+  payment_failed_at: string | null;
+  payment_failure_reason: string | null;
+  official_letter_reopened_at: string | null;
+  official_letter_final_completed_at: string | null;
 }
 
 export interface FindOrderArgs {
@@ -110,21 +137,71 @@ export interface OrderStatusSummary {
   icon: string;
 }
 
-/** Human-friendly lifecycle/payment label derived from order fields. */
-export function summarizeOrderStatus(o: Pick<LinkedOrder, "status" | "doctor_status" | "paid_at" | "payment_intent_id">): OrderStatusSummary {
-  const status = (o.status ?? "").toLowerCase();
-  if (o.doctor_status === "patient_notified" || status === "completed") {
-    return { label: "Completed", tone: "emerald", icon: "ri-checkbox-circle-fill" };
+/**
+ * Human-friendly lifecycle label for the linked-order card.
+ *
+ * ── CUSTOMER-PORTAL-ALL-DOCUMENT-VISIBILITY-001 §Item-2 ────────────────────
+ * This used to be a SECOND, independent classifier that read only
+ * `orders.status`. Because `status = 'processing'` is the paid-but-unassigned
+ * state, it labelled such orders "Under Review" while the very same card's
+ * Provider row read "Unassigned" — a card that contradicted itself. Observed on
+ * PT-MSZGR2TS (status='processing', no provider, 15:11→16:18 UTC 2026-08-19).
+ *
+ * It now DELEGATES to the canonical classifier used by Admin Orders —
+ * orderWorkflowState() / orderPaymentState(), the TypeScript mirrors of
+ * public.order_workflow_state() / public.order_payment_state(). There is no
+ * second lifecycle rule here any more: this function only maps a canonical state
+ * to a label, tone and icon.
+ *
+ * Because provider assignment (`doctor_user_id` / `doctor_email`) is what
+ * separates `under_review` from `paid_unassigned` in the canonical classifier,
+ * the chip and the Provider row can no longer disagree: "Under Review" is now
+ * reachable only when a provider is genuinely assigned.
+ *
+ * Payment state is resolved BEFORE workflow state only for genuinely terminal
+ * financial outcomes (full refund / dispute), matching how Admin Orders ranks a
+ * refund badge above a workflow badge. A PARTIAL refund deliberately stays
+ * operational and keeps its workflow label (orderClassification.ts rule 7).
+ */
+export function summarizeOrderStatus(o: LinkedOrder | LifecycleOrder): OrderStatusSummary {
+  const payment = orderPaymentState(o);
+
+  // Terminal financial outcomes outrank the workflow badge.
+  if (payment === "disputed") {
+    return { label: "Disputed", tone: "red", icon: "ri-alert-line" };
   }
-  if (status === "under-review" || status === "under_review" || status === "processing") {
-    return { label: "Under Review", tone: "violet", icon: "ri-time-line" };
+  if (payment === "fully_refunded" && isFullRefund(o)) {
+    return { label: "Refunded", tone: "red", icon: "ri-refund-2-line" };
   }
-  if (status === "refunded") return { label: "Refunded", tone: "red", icon: "ri-refund-2-line" };
-  if (status === "cancelled") return { label: "Cancelled", tone: "gray", icon: "ri-close-circle-line" };
-  if (o.paid_at || o.payment_intent_id || status === "paid · unassigned") {
-    return { label: "Paid", tone: "sky", icon: "ri-bank-card-line" };
+
+  switch (orderWorkflowState(o)) {
+    case "cancelled":
+      return { label: "Cancelled", tone: "gray", icon: "ri-close-circle-line" };
+    case "completed":
+      return { label: "Completed", tone: "emerald", icon: "ri-checkbox-circle-fill" };
+    case "pending_delivery":
+      return { label: "Pending Delivery", tone: "violet", icon: "ri-send-plane-line" };
+    case "reopened":
+      return { label: "Reopened", tone: "amber", icon: "ri-restart-line" };
+    case "under_review":
+      return { label: "Under Review", tone: "violet", icon: "ri-time-line" };
+    case "paid_unassigned":
+      // A partial refund is still an operational paid order — say so rather than
+      // hiding it behind a bare "Paid (Unassigned)".
+      if (isPartialRefund(o)) {
+        return { label: "Paid (Unassigned) · Partially refunded", tone: "amber", icon: "ri-bank-card-line" };
+      }
+      return { label: "Paid (Unassigned)", tone: "sky", icon: "ri-bank-card-line" };
+    case "lead":
+    default:
+      // A failed payment attempt that a later successful charge superseded is
+      // stale presentation, not an actionable failure (ORDER-PAID-STALE-FAILURE-
+      // SUPPRESSION-001), so it must not turn a lead chip red.
+      if (payment === "failed" && !isStalePaymentFailure(o)) {
+        return { label: "Payment Failed", tone: "red", icon: "ri-error-warning-line" };
+      }
+      return { label: "Lead (Unpaid)", tone: "amber", icon: "ri-shopping-cart-line" };
   }
-  return { label: "Lead (Unpaid)", tone: "amber", icon: "ri-shopping-cart-line" };
 }
 
 /** Tailwind classes for a status tone (border + bg + text). */

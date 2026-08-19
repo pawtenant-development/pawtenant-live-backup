@@ -6,10 +6,18 @@
 //
 //   node scripts/test-customer-documents.mjs
 //
-// Covers resolver-testable scenarios 1–8 + exact-duplicate + "source form / raw
-// original are never deliverables". Scenarios 9–10 (cross-customer / anonymous
-// authorization) are enforced server-side by get-document-signed-url RLS and are
-// verified by the authenticated API tests in the task QA, not by this pure harness.
+// Covers resolver-testable scenarios 1–8 + the version-lineage rules. Scenarios
+// 9–10 (cross-customer / anonymous authorization) are enforced server-side by
+// get-document-signed-url RLS and are verified by the authenticated API tests in
+// the task QA, not by this pure harness.
+//
+// ── CUSTOMER-PORTAL-ALL-DOCUMENT-VISIBILITY-001 rewrote several expectations ──
+// The resolver used to render AT MOST two cards and deliberately EXCLUDED the
+// customer's own uploads. The portal must now show EVERY customer-visible
+// document, one card per logical document, where "logical document" means a
+// version chain terminal (`superseded_by_document_id IS NULL`) — never a
+// doc_type bucket. Assertions that asserted the old collapsing behaviour are
+// updated below and annotated with why they flipped.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -62,12 +70,16 @@ console.log("customerDocuments resolver — §14 document-grouping scenarios\n")
 // 1) ESA letter + completed Housing form
 {
   const r = resolveCustomerDocuments(delivered({ documents: [customerSource(), finalizedLetter("esa_letter"), housingCompleted()] }));
-  check("1 ESA+housing: exactly [esa_letter, housing_completed]", JSON.stringify(kinds(r)) === JSON.stringify(["esa_letter", "housing_completed"]), `got ${JSON.stringify(kinds(r))}`);
+  // FLIPPED: the customer's own upload is now a deliverable in its own right.
+  check("1 ESA+housing+upload: [esa_letter, housing_completed, customer_upload]", JSON.stringify(kinds(r)) === JSON.stringify(["esa_letter", "housing_completed", "customer_upload"]), `got ${JSON.stringify(kinds(r))}`);
   check("1 ESA letter carries verification id", byKind(r, "esa_letter")?.verificationId === "ESA-AR-LENYUFW");
   check("1 housing_completed has NO verification id", byKind(r, "housing_completed")?.verificationId === undefined);
   check("1 housing_completed titled correctly", byKind(r, "housing_completed")?.title === "Completed Housing Accommodation Form");
   check("1 esa letter titled 'Signed ESA Letter'", byKind(r, "esa_letter")?.title === "Signed ESA Letter");
-  check("1 source upload is NOT a deliverable", !kinds(r).includes("customer_upload") && r.deliverables.length === 2);
+  // FLIPPED: hiding the customer's own file was half of the reported defect.
+  check("1 source upload IS a deliverable, clearly labelled", kinds(r).includes("customer_upload") && byKind(r, "customer_upload")?.title === "Customer Upload" && r.deliverables.length === 3);
+  check("1 customer upload keeps its own filename as detail", byKind(r, "customer_upload")?.detail === "Landlord Form.pdf");
+  check("1 customer upload carries NO verification id", byKind(r, "customer_upload")?.verificationId === undefined);
 }
 
 // 2) PSD letter + completed Housing form
@@ -89,7 +101,9 @@ console.log("customerDocuments resolver — §14 document-grouping scenarios\n")
 // 4) Housing pending — source uploaded, provider not done yet (letter delivered)
 {
   const r = resolveCustomerDocuments(delivered({ documents: [finalizedLetter("esa_letter"), customerSource()] }));
-  check("4 housing pending: only [esa_letter] (no fake housing row)", JSON.stringify(kinds(r)) === JSON.stringify(["esa_letter"]), `got ${JSON.stringify(kinds(r))}`);
+  // FLIPPED: the upload still must not masquerade as a COMPLETED housing form,
+  // but it is the customer's file and must be retrievable.
+  check("4 housing pending: [esa_letter, customer_upload] and no fake housing row", JSON.stringify(kinds(r)) === JSON.stringify(["esa_letter", "customer_upload"]), `got ${JSON.stringify(kinds(r))}`);
   check("4 source form not surfaced as deliverable", r.hasHousingCompleted === false);
 }
 
@@ -103,15 +117,43 @@ console.log("customerDocuments resolver — §14 document-grouping scenarios\n")
 // 6) Multiple legitimate source forms + a completed form
 {
   const r = resolveCustomerDocuments(delivered({ documents: [customerSource({ label: "Form A.pdf" }), customerSource({ label: "Form B.pdf" }), finalizedLetter("esa_letter"), housingCompleted()] }));
-  check("6 multiple sources: still [esa_letter, housing_completed]", JSON.stringify(kinds(r)) === JSON.stringify(["esa_letter", "housing_completed"]), `got ${JSON.stringify(kinds(r))}`);
+  // FLIPPED: two DISTINCT uploads are two documents; collapsing them by type is
+  // exactly the defect. They stay distinguishable by their own detail lines.
+  check("6 multiple sources each render", JSON.stringify(kinds(r)) === JSON.stringify(["esa_letter", "housing_completed", "customer_upload", "customer_upload"]), `got ${JSON.stringify(kinds(r))}`);
+  check("6 the two uploads are distinguishable", JSON.stringify(r.deliverables.filter((d) => d.kind === "customer_upload").map((d) => d.detail)) === JSON.stringify(["Form A.pdf", "Form B.pdf"]));
   check("6 exactly one completed-housing deliverable", r.deliverables.filter((d) => d.kind === "housing_completed").length === 1);
 }
 
-// 7) Exact duplicate completed-housing upload → not rendered twice
+// 7) Two housing_completed ROWS with no lineage link are two documents.
+//
+// FLIPPED. This previously asserted they collapse to one. Collapsing by doc_type
+// is precisely the reported defect: on LIVE, two same-typed rows are routinely
+// two genuinely different files (two pets, a letter plus additional
+// documentation, a letter plus a notarized copy). A row is only ever suppressed
+// when the SYSTEM says another row replaced it — see 7d.
 {
   const hc = housingCompleted();
   const r = resolveCustomerDocuments(delivered({ documents: [finalizedLetter("esa_letter"), hc, { ...hc, id: uid() }] }));
-  check("7 duplicate housing_completed collapses to one", r.deliverables.filter((d) => d.kind === "housing_completed").length === 1, `got ${JSON.stringify(kinds(r))}`);
+  check("7 two unlinked housing_completed rows render as two documents", r.deliverables.filter((d) => d.kind === "housing_completed").length === 2, `got ${JSON.stringify(kinds(r))}`);
+}
+
+// 7d) Lineage — and ONLY lineage — collapses a row. A predecessor stamped with
+// superseded_by_document_id is history, not a card.
+{
+  const v2 = housingCompleted();
+  const v1 = housingCompleted({ superseded_by_document_id: v2.id });
+  const r = resolveCustomerDocuments(delivered({ documents: [finalizedLetter("esa_letter"), v1, v2] }));
+  const shown = r.deliverables.filter((d) => d.kind === "housing_completed");
+  check("7d superseded predecessor is not rendered", shown.length === 1 && shown[0].id === v2.id, `got ${JSON.stringify(shown.map((d) => d.id))}`);
+}
+
+// 7e) The approval gate: a row awaiting admin approval is never customer-facing,
+// even if customer_visible somehow said otherwise.
+{
+  const r = resolveCustomerDocuments(delivered({
+    documents: [finalizedLetter("esa_letter"), housingCompleted({ review_status: "pending_admin_approval" })],
+  }));
+  check("7e pending_admin_approval row is withheld", r.hasHousingCompleted === false, `got ${JSON.stringify(kinds(r))}`);
 }
 
 // 7b) CUSTOMER-DUAL-LETTER-DOWNLOADS-001 revises this case.
@@ -281,6 +323,11 @@ const pair = (doc_type, over = {}) => ({
     file_url: "sign/provider-letters/v2-orig.pdf", processed_file_url: "sign/letters/v2-verified.pdf",
     uploaded_at: "2026-08-05T10:00:00Z",
   });
+  // The fixture now models what the pipeline ACTUALLY writes: approve_order_document
+  // (migration 20260729121500) stamps the retired row's superseded_by_document_id
+  // with the replacement's id. Without that marker these are not a revision pair at
+  // all — they are two separate letters, which is the LIVE two-pet case.
+  v1.superseded_by_document_id = v2.id;
   const r = resolveCustomerDocuments(delivered({ documents: [v1, v2] }));
   const d = byKind(r, "esa_letter");
   check("R6 revision: resolves to the NEWEST row", d?.id === v2.id, `got ${d?.id} want ${v2.id}`);

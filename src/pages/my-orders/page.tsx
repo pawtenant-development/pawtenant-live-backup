@@ -27,17 +27,17 @@ import { isUnpaidLead, isPaidOrder, isTerminalOrder } from "@/lib/bookingProgres
 import { isRefundTerminal, isOperationallyCancelled, isPartialRefund } from "@/lib/orderClassification";
 import { resolveAccountGreeting, type NameUserLike } from "@/lib/customerName";
 import { trackCustomerPortalViewed } from "@/lib/trackEvent";
+import { CUSTOMER_DOCUMENT_COLUMNS, type ResolverDoc } from "@/lib/customerDocuments";
 
-interface OrderDocument {
-  id: string;
-  label: string;
-  doc_type: string;
-  file_url: string;
-  processed_file_url: string | null;
-  footer_injected: boolean;
-  uploaded_at: string;
+// CUSTOMER-PORTAL-ALL-DOCUMENT-VISIBILITY-001 — the portal's document rows are
+// exactly what the shared resolver consumes, so this extends ResolverDoc instead
+// of re-declaring a parallel shape that could drift out of sync with it. Every
+// fetch below selects CUSTOMER_DOCUMENT_COLUMNS for the same reason: the portal
+// has SIX separate `order_documents` queries, and a column missing from any one
+// of them (`superseded_by_document_id` above all) would make that one code path
+// silently render prior versions as if they were current documents.
+interface OrderDocument extends ResolverDoc {
   sent_to_customer: boolean;
-  customer_visible: boolean;
 }
 
 interface Order {
@@ -697,7 +697,7 @@ export default function MyOrdersPage() {
         const orderIds = loadedOrders.map((o) => o.id);
         const { data: docsData } = await supabase
           .from("order_documents")
-          .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+          .select(CUSTOMER_DOCUMENT_COLUMNS)
           .in("order_id", orderIds)
           .eq("customer_visible", true)
           .order("uploaded_at", { ascending: true });
@@ -804,7 +804,7 @@ export default function MyOrdersPage() {
             const orderIds = loadedOrders.map((o) => o.id);
             const { data: docsData } = await supabase
               .from("order_documents")
-              .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+              .select(CUSTOMER_DOCUMENT_COLUMNS)
               .in("order_id", orderIds)
               .eq("customer_visible", true)
               .order("uploaded_at", { ascending: true });
@@ -855,7 +855,7 @@ export default function MyOrdersPage() {
           const orderIds = loadedOrders.map((o) => o.id);
           const { data: docsData } = await supabase
             .from("order_documents")
-            .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+            .select(CUSTOMER_DOCUMENT_COLUMNS)
             .in("order_id", orderIds)
             .eq("customer_visible", true)
             .order("uploaded_at", { ascending: true });
@@ -903,7 +903,7 @@ export default function MyOrdersPage() {
   const refetchOrderDocuments = useCallback(async (orderId: string) => {
     const { data: docsData } = await supabase
       .from("order_documents")
-      .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+      .select(CUSTOMER_DOCUMENT_COLUMNS)
       .eq("order_id", orderId)
       .eq("customer_visible", true)
       .order("uploaded_at", { ascending: true });
@@ -992,7 +992,7 @@ export default function MyOrdersPage() {
         const orderIds = loadedOrders.map((o) => o.id);
         const { data: docsData } = await supabase
           .from("order_documents")
-          .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+          .select(CUSTOMER_DOCUMENT_COLUMNS)
           .in("order_id", orderIds)
           .eq("customer_visible", true);
         const docsByOrderId = new Map<string, OrderDocument[]>();
@@ -1166,7 +1166,7 @@ export default function MyOrdersPage() {
                         const orderIds = loadedOrders.map((o) => o.id);
                         const { data: docsData } = await supabase
                           .from("order_documents")
-                          .select("id, label, doc_type, file_url, processed_file_url, footer_injected, uploaded_at, sent_to_customer, customer_visible, order_id")
+                          .select(CUSTOMER_DOCUMENT_COLUMNS)
                           .in("order_id", orderIds)
                           .eq("customer_visible", true)
                           .order("uploaded_at", { ascending: true });

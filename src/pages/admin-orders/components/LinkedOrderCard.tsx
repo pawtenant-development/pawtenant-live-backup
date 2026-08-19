@@ -8,10 +8,20 @@
 //   variant="chip"  → compact inline chip for the chat context panel
 //                     (renders nothing when nothing matches).
 //
-// No "Open Order" navigation here (it only opened a useless tab) — the order
-// identity is shown inline; confirmation_id is copyable.
+// The order identity is shown inline and confirmation_id is copyable. "Open
+// order" navigates via the canonical `?order=` deep link, which opens THAT
+// order's detail modal (COMMAND-CENTER-OPEN-EXACT-ORDER-001) — the earlier
+// version of this card had no navigation precisely because the old affordance
+// only landed the operator on the Orders tab.
+//
+// CUSTOMER-PORTAL-ALL-DOCUMENT-VISIBILITY-001 §Item-2: the status chip is
+// produced by summarizeOrderStatus(), which now delegates to the CANONICAL
+// lifecycle classifier (orderWorkflowState) rather than reading orders.status
+// directly. The Provider row is derived from the same assignment fields, so the
+// chip and the provider can no longer contradict each other.
 
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   findOrderForContact,
   summarizeOrderStatus,
@@ -36,6 +46,28 @@ function fmtWhen(iso: string | null): string {
 
 function copyId(confirmationId: string | null) {
   try { if (confirmationId) void navigator.clipboard.writeText(confirmationId); } catch { /* ignore */ }
+}
+
+/** Provider display derived from the SAME fields the canonical classifier reads,
+ *  so the chip and this row can never disagree about assignment. */
+function providerLabel(o: LinkedOrder): string {
+  const assigned = !!o.doctor_user_id || !!(o.doctor_email ?? "").trim();
+  if (!assigned) return "Unassigned";
+  return (o.doctor_name ?? "").trim() || (o.doctor_email ?? "").trim() || "Assigned";
+}
+
+/**
+ * Deep link that opens THIS order's detail modal.
+ *
+ * `?order=<confirmation_id>` is the canonical durable entry point
+ * (COMMAND-CENTER-OPEN-EXACT-ORDER-001): admin-orders/page.tsx routes it through
+ * handleDirectLookup — the same controller the Orders search uses — so it opens
+ * the exact order rather than dumping the operator on the Orders tab. Falls back
+ * to orders.id when a row somehow has no confirmation id; handleDirectLookup
+ * accepts either.
+ */
+function orderDeepLink(o: LinkedOrder): string {
+  return `/admin-orders?order=${encodeURIComponent(o.confirmation_id ?? o.id)}`;
 }
 
 interface LinkedOrderCardProps extends FindOrderArgs {
@@ -147,6 +179,17 @@ export default function LinkedOrderCard({
           {order.match_count > 1 && (
             <span className="text-[10px] text-gray-400">+{order.match_count - 1} other match{order.match_count - 1 !== 1 ? "es" : ""}</span>
           )}
+          {/* Opens the EXACT order's detail modal via the canonical ?order= deep
+              link, not merely the Orders tab. Routed through the same
+              handleDirectLookup controller the Orders search uses, so there is
+              still exactly one order-opening implementation. */}
+          <Link
+            to={orderDeepLink(order)}
+            className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold text-[#3b6ea5] hover:text-[#1e3a5f] hover:underline"
+            title={`Open ${order.confirmation_id ?? "this order"}`}
+          >
+            Open order<i className="ri-arrow-right-up-line" style={{ fontSize: "12px" }} />
+          </Link>
         </div>
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
           <div className="flex items-center justify-between gap-2 min-w-0">
@@ -163,7 +206,16 @@ export default function LinkedOrderCard({
           </div>
           <div className="flex items-center justify-between gap-2 min-w-0">
             <dt className="text-gray-500 shrink-0">Provider</dt>
-            <dd className="text-gray-800 font-medium truncate">{order.doctor_name || "Unassigned"}</dd>
+            {/* CUSTOMER-PORTAL-ALL-DOCUMENT-VISIBILITY-001 §Item-2 — "Unassigned"
+                is decided by the SAME assignment fields the canonical classifier
+                uses to reach `under_review` (doctor_user_id / doctor_email), not
+                by whether a display name happens to be populated. Keying this row
+                off `doctor_name` alone was the second half of the contradiction:
+                an assigned order with no cached name would read "Unassigned"
+                beside an "Under Review" chip. */}
+            <dd className="text-gray-800 font-medium truncate" title={providerLabel(order)}>
+              {providerLabel(order)}
+            </dd>
           </div>
           <div className="flex items-center justify-between gap-2 min-w-0">
             <dt className="text-gray-500 shrink-0">Order email</dt>

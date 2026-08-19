@@ -102,6 +102,15 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
           <p className="text-sm font-bold text-[#172033] leading-snug break-words" title={doc.title}>
             {doc.title}
           </p>
+          {/* The row's own stored label. Interpolated as TEXT by React — never
+              dangerouslySetInnerHTML — so a hostile filename renders inert.
+              `break-words` keeps a long, space-free name inside the card at
+              390px instead of forcing the page to scroll sideways. */}
+          {doc.detail && (
+            <p className="text-[11px] text-[#5F6B7A] mt-0.5 break-words" title={doc.detail}>
+              {doc.detail}
+            </p>
+          )}
           {doc.verificationId && (
             <p className="text-[11px] text-[#5F6B7A] mt-0.5">
               Verification reference <span className="font-mono font-semibold text-[#1e3a5f]">{doc.verificationId}</span>
