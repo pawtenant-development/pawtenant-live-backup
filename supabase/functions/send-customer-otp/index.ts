@@ -6,14 +6,18 @@
 //     customer_otp_codes table, 10-minute TTL, single use.
 //   * Soft rate limit: refuse a new send if one was issued < 45s ago for the
 //     same email (returns ok:true with cooldown so the UI can show a timer).
-//   * Delivered through BOTH canonical channels: Resend email and GHL SMS.
+//   * Delivered through both canonical channels: Resend email and GHL SMS.
 //   * Does NOT reveal whether an account exists — always behaves identically.
 //
-// BOTH CHANNELS ARE REQUIRED. One code is generated and the SAME code goes to
-// email and SMS. If either provider refuses it, the stored code is DELETED and
-// the call fails. Partial delivery must never look like a successful send: a
-// customer who received only one of the two would otherwise be holding a code
-// the system had already counted as fully delivered.
+// OTP-EMAIL-PRIMARY-DELIVERY-001 (P0, 2026-08-19): EMAIL IS PRIMARY; SMS is
+// best-effort secondary convenience. One code is generated and the SAME code
+// goes to both channels, but the code stays active when EITHER provider
+// accepts it. It is deleted only when BOTH fail — and then only the code this
+// request issued, so a failed resend never destroys a still-valid earlier
+// code. The response reports exactly which channels delivered so the UI can
+// never claim a send that did not happen. The previous both-channels-required
+// rule deleted an email-accepted code whenever an unreachable phone made GHL
+// refuse the SMS. Delivery policy lives in _shared/otpDeliveryPolicy.ts.
 //
 // verify_jwt is disabled (public flow, called with the anon key like
 // create-payment-intent). No secret values are ever returned in the response,
@@ -21,6 +25,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendGhlSms, normalizeE164 } from "../_shared/ghlSms.ts";
+import { decideOtpDelivery } from "../_shared/otpDeliveryPolicy.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -80,11 +85,11 @@ Deno.serve(async (req) => {
     const body = await req.json() as { email?: string; phone?: string; confirmationId?: string; firstName?: string; letterType?: string };
     const email = (body.email ?? "").trim().toLowerCase();
     if (!email || !EMAIL_RE.test(email)) return json({ ok: false, error: "A valid email is required" }, 400);
-    // A dialable mobile number is REQUIRED, not optional. SMS is one of the two
-    // mandatory channels, so an unreachable number is rejected here rather than
-    // discovered after the code has already been emailed.
+    // EMAIL-PRIMARY: a missing or non-dialable number no longer blocks the
+    // send — it only skips the SMS channel. A structurally valid but
+    // unreachable phone must never keep the email channel from being tried,
+    // and must never invalidate an email-accepted code.
     const phone = normalizeE164((body.phone ?? "").trim());
-    if (!phone) return json({ ok: false, error: "A valid mobile number is required to send the verification code by SMS." }, 400);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -102,38 +107,40 @@ Deno.serve(async (req) => {
     if (recent?.created_at) {
       const ageMs = Date.now() - new Date(recent.created_at as string).getTime();
       if (ageMs < RESEND_COOLDOWN_MS) {
-        return json({ ok: true, cooldown: true, retryInSeconds: Math.ceil((RESEND_COOLDOWN_MS - ageMs) / 1000), message: "A code was just sent by email and SMS." });
+        // Channel-neutral on purpose: this reply cannot know which channels the
+        // previous send actually reached, so it must not claim either.
+        return json({ ok: true, cooldown: true, retryInSeconds: Math.ceil((RESEND_COOLDOWN_MS - ageMs) / 1000), message: "A code was just sent." });
       }
     }
 
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + TTL_MINUTES * 60 * 1000).toISOString();
 
-    // Clear any prior codes for this email, then insert the fresh one.
-    await admin.from("customer_otp_codes").delete().eq("email", email);
-    const { error: insErr } = await admin.from("customer_otp_codes").insert({
+    // RESEND SAFETY: insert the NEW code BEFORE touching any prior one. The
+    // old order (delete-then-insert) meant a resend whose delivery then failed
+    // had already destroyed a still-valid code. Prior codes are removed only
+    // after at least one channel accepts the new one; verification always
+    // reads the newest row, so the brief overlap is harmless.
+    const { data: insRow, error: insErr } = await admin.from("customer_otp_codes").insert({
       email,
       code: otp,
       confirmation_id: body.confirmationId ?? null,
       first_name: body.firstName ?? null,
       letter_type: body.letterType ?? null,
       expires_at: expiresAt,
-    });
-    if (insErr) {
+    }).select("id").single();
+    if (insErr || !insRow?.id) {
       console.error("[send-customer-otp] insert failed:", insErr);
       return json({ ok: false, error: "Could not start verification. Please try again." }, 500);
     }
 
-    if (!resendKey) {
-      console.warn("[send-customer-otp] RESEND_API_KEY not set — code stored but not emailed");
-      await admin.from("customer_otp_codes").delete().eq("email", email).eq("code", otp);
-      return json({ ok: false, error: "Email service not configured" }, 500);
-    }
-
     const firstName = (body.firstName ?? "").split(" ")[0];
-    // ONE code, both channels, dispatched together.
-    const [emailRes, smsRes] = await Promise.all([
-      fetch("https://api.resend.com/emails", {
+    // ONE code, both channels, dispatched together. Each channel resolves to a
+    // boolean; neither can throw. A missing Resend key or a missing dialable
+    // number is simply that channel failing/being skipped — never an early
+    // return that abandons the other channel.
+    const emailPromise: Promise<boolean> = resendKey
+      ? fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -143,35 +150,48 @@ Deno.serve(async (req) => {
           html: buildEmail(firstName, otp),
           reply_to: SUPPORT_EMAIL,
         }),
-      }),
-      sendGhlSms({
+      }).then(async (res) => {
+        // Resend's HTTP acceptance is the email-channel success signal. Later
+        // bounce/suppression events never retroactively delete an issued OTP.
+        if (!res.ok) console.error("[send-customer-otp] Resend error:", res.status, (await res.text().catch(() => "")).slice(0, 300));
+        return res.ok;
+      }).catch((e) => {
+        console.error("[send-customer-otp] Resend unreachable:", e instanceof Error ? e.message : String(e));
+        return false;
+      })
+      : (console.warn("[send-customer-otp] RESEND_API_KEY not set — email channel unavailable"), Promise.resolve(false));
+
+    const smsPromise: Promise<boolean> = phone
+      ? sendGhlSms({
         toPhone: phone,
         message: `${otp} is your PawTenant verification code. It expires in ${TTL_MINUTES} minutes. Do not share this code.`,
         checkDnd: true,
         contactSource: "PawTenant assessment OTP",
-      }),
-    ]);
-    if (!emailRes.ok) {
-      console.error("[send-customer-otp] Resend error:", await emailRes.text());
-      await admin.from("customer_otp_codes").delete().eq("email", email).eq("code", otp);
-      return json({ ok: false, error: "Failed to send the verification email. Please try again." }, 500);
+      }).then((r) => {
+        // Provider internals stay server-side: logs carry the failure class,
+        // never the vendor payload, and never the code itself.
+        if (!r.ok) console.error("[send-customer-otp] GHL SMS failed:", r.failureCode, r.outcome);
+        return r.ok;
+      }).catch(() => false)
+      : Promise.resolve(false);
+
+    const [emailOk, smsOk] = await Promise.all([emailPromise, smsPromise]);
+    const decision = decideOtpDelivery({ emailOk, smsOk, smsAttempted: !!phone });
+
+    if (decision.deleteNewCode) {
+      // Both channels failed: remove ONLY the code this request issued. An
+      // earlier still-valid code (the failed-resend case) survives and remains
+      // verifiable.
+      await admin.from("customer_otp_codes").delete().eq("id", insRow.id);
+      return json({ ok: false, error: decision.message, channels: decision.channels }, decision.httpStatus);
     }
 
-    if (!smsRes.ok) {
-      // Provider internals stay server-side: the caller learns WHICH channel
-      // failed, never the vendor, credential state or provider error text.
-      console.error("[send-customer-otp] GHL SMS failed:", smsRes.failureCode, smsRes.outcome);
-      // Fail closed: an OTP is usable only when both requested channels accepted
-      // it. This also lets the customer correct the phone and retry immediately.
-      await admin.from("customer_otp_codes").delete().eq("email", email).eq("code", otp);
-      return json({
-        ok: false,
-        error: "The code was emailed, but we could not send the SMS. Please confirm your mobile number and try again.",
-        channels: { email: true, sms: false },
-      }, smsRes.outcome === "retryable" ? 503 : 400);
+    // At least one channel accepted the new code — it is now the only valid
+    // code for this email; older ones are retired.
+    if (decision.deletePriorCodes) {
+      await admin.from("customer_otp_codes").delete().eq("email", email).neq("id", insRow.id);
     }
-
-    return json({ ok: true, expires_minutes: TTL_MINUTES, channels: { email: true, sms: true } });
+    return json({ ok: true, expires_minutes: TTL_MINUTES, channels: decision.channels, message: decision.message });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[send-customer-otp] error:", msg);

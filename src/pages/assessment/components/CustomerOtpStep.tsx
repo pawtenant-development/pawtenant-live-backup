@@ -33,9 +33,10 @@ const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 interface Props {
   email: string;
   /**
-   * REQUIRED. The same code is delivered by email AND SMS, so send-customer-otp
-   * rejects a request without a dialable number. This is not optional polish:
-   * omitting it makes every send fail with "a valid mobile number is required".
+   * Best-effort SMS delivery (OTP-EMAIL-PRIMARY-DELIVERY-001). Email is the
+   * primary channel; the server sends the same code by SMS when the number is
+   * dialable, and simply skips SMS when it is not. A missing or unreachable
+   * phone never blocks the send.
    */
   phone: string;
   firstName?: string;
@@ -89,6 +90,10 @@ export default function CustomerOtpStep({ email, phone, firstName, confirmationI
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  // Which channels the LAST send actually reached, from the server. Null until
+  // the first response arrives. Drives the header copy so the UI never claims
+  // a channel that did not deliver (OTP-EMAIL-PRIMARY-DELIVERY-001).
+  const [channels, setChannels] = useState<{ email: boolean; sms: boolean } | null>(null);
   const sentOnceRef = useRef(false);
   const entryStartedRef = useRef(false);
 
@@ -106,7 +111,7 @@ export default function CustomerOtpStep({ email, phone, firstName, confirmationI
     if (isResend) {
       try { trackOtpResendRequested(confirmationId, letterType, { flow_version: fv }); } catch { /* analytics never blocks */ }
     }
-    let r: { ok?: boolean; cooldown?: boolean; retryInSeconds?: number; error?: string } = {};
+    let r: { ok?: boolean; cooldown?: boolean; retryInSeconds?: number; error?: string; message?: string; channels?: { email: boolean; sms: boolean } } = {};
     try {
       r = await post("send-customer-otp", { email, phone, confirmationId, firstName, letterType });
     } catch {
@@ -118,10 +123,13 @@ export default function CustomerOtpStep({ email, phone, firstName, confirmationI
     }
     setSending(false);
     if (r?.ok) {
+      // The server reports which channels actually delivered — show exactly
+      // that, never a hardcoded "email and SMS" claim.
+      if (r.channels) setChannels(r.channels);
       setInfo(
         r.cooldown
-          ? "A code was just sent — check your email and texts."
-          : `We sent the same 6-digit code to ${masked} and by text to ${maskedPhone}.`,
+          ? "A code was just sent — check your email or texts."
+          : r.message ?? `We sent a 6-digit code to ${masked}.`,
       );
       setCooldown(r.retryInSeconds ?? 45);
       // Funnel: fire only when the server actually dispatched a NEW code. A
@@ -209,10 +217,24 @@ export default function CustomerOtpStep({ email, phone, firstName, confirmationI
           </div>
           <h2 className="text-xl font-extrabold text-gray-900">Confirm your contact details</h2>
           <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-            We sent the <span className="font-semibold text-gray-700">same 6-digit code</span> by email to{" "}
-            <span className="font-semibold text-gray-700">{masked}</span> and by text to{" "}
-            <span className="font-semibold text-gray-700">{maskedPhone}</span>. Enter it below so we can securely save
-            your assessment and deliver your documents.
+            {channels === null ? (
+              <>We're sending a <span className="font-semibold text-gray-700">6-digit code</span> to{" "}
+              <span className="font-semibold text-gray-700">{masked}</span>.</>
+            ) : channels.email && channels.sms ? (
+              <>We sent the <span className="font-semibold text-gray-700">same 6-digit code</span> by email to{" "}
+              <span className="font-semibold text-gray-700">{masked}</span> and by text to{" "}
+              <span className="font-semibold text-gray-700">{maskedPhone}</span>.</>
+            ) : channels.email ? (
+              <>We sent a <span className="font-semibold text-gray-700">6-digit code</span> by email to{" "}
+              <span className="font-semibold text-gray-700">{masked}</span>.</>
+            ) : channels.sms ? (
+              <>We sent a <span className="font-semibold text-gray-700">6-digit code</span> by text to{" "}
+              <span className="font-semibold text-gray-700">{maskedPhone}</span>.</>
+            ) : (
+              <>We're sending a <span className="font-semibold text-gray-700">6-digit code</span> to{" "}
+              <span className="font-semibold text-gray-700">{masked}</span>.</>
+            )}{" "}
+            Enter it below so we can securely save your assessment and deliver your documents.
           </p>
         </div>
 
