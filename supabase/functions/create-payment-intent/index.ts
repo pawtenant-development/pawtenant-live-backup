@@ -454,6 +454,10 @@ Deno.serve(async (req: Request) => {
   const paymentMethodId = (body.paymentMethodId as string) ?? "";
   // Coupon code from frontend (validated by our DB validate-coupon function)
   const couponCode = (body.couponCode as string) ?? "";
+  // COUPON-PERSISTENCE (P0 PT-MT08TGT2, 2026-08-19): an EXPLICIT removal in the
+  // UI must not be resurrected by the open-intent coupon recovery below. Only
+  // the removal handler sends this flag; an amnesiac remount does not.
+  const clearCoupon = body.clearCoupon === true;
 
   // ── RA bundle package (PACKAGE-RA-LETTER-BUNDLE-001) ──────────────────────
   // packageKey drives the flat bundle pricing + fulfillment flag. Optional and
@@ -636,6 +640,12 @@ Deno.serve(async (req: Request) => {
     if (cc && discountCents > 0) {
       metadataPatch.coupon_code = cc;
       metadataPatch.coupon_discount_cents = String(discountCents);
+    } else {
+      // No discount applies to THIS amount — erase any previously stamped
+      // coupon keys ("" deletes a metadata key on update) so the webhook can
+      // never record a discount the charge does not contain (PT-MT08TGT2).
+      metadataPatch.coupon_code = "";
+      metadataPatch.coupon_discount_cents = "";
     }
     // Persist the final package selection onto the PI (one-time plan) so the
     // webhook records the correct package even if the customer switched at Step 3.
@@ -918,17 +928,45 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // ── COUPON PERSISTENCE ACROSS REMOUNTS (P0 PT-MT08TGT2, 2026-08-19) ──────
+    // Step 3 remounts (refresh / resume / package switch) re-request the intent
+    // with NO couponCode — the applied coupon lives only in component state.
+    // The reuse path below then repriced the SAME PaymentIntent back to the
+    // undiscounted base, while Stripe's metadata merge preserved the stale
+    // coupon keys, so the webhook recorded a discount the charge never
+    // contained. Recover the previously APPLIED code from the open intent's own
+    // metadata and re-validate it against Stripe like any other code. An
+    // explicit removal (clearCoupon) skips recovery, and the metadata patch on
+    // the reuse call erases the stale keys so a removed or invalid coupon can
+    // never resurface.
+    let effectiveCouponCode = couponCode;
+    if (!effectiveCouponCode && !clearCoupon && confirmationId) {
+      const openId = await readOpenPaymentIntentId(confirmationId);
+      if (openId) {
+        try {
+          const openPi = await stripe.paymentIntents.retrieve(openId);
+          if (openPi.status === "requires_payment_method") {
+            const prior = ((openPi.metadata?.coupon_code as string | undefined) ?? "").trim();
+            if (prior) {
+              effectiveCouponCode = prior;
+              console.info(`[create-payment-intent] Recovered applied coupon ${prior} from open PI ${openId} for ${confirmationId}`);
+            }
+          }
+        } catch { /* recovery is best-effort — worst case the customer re-enters the code */ }
+      }
+    }
+
     // Apply coupon discount server-side at PI creation so Stripe charges the
     // discounted amount. Stripe is the only source of truth — the coupon is
     // resolved against the Stripe API; if the code isn't a valid amount_off
     // coupon there, no discount is applied.
     let discountCents = 0;
-    if (couponCode) {
+    if (effectiveCouponCode) {
       try {
-        const coupon = await resolveStripeCoupon(stripe, couponCode);
+        const coupon = await resolveStripeCoupon(stripe, effectiveCouponCode);
         discountCents = couponDiscountCents(coupon);
       } catch {
-        console.warn("[create-payment-intent] Stripe coupon lookup failed for", couponCode);
+        console.warn("[create-payment-intent] Stripe coupon lookup failed for", effectiveCouponCode);
       }
     }
 
@@ -944,8 +982,8 @@ Deno.serve(async (req: Request) => {
       delivery_speed: deliverySpeed,
       pet_count: String(petCount),
       pricing_source: pricingSource,
-      ...(couponCode && discountCents > 0
-        ? { coupon_code: couponCode, coupon_discount_cents: String(discountCents) }
+      ...(effectiveCouponCode && discountCents > 0
+        ? { coupon_code: effectiveCouponCode, coupon_discount_cents: String(discountCents) }
         : {}),
       // ── RA bundle package metadata (additive) ─────────────────────────
       ...buildPackageMeta("one_time"),
@@ -959,7 +997,15 @@ Deno.serve(async (req: Request) => {
     // confirmation id, and reprices it to the amount just decided above.
     // (ASSESSMENT-CHECKOUT-REFRESH-...-INCIDENT-003)
     const reused = confirmationId
-      ? await reuseOpenPaymentIntent(stripe, confirmationId, finalAmount, piMetadata)
+      ? await reuseOpenPaymentIntent(stripe, confirmationId, finalAmount, {
+          ...piMetadata,
+          // Stripe MERGES metadata on update: keys absent from the patch
+          // survive. When THIS pricing decision carries no discount, actively
+          // erase any previously stamped coupon keys ("" deletes a key) —
+          // leaving them is what let the webhook record PAW20 on a full-price
+          // charge (PT-MT08TGT2).
+          ...(discountCents > 0 ? {} : { coupon_code: "", coupon_discount_cents: "" }),
+        })
       : null;
 
     let paymentIntent = reused ?? await stripe.paymentIntents.create({
@@ -999,14 +1045,14 @@ Deno.serve(async (req: Request) => {
     // Stamp authoritative package entitlement now (one-time) — webhook-independent.
     await stampPackageEntitlement(confirmationId, packageKey, "one_time");
 
-    console.info(`[create-payment-intent] PI ${paymentIntent.id} — $${finalAmount / 100} (${letterType}, ${petCount} pet(s), ${deliverySpeed}, coupon: ${couponCode || "none"}, discount: $${discountCents / 100}, pricing: ${pricingSource}) — cid: ${confirmationId || "none"}`);
+    console.info(`[create-payment-intent] PI ${paymentIntent.id} — $${finalAmount / 100} (${letterType}, ${petCount} pet(s), ${deliverySpeed}, coupon: ${effectiveCouponCode || "none"}, discount: $${discountCents / 100}, pricing: ${pricingSource}) — cid: ${confirmationId || "none"}`);
 
     return json({
       clientSecret: paymentIntent.client_secret,
       amount: finalAmount,
       basePriceAmount: baseAmount,
       paymentIntentId: paymentIntent.id,
-      couponCode: couponCode || null,
+      couponCode: effectiveCouponCode || null,
       couponDiscountCents: discountCents,
       pricingSource,
     });

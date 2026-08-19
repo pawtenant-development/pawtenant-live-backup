@@ -24,7 +24,7 @@ export interface QuoteResolution {
   /** Amount to charge, in integer cents. */
   baseCents: number;
   /** Audit label: how the amount was decided. Safe for logs. */
-  pricingSource: "trusted_quote" | "current_pricing";
+  pricingSource: "trusted_quote" | "current_pricing" | "stale_quote_repriced";
   /** True when a server-issued quote was found and honoured. */
   usedTrustedQuote: boolean;
 }
@@ -79,6 +79,15 @@ export async function resolveTrustedQuote(
     // charging something we cannot justify.
     if (!Number.isFinite(cents) || !Number.isInteger(cents) || cents <= 0) {
       return canonical;
+    }
+
+    // ESA-TWO-PET-STALE-QUOTE-CAP (P0, 2026-08-19): a stored quote may hold a
+    // resumed order BELOW the current rule (legacy price protection) but never
+    // ABOVE it. Unpaid two-pet ESA leads quoted $149 before the 1–2-pet price
+    // dropped to $129 were resuming at the retired amount — the quote's own
+    // pet_count matched, so only this amount comparison can catch it.
+    if (cents > configBaseCents) {
+      return { baseCents: configBaseCents, pricingSource: "stale_quote_repriced", usedTrustedQuote: false };
     }
 
     return { baseCents: cents, pricingSource: "trusted_quote", usedTrustedQuote: true };

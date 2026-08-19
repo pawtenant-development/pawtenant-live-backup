@@ -1010,7 +1010,7 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
   // ── Fetch Stripe client_secret from server ────────────────────────────────
   // Accepts step2 data directly so it works both from goNext (current state)
   // and from the resume useEffect (state hasn't updated yet).
-  const fetchClientSecret = async (s2: Step2Data, confId: string, coupon: { code: string; discount: number } | null = null, pkg: PackageKey = selectedPackage) => {
+  const fetchClientSecret = async (s2: Step2Data, confId: string, coupon: { code: string; discount: number } | null = null, pkg: PackageKey = selectedPackage, clearCoupon = false) => {
     // Guard: email must be a valid non-empty address before calling Stripe
     if (!s2.email || !s2.email.includes("@") || !s2.email.includes(".")) return;
     // In-flight lock — prevents duplicate concurrent calls (resume + retry + useEffect)
@@ -1069,6 +1069,11 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
             plan: "one-time",
             packageKey: pkg,
             couponCode: coupon?.code ?? "",
+            // COUPON-PERSISTENCE (P0 PT-MT08TGT2): the server recovers a
+            // previously APPLIED coupon from the order's open intent when this
+            // call carries none (a remount has no coupon state). Only an
+            // explicit removal may suppress that recovery.
+            clearCoupon,
             // ── Phase 1: minimal attribution into Stripe metadata ─────────
             // Six fields only. NEVER include full attribution_json — the
             // canonical store is in orders.attribution_json / *_touch_json.
@@ -1082,7 +1087,7 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
         },
         confId,
       );
-      const result = (await res.json()) as { clientSecret?: string; paymentIntentId?: string; basePriceAmount?: number; error?: string };
+      const result = (await res.json()) as { clientSecret?: string; paymentIntentId?: string; basePriceAmount?: number; couponCode?: string | null; couponDiscountCents?: number; error?: string };
       if (result.clientSecret) {
         setStripeClientSecret(result.clientSecret);
         setStripePaymentIntentId(result.paymentIntentId ?? "");
@@ -1092,6 +1097,13 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
         // including a locked legacy quote on a resumed order.
         if (typeof result.basePriceAmount === "number" && result.basePriceAmount > 0) {
           setQuotedBasePriceDollars(result.basePriceAmount / 100);
+        }
+        // COUPON-PERSISTENCE: the server may have recovered a previously
+        // applied coupon from the order's open intent (this remount had no
+        // coupon state). Mirror it into UI state so the displayed total equals
+        // the amount the intent will actually charge.
+        if (!coupon && !clearCoupon && result.couponCode && (result.couponDiscountCents ?? 0) > 0) {
+          setAppliedCoupon({ code: result.couponCode, discount: (result.couponDiscountCents ?? 0) / 100 });
         }
       } else {
         const errMsg = result.error ?? "Payment setup failed. Please try again.";
@@ -1807,7 +1819,9 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
     setStripeSecretError("");
 
     try {
-      await fetchClientSecret(step2, confirmationId.current, coupon);
+      // A null coupon here is an EXPLICIT removal — tell the server so it does
+      // not recover the previously applied code from the open intent.
+      await fetchClientSecret(step2, confirmationId.current, coupon, selectedPackage, coupon === null);
       console.info("[assessment] payment intent refreshed for coupon", { code: coupon?.code ?? null });
     } catch (err) {
       console.warn("[handleCouponApplied] failed to refresh payment intent for coupon:", err);

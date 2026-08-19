@@ -27,6 +27,7 @@ const GUARD = resolve(__dirname, "check-esa-two-pet-pricing.mjs");
 const CLIENT = "src/config/pricing.ts";
 const SERVER = "supabase/functions/_shared/pricingMatrix.ts";
 const CPI = "supabase/functions/create-payment-intent/index.ts";
+const PQ = "supabase/functions/_shared/priceQuote.ts";
 const MIGRATION = "supabase/migrations/20260819120000_esa_two_pet_pricing_quote_pet_count.sql";
 const LP = "src/pages/lp-esa-housing/page.tsx";
 
@@ -103,6 +104,35 @@ const CONTROLS = [
     edits: [
       [CPI, "  const petCount = parsePetCount(body.petCount);\n  if (petCount === null) {\n    return json({ error: \"petCount must be 1, 2 or 3\" }, 400);\n  }",
         "  const petCount = Math.max(1, Number(body.petCount ?? 1));"],
+    ],
+  },
+  // ── P0 2026-08-19 (PT-MT08TGT2 + stale two-pet $149 quotes) ───────────────
+  {
+    name: "9. drop the stale-quote cap (stored $149 beats current $129 again)",
+    edits: [
+      [PQ, "    if (cents > configBaseCents) {\n      return { baseCents: configBaseCents, pricingSource: \"stale_quote_repriced\", usedTrustedQuote: false };\n    }\n\n",
+        ""],
+    ],
+  },
+  {
+    name: "10. reprice a reused intent without erasing stale coupon metadata",
+    edits: [
+      [CPI, "          ...(discountCents > 0 ? {} : { coupon_code: \"\", coupon_discount_cents: \"\" }),\n",
+        ""],
+    ],
+  },
+  {
+    name: "11. resolve the client couponCode instead of the recovered one",
+    edits: [
+      [CPI, "        const coupon = await resolveStripeCoupon(stripe, effectiveCouponCode);",
+        "        const coupon = await resolveStripeCoupon(stripe, couponCode);"],
+    ],
+  },
+  {
+    name: "12. let recovery resurrect an explicitly removed coupon",
+    edits: [
+      [CPI, "    if (!effectiveCouponCode && !clearCoupon && confirmationId) {",
+        "    if (!effectiveCouponCode && confirmationId) {"],
     ],
   },
 ];

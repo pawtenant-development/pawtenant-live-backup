@@ -312,6 +312,69 @@ async function main() {
   check("16. the ESA landing page states the up-to-2-pets coverage", () =>
     /up to (2|two) pets/i.test(lp) || "no 'up to 2 pets' wording on the ESA landing page");
 
+  // ── 17 · A stale stored quote can hold a price DOWN, never UP ────────────
+  // P0 2026-08-19: unpaid two-pet ESA leads quoted $149 before the 1-2-pet
+  // price dropped to $129 were resuming at the retired amount — the quote's
+  // pet_count matched, so only the amount comparison can catch staleness.
+  // Executes the REAL resolver with a stubbed RPC.
+  let pqMod = null;
+  try {
+    pqMod = await loadTs(PQ, tmpDir, "priceQuote");
+  } catch (err) {
+    failures.push(`17. could not load priceQuote.ts -> ${err.message}`);
+  }
+  if (pqMod) {
+    const stub = (cents) => ({ rpc: async () => ({ data: cents, error: null }) });
+    const r1 = await pqMod.resolveTrustedQuote(stub(14900), "PT-X", 12900, 2);
+    eq("17. a stored $149 quote for a now-$129 request reprices to $129", r1.baseCents, 12900);
+    eq("17. the reprice is labelled stale_quote_repriced", r1.pricingSource, "stale_quote_repriced");
+    eq("17. the reprice does NOT count as honouring the quote", r1.usedTrustedQuote, false);
+    const r2 = await pqMod.resolveTrustedQuote(stub(14900), "PT-X", 14900, 3);
+    eq("17. a three-pet stored $149 quote is still honoured", r2.baseCents, 14900);
+    eq("17. the honoured quote is labelled trusted_quote", r2.pricingSource, "trusted_quote");
+    const r3 = await pqMod.resolveTrustedQuote(stub(9900), "PT-X", 12900, 1);
+    eq("17. a LOWER legacy quote is still honoured (price protection)", r3.baseCents, 9900);
+    const r4 = await pqMod.resolveTrustedQuote({ rpc: async () => ({ data: null, error: null }) }, "PT-X", 12900, 2);
+    eq("17. no stored quote falls back to canonical current pricing", r4.baseCents, 12900);
+    eq("17. the fallback is labelled current_pricing", r4.pricingSource, "current_pricing");
+  }
+
+  // ── 18 · An applied coupon survives a couponless remount — truthfully ────
+  // P0 PT-MT08TGT2: a Step-3 remount called create-payment-intent with no
+  // couponCode; the reuse path repriced the open PaymentIntent back to the
+  // undiscounted base while Stripe's metadata merge preserved the stale coupon
+  // keys, so the webhook recorded PAW20 -$20 on a full-price charge.
+  {
+    const code = codeOnly(cpi);
+    check("18. the one-time charge path resolves the RECOVERED coupon code", () =>
+      /resolveStripeCoupon\s*\(\s*stripe\s*,\s*effectiveCouponCode\s*\)/.test(code) ||
+      "the one-time path does not resolve effectiveCouponCode (recovery bypassed)");
+    check("18. recovery reads the open intent's stored coupon_code", () =>
+      (/effectiveCouponCode\s*=\s*prior/.test(code) && /readOpenPaymentIntentId\s*\(/.test(code)) ||
+      "no coupon recovery from the open PaymentIntent");
+    check("18. an explicit removal (clearCoupon) suppresses recovery", () =>
+      /!\s*clearCoupon/.test(code) || "clearCoupon does not gate the recovery");
+    check("18. a no-discount reprice ERASES stale coupon metadata keys", () =>
+      /discountCents\s*>\s*0\s*\?\s*\{\}\s*:\s*\{\s*coupon_code:\s*""\s*,\s*coupon_discount_cents:\s*""/.test(code) ||
+      "the reuse metadata patch does not erase coupon_code/coupon_discount_cents");
+    check("18. update_amount also erases coupon keys when no discount applies", () =>
+      /metadataPatch\.coupon_code\s*=\s*""/.test(code) ||
+      "update_amount leaves stale coupon keys to merge");
+    eq("18. two-pet server total after a $20 coupon is $109", server.esaOneTimeCents(2) - 2000, 10900);
+    eq("18. three-pet server total after a $20 coupon is $129", server.esaOneTimeCents(3) - 2000, 12900);
+  }
+  {
+    const page = codeOnly(await read("src/pages/assessment/page.tsx").catch(() => ""));
+    check("18. checkout sends the explicit-removal signal (clearCoupon)", () =>
+      /clearCoupon\s*[,:}]/.test(page) || "page.tsx never sends clearCoupon");
+    check("18. checkout hydrates a server-recovered coupon into UI state", () =>
+      /setAppliedCoupon\(\{\s*code:\s*result\.couponCode/.test(page) ||
+      "page.tsx does not mirror result.couponCode into appliedCoupon");
+    check("18. coupon removal passes coupon === null as the clear signal", () =>
+      /fetchClientSecret\([^)]*coupon\s*===\s*null\s*\)/.test(page) ||
+      "handleCouponApplied does not signal removal to the server");
+  }
+
   await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
 
   if (failures.length) {
@@ -320,7 +383,7 @@ async function main() {
     process.exitCode = warnOnly ? 0 : 1;
     return;
   }
-  console.log(`${TAG} OK — ESA one-time: 1-2 pets $129, exactly 3 pets $149; every other surface unchanged.`);
+  console.log(`${TAG} OK — ESA one-time: 1-2 pets $129, exactly 3 pets $149; stale quotes cap at current; applied coupons survive remounts truthfully.`);
 }
 
 await main();
