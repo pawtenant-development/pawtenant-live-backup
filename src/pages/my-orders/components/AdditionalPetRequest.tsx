@@ -483,15 +483,23 @@ export default function AdditionalPetRequest({
           </div>
         ) : (
           <>
-            {/* ── PAID: package-tier upgrade at the CURRENT server price ──── */}
+            {/* ── PAID: tier upgrade or post-completion amendment, priced by the server ── */}
             {outcome === "paid_upgrade" && (
               <>
-                <p className="text-xs text-gray-600 leading-relaxed">
-                  Your package currently covers one pet. Upgrading to the multi-pet
-                  package lets this order cover up to {pricing.max_total ?? MAX_PETS} pets
-                  in total. This is a one-time upgrade of your package, not a charge
-                  per pet.
-                </p>
+                {pricing.code === "post_completion_amendment" ? (
+                  <p className="text-xs text-gray-600 leading-relaxed">
+                    Your evaluation is already completed, so adding a pet is a paid
+                    amendment: after payment your provider reviews the new pet and, if
+                    approved, issues a revised letter as a new version. Your original
+                    letter stays exactly as issued.
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-600 leading-relaxed">
+                    Adding this pet goes beyond what your package covers, so a one-time
+                    package upgrade applies. Your order can cover up to{" "}
+                    {pricing.max_total ?? MAX_PETS} pets in total.
+                  </p>
+                )}
                 <button
                   ref={openerRef}
                   type="button"

@@ -159,8 +159,12 @@ export async function completeAdditionalPetPayment(
   // parse-time SyntaxError that takes the whole edge function down with
   // BOOT_ERROR (it did: stripe-webhook, create-additional-pet-request and
   // provider-additional-pet-decision all 503'd until this was renamed).
+  // ADDITIONAL-PET-PRE-POST-COMPLETION-PRICING-001 (2026-08-19): a
+  // POST-COMPLETION AMENDMENT is quoted on an order that is ALREADY locked —
+  // locked is its expected, normal state, not a race. Only a pre-completion
+  // upgrade whose parent locked between quote and settlement is parked.
   const raceOrderId = (reqRow.order_id as string) ?? opts.parentOrderId ?? null;
-  if (raceOrderId) {
+  if (raceOrderId && (reqRow.phase as string | null) !== "post_completion") {
     const { data: lock } = await supabase.rpc("additional_pet_order_locked", { p_order_id: raceOrderId });
     if (lock && (lock as { locked?: boolean }).locked) {
       const lockReason = (lock as { reason?: string }).reason ?? "unknown";

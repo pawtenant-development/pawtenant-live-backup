@@ -223,22 +223,25 @@ Deno.serve(async (req) => {
   if (action === "update_pet") {
     if (!body.requestId) return json(400, { ok: false, error: "requestId required" });
 
-    // ADDITIONAL-PET-...-GATING-002: the pet snapshot feeds the document
-    // revision, so it is frozen once the evaluation is completed / a document
-    // has been issued. (`cancel` is deliberately still allowed.)
-    {
+    const { data: row } = await admin.from("order_additional_pet_requests")
+      .select("*").eq("id", body.requestId).eq("order_id", o.id).maybeSingle();
+    if (!row) return json(404, { ok: false, error: "Request not found" });
+
+    // ADDITIONAL-PET-...-GATING-002 + PRE-POST-COMPLETION-PRICING-001: a
+    // PRE-completion request's pet snapshot is frozen once the evaluation is
+    // completed / a document has been issued. A POST-COMPLETION AMENDMENT
+    // request lives on a locked order by definition — the lock is its normal
+    // state, so it stays editable through the amendment review.
+    if ((row.phase as string | null) !== "post_completion") {
       const { data: lock } = await admin.rpc("additional_pet_order_locked", { p_order_id: o.id });
       if (lock && (lock as { locked?: boolean }).locked) {
         return json(409, {
           ok: false, code: "order_completed",
           lockReason: (lock as { reason?: string }).reason ?? null,
-          error: "Additional pets cannot be added after the evaluation is completed. The customer must start a new evaluation with all pets included.",
+          error: "This request was created before the evaluation was completed and can no longer be edited. Add the pet as a post-completion amendment instead.",
         });
       }
     }
-    const { data: row } = await admin.from("order_additional_pet_requests")
-      .select("*").eq("id", body.requestId).eq("order_id", o.id).maybeSingle();
-    if (!row) return json(404, { ok: false, error: "Request not found" });
 
     const editable = ["draft", "payment_required", "checkout_created", "paid_pending_details", "clarification_requested"];
     if (!editable.includes(row.status as string)) {
@@ -281,26 +284,27 @@ Deno.serve(async (req) => {
   if (action === "resume") {
     if (!stripe) return json(500, { ok: false, error: "Stripe not configured" });
 
-    // ADDITIONAL-PET-...-GATING-002: a resume must re-check the authoritative
-    // lock at MUTATION time. The request may have been created while the order
-    // was open; if the evaluation has since been completed or a document
-    // issued, we must not hand back a checkout URL or fulfil anything.
-    {
-      const { data: lock } = await admin.rpc("additional_pet_order_locked", { p_order_id: o.id });
-      if (lock && (lock as { locked?: boolean }).locked) {
-        return json(409, {
-          ok: false, code: "order_completed",
-          lockReason: (lock as { reason?: string }).reason ?? null,
-          error: "Additional pets cannot be added after the evaluation is completed. The customer must start a new evaluation with all pets included.",
-        });
-      }
-    }
     const { data: pending } = await admin.from("order_additional_pet_requests")
       .select("*").eq("order_id", o.id).is("paid_at", null)
       .eq("pricing_outcome", "paid_upgrade")
       .in("status", ["payment_required", "checkout_created"])
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (!pending) return json(409, { ok: false, error: "No pending payment to resume" });
+
+    // ADDITIONAL-PET-...-GATING-002 + PRE-POST-COMPLETION-PRICING-001: a resume
+    // re-checks the authoritative lock at MUTATION time — but only for a
+    // PRE-completion request. A post-completion amendment is quoted on an
+    // already-locked order; refusing to resume it would strand its payment.
+    if (((pending as Record<string, unknown>).phase as string | null) !== "post_completion") {
+      const { data: lock } = await admin.rpc("additional_pet_order_locked", { p_order_id: o.id });
+      if (lock && (lock as { locked?: boolean }).locked) {
+        return json(409, {
+          ok: false, code: "order_completed",
+          lockReason: (lock as { reason?: string }).reason ?? null,
+          error: "This request was created before the evaluation was completed. Start a post-completion amendment to add the pet.",
+        });
+      }
+    }
 
     const pr = pending as {
       id: string; stripe_checkout_session_id: string | null;
@@ -455,6 +459,10 @@ Deno.serve(async (req) => {
       amount_cents: amountCents,
       pricing_version: pricingVersion,
       currency: "usd",
+      // PRE-POST-COMPLETION-PRICING-001: the resolver decides the phase. A
+      // post_completion row is an AMENDMENT — the webhook and the lock
+      // rechecks treat its locked parent as the expected state.
+      phase: (pr as { phase?: string }).phase === "post_completion" ? "post_completion" : "pre_completion",
       // $0 requests need no payment step at all — straight to provider review.
       status: isPaid ? "payment_required" : "pending_provider_review",
       assigned_provider_user_id: o.doctor_user_id,

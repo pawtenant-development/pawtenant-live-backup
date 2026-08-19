@@ -510,11 +510,12 @@ export default function OrderAdditionalPetMenuAction({
     );
   }
 
-  // ── ELIGIBLE: $20 upgrade or $0 included ──────────────────────────────────
+  // ── ELIGIBLE: paid upgrade/amendment or $0 included ───────────────────────
   const isPaid = outcome === "paid_upgrade";
   // The amount is rendered EXACTLY as the server returned it. No client-side
   // default: a missing amount must never be papered over with a guessed price.
   const priceLabel = isPaid ? dollars(pricing.amount_cents) : "Included";
+  const isAmendment = pricing.code === "post_completion_amendment";
 
   return (
     <>
@@ -523,9 +524,11 @@ export default function OrderAdditionalPetMenuAction({
         role="menuitem"
         // The menu is deliberately NOT closed here — see DialogHost.
         onClick={() => { setError(""); setSuccess(""); setPet(EMPTY_PET); setOpen(true); }}
-        title={isPaid
-          ? `Add another pet — a one-time ${priceLabel} package-tier upgrade`
-          : "Add another pet — already covered by this package"}
+        title={isAmendment
+          ? `Add another pet — ${priceLabel} post-completion amendment (revised letter as a new version; the original is preserved)`
+          : isPaid
+            ? `Add another pet — a one-time ${priceLabel} package-tier upgrade`
+            : "Add another pet — already covered by this package"}
         className={`${baseCls} text-[#1a5c4f] hover:bg-emerald-50 cursor-pointer`}
       >
         <i className="ri-add-circle-line" aria-hidden="true"></i>
@@ -533,6 +536,11 @@ export default function OrderAdditionalPetMenuAction({
           {isPaid
             ? <>Add Additional Pet <span className="font-normal text-gray-400">({priceLabel})</span></>
             : <>Add Additional Pet <span className="font-normal text-gray-400">— Included</span></>}
+          {isAmendment && (
+            <span className="mt-0.5 block font-normal leading-snug text-gray-400">
+              Post-completion amendment — revised letter issued as a new version
+            </span>
+          )}
           {pricing.resolved_by_admin && (
             <span className="mt-0.5 block font-normal leading-snug text-gray-400">
               Resolved by admin review

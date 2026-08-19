@@ -48,6 +48,11 @@ const SELF = process.argv.includes("--self-test");
 
 const F = {
   gating:     "supabase/migrations/20260728120000_additional_pet_completed_order_gating.sql",
+  // PRE-POST-COMPLETION-PRICING-001 (owner, 2026-08-19): the LATEST engine
+  // definition. The hard completion block became a paid $30 amendment path;
+  // the N-series pins the new policy against THIS file so the G-series can
+  // never pass vacuously against the superseded definition above.
+  amendment:  "supabase/migrations/20260819210000_additional_pet_pre_post_completion_and_snapshot_writer.sql",
   createFn:   "supabase/functions/create-additional-pet-request/index.ts",
   shared:     "supabase/functions/_shared/completeAdditionalPetPayment.ts",
   decision:   "supabase/functions/provider-additional-pet-decision/index.ts",
@@ -208,6 +213,47 @@ const CHECKS = [
         && !/create-additional-pet-request/.test(c);
     }],
 
+  // ── N-series: PRE-POST-COMPLETION-PRICING-001 (owner, 2026-08-19) ────────
+  // Completed orders are no longer categorically blocked: below the pet
+  // ceiling they take a paid $30 AMENDMENT (payment → provider review →
+  // revised letter as a NEW immutable version with its own verification ID).
+  ["N1", "the LATEST engine offers a post-completion amendment, not a hard block",
+    (s) => /post_completion_amendment/.test(stripComments(s.amendment))
+        && !/'code', 'order_completed', 'amount_cents', 0/.test(s.amendment.replace(/\s+/g, " "))],
+  ["N2", "the amendment amount is the server's current price, never a literal",
+    (s) => {
+      const c = stripComments(s.amendment).replace(/\s+/g, " ");
+      const i = c.indexOf("'post_completion_amendment'");
+      if (i < 0) return false;
+      const branch = c.slice(Math.max(0, i - 300), i + 700);
+      return /v_price->>'amount_cents'/.test(branch) && !/'amount_cents', 3000/.test(branch);
+    }],
+  ["N3", "pre-completion ESA third pet costs the $20 tier delta, never $0",
+    (s) => {
+      const c = stripComments(s.amendment).replace(/\s+/g, " ");
+      return /greatest\(v_snap\.purchased_pet_limit, 2\)/.test(c)
+        && /'amount_cents', 2000, 'currency', 'usd', 'pricing_version', 'esa_tier_delta_2000'/.test(c);
+    }],
+  ["N4", "the max-3 ceiling gates EVERY actionable outcome, amendment included",
+    (s) => {
+      const c = stripComments(s.amendment).replace(/\s+/g, " ");
+      const max = c.indexOf("max_pets_reached");
+      const amend = c.indexOf("post_completion_amendment");
+      const paid = c.indexOf("tier_upgrade_required");
+      return max > 0 && amend > max && paid > max;
+    }],
+  ["N5", "webhook race-parking applies ONLY to pre-completion requests",
+    (s) => /phase[^\n]*!==\s*"post_completion"/.test(stripComments(s.shared))],
+  ["N6", "create persists the resolver-decided phase on the request row",
+    (s) => /phase:\s*\(pr as \{ phase\?: string \}\)\.phase === "post_completion"/.test(s.createFn)],
+  ["N7", "mutation-time lock rechecks are phase-aware (amendments stay editable)",
+    (s) => (stripComments(s.createFn).match(/!== "post_completion"/g) ?? []).length >= 2],
+  ["N8", "partner-origin orders are segregated out of the retail workflow",
+    (s) => /partner_origin_not_supported/.test(stripComments(s.amendment))],
+  ["N9", "the amendment path still never mutates the original documents",
+    (s) => !/(insert into|update|delete from)\s+public\.(order_documents|letter_verifications|order_document_versions)/i
+      .test(stripComments(s.amendment))],
+
   // ── G14/G15 money + document integrity ──────────────────────────────────
   ["G14", "no provider earning is created by any Additional Pet path",
     (s) => {
@@ -248,6 +294,19 @@ const CONTROLS = [
   ["G12d",  "checkout offered when completed", (s) => ({ ...s, customerUi: s.customerUi.replace(/(code === "order_completed" && \()/, "$1 checkoutUrl && ") })],
   ["G13b",  "gating logic leaks into frozen file", (s) => ({ ...s, frozen: s.frozen + '\nconst leak = "create-additional-pet-request";\n' })],
   ["G14",   "provider earning added",       (s) => ({ ...s, shared: s.shared + '\nawait supabase.from("doctor_earnings").insert({});\n' })],
+  // ── N-series controls (owner-required plants, 2026-08-19) ────────────────
+  ["N1",    "completed-order hard lock reintroduced",
+    (s) => ({ ...s, amendment: s.amendment.replace(/'code', 'post_completion_amendment', 'amendment', true,/, "'code', 'order_completed', 'amount_cents', 0,") })],
+  ["N3",    "ESA third pet given away at $0",
+    (s) => ({ ...s, amendment: s.amendment.replace(/'amount_cents', 2000, 'currency', 'usd',/, "'amount_cents', 0, 'currency', 'usd',") })],
+  ["N4",    "fourth pet allowed (ceiling gone)",
+    (s) => ({ ...s, amendment: s.amendment.replace(/'max_pets_reached'/g, "'ceiling_disabled'") })],
+  ["N5",    "amendment payments parked as refunds again",
+    (s) => ({ ...s, shared: s.shared.replace(/ && \(reqRow\.phase as string \| null\) !== "post_completion"/, "") })],
+  ["N6",    "request rows lose their phase",
+    (s) => ({ ...s, createFn: s.createFn.replace(/phase: \(pr as \{ phase\?: string \}\)\.phase === "post_completion" \? "post_completion" : "pre_completion",/, "") })],
+  ["N8",    "partner orders leak into the retail workflow",
+    (s) => ({ ...s, amendment: s.amendment.replace(/partner_origin_not_supported/g, "x") })],
 ];
 
 function loadAll(override) {
