@@ -303,39 +303,28 @@ async function runChecks() {
     !/effDateFrom\s*=\s*activeKpi\s*\?\s*kpiFrom/.test(page) &&
     !/effDateTo\s*=\s*activeKpi\s*\?\s*kpiTo/.test(page));
 
-  // THE STALE-AGGREGATE DEFECT: a realtime push patched the row and left the
-  // cards frozen, which is what produced the reported 2-vs-1 and 0-vs-1.
-  // Scoped to the UPDATE handler specifically. Slicing from the first
-  // "postgres_changes" swept in the INSERT handler, which has its own
-  // invalidate call — so deleting the UPDATE one still passed. The UPDATE
-  // handler is the one that carries the reported defect (a provider submitting
-  // a letter moves the row without creating one).
-  const rtUpdateStart = page.indexOf('event: "UPDATE", schema: "public", table: "orders"');
-  const rtUpdate = rtUpdateStart === -1
+  const signalStart = page.indexOf("const handleSignal =");
+  const signalEnd = page.indexOf("const channel = supabase", signalStart);
+  const signalHandler = signalStart === -1 || signalEnd === -1
     ? ""
-    : page.slice(rtUpdateStart, page.indexOf(".subscribe()", rtUpdateStart));
-  // LIVE ADAPTATION. LIVE already invalidated on a realtime push, through the
-  // COALESCED scheduleAggregateInvalidation() (one invalidation per 2.5s burst)
-  // rather than TEST's direct call. LIVE's version is the better one and this
-  // rollout deliberately did NOT overwrite it, so the assertion accepts either.
-  add("K19 realtime order UPDATE pushes invalidate the KPI/facet aggregates",
-    rtUpdateStart !== -1 && /(scheduleAggregateInvalidation|invalidateOrderAggregates)\(\)/.test(rtUpdate),
-    "a realtime row patch must not leave the counts describing a stale world");
+    : page.slice(signalStart, signalEnd);
+  const signalSubscriptionStart = page.indexOf('.channel("admin-order-change-signal")');
+  const signalSubscription = signalSubscriptionStart === -1
+    ? ""
+    : page.slice(signalSubscriptionStart, page.indexOf("return () =>", signalSubscriptionStart));
 
-  // LIVE ADAPTATION. TEST filters pushes by lifecycle column to avoid a refetch
-  // storm; LIVE achieves the same end by COALESCING them on a timer, which does
-  // not depend on payload.old at all. Assert LIVE's mechanism, not TEST's.
-  add("K20 realtime invalidation is coalesced, so a burst cannot storm the counts",
-    /const scheduleAggregateInvalidation = useCallback/.test(page) &&
-    /externalInvalidateTimerRef\.current !== null\) return;/.test(page));
+  add("K19 realtime order-change signals invalidate the KPI/facet aggregates",
+    signalHandler.includes("scheduleAggregateInvalidation()"),
+    "an external order change must refresh rows and counts together");
 
-  // LIVE ADAPTATION. TEST needed a fail-safe because it inspected `payload.old`,
-  // which carries only the primary key at REPLICA IDENTITY DEFAULT and so can
-  // never prove a lifecycle column changed. LIVE never inspects `old` — it
-  // invalidates on ANY orders push — making it fail-safe by construction. Pin
-  // that it does not start conditionally skipping.
-  add("K21 LIVE invalidates on ANY orders push (no payload.old dependence)",
-    rtUpdateStart !== -1 && !/payload\.old/.test(rtUpdate) && !/AGGREGATE_RELEVANT/.test(rtUpdate));
+  add("K20 Realtime uses the sanitized admin signal, never raw order rows",
+    signalSubscription.includes('table: "admin_order_change_signal"') &&
+    !signalSubscription.includes('table: "orders"'));
+
+  add("K21 reconnect/focus reconciliation fails safe after missed pushes",
+    signalSubscription.includes('status === "SUBSCRIBED"') &&
+    signalSubscription.includes('addEventListener("focus"') &&
+    signalSubscription.includes('addEventListener("visibilitychange"'));
 
   // The cards must be re-read at the same moment the rows are, or they describe
   // an older world than the list beside them — the reported 2-vs-"1 of 1".
@@ -402,17 +391,15 @@ if (SELF) {
     { name: "count and list windows drift apart again", file: PAGE, expect: "K17",
       from: "  const kpiWindow = activeKpi ? kpiCardWindow(activeKpi, { from: kpiFrom, to: kpiTo }) : null;",
       to: "  const kpiWindow = activeKpi ? { dateBasis: KPI_CARD_BASIS[activeKpi], dateFrom: kpiFrom, dateTo: kpiTo } : null;" },
-    // LIVE ADAPTATION: LIVE's UPDATE handler ends in the coalesced scheduler.
-    { name: "realtime push stops invalidating the aggregates (the reported bug)", file: PAGE, expect: "K19",
-      from: "          // called invalidateOrderAggregates().\n          scheduleAggregateInvalidation();",
-      to: "          // called invalidateOrderAggregates().\n          /* aggregates left stale */" },
-    // LIVE ADAPTATION of TEST's REPLICA-IDENTITY control. LIVE is fail-safe
-    // because it never inspects payload.old; the equivalent defect here is
-    // making invalidation conditional on an `old` payload that cannot prove
-    // anything (it carries only the primary key).
-    { name: "invalidation becomes conditional on a payload.old comparison", file: PAGE, expect: "K21",
-      from: "          // called invalidateOrderAggregates().\n          scheduleAggregateInvalidation();",
-      to: "          // called invalidateOrderAggregates().\n          if (payload.old) scheduleAggregateInvalidation();" },
+    { name: "order-change signal stops invalidating aggregates", file: PAGE, expect: "K19",
+      from: "      scheduleAggregateInvalidation();",
+      to: "      /* aggregates left stale */" },
+    { name: "Realtime subscribes to raw order rows", file: PAGE, expect: "K20",
+      from: 'table: "admin_order_change_signal"',
+      to: 'table: "orders"' },
+    { name: "reconnect no longer reconciles missed pushes", file: PAGE, expect: "K21",
+      from: 'status === "SUBSCRIBED"',
+      to: 'status === "IGNORED"' },
     { name: "cards stop refetching when the list refetches (stale card returns)", file: PAGE, expect: "K23",
       from: "  }, [listQueryKey, kpiFrom, kpiTo,",
       to: "  }, [kpiFrom, kpiTo," },
