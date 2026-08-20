@@ -254,12 +254,42 @@ export const CHECKS = [
   // under the operator's cursor when they select a card, or make them depend on
   // how far the list has been paged.
   { name: "the KPI effect ignores card/status/pagination state", file: PAGE,
-    run: (s) => {
-      const m = s.match(/fetchKpiCardCounts\([\s\S]{0,900}?\}\s*,\s*\[([^\]]*)\]\s*\)/);
-      if (!m) return "could not locate the KPI card-count effect dependency array";
-      const bad = m[1].split(",").map((d) => d.trim()).filter((d) =>
-        ["statusFilter", "activeKpi", "dateBasis", "visibleCount", "sortOrder"].includes(d));
-      return bad.length ? `KPI counts depend on selection/pagination state: ${bad.join(", ")}` : null;
+    run: (raw) => {
+      // ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001 — assert the CALL ARGUMENTS as
+      // well as the dependency array, and strip COMMENTS first.
+      //
+      // The guarantee that matters is that the INPUTS to fetchKpiCardCounts
+      // carry no trace of the selection: identical inputs return identical
+      // numbers, so the values cannot move under the operator's cursor. The
+      // dependency array is only a refetch TRIGGER, and it now includes
+      // listQueryKey on purpose so the cards and the rows are read at the same
+      // moment — without that, clicking a card refreshed the list and left the
+      // numbers describing an older world.
+      //
+      // Stripping comments matters: the first literal "fetchKpiCardCounts(" in
+      // raw source is a MENTION inside a comment. The old fixed-width regex
+      // over the deps also broke the moment a comment was added above it.
+      const s = raw
+        .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+        .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, " "));
+      const i = s.indexOf("fetchKpiCardCounts(");
+      if (i < 0) return "could not locate the fetchKpiCardCounts call";
+      const end = "to: kpiTo }";
+      const j = s.indexOf(end, i);
+      if (j < 0) return "could not locate the fetchKpiCardCounts arguments";
+      const args = s.slice(i, j + end.length);
+      const FORBIDDEN = ["statusFilter", "activeKpi", "visibleCount", "sortOrder",
+        "effDateBasis", "effDateFrom", "effDateTo"];
+      const badArgs = FORBIDDEN.filter((d) => new RegExp(`\b${d}\b`).test(args));
+      if (badArgs.length) {
+        return `KPI counts depend on selection/pagination state: ${badArgs.join(", ")}`;
+      }
+      const dm = s.match(/\}, \[listQueryKey,([^\]]*)\]\);/);
+      if (!dm) return "could not locate the KPI card-count effect dependency array";
+      const badDeps = dm[1].split(",").map((d) => d.trim()).filter((d) => FORBIDDEN.includes(d));
+      return badDeps.length
+        ? `KPI counts refetch on selection/pagination state: ${badDeps.join(", ")}`
+        : null;
     } },
   { name: "KPI card state is distinct from facet state", file: PAGE,
     run: (s) => /const \[kpiCounts,/.test(s) && /const \[facetCounts,/.test(s)

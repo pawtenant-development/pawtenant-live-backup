@@ -507,6 +507,66 @@ export const KPI_CARD_BASIS: Record<KpiCardKey, OrderDateBasis> = {
   completed: "completed",
 };
 
+// ─── ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001 ────────────────────────────────
+//
+// WHAT A CARD MEANS. Two kinds, and conflating them is the defect this fixes.
+//
+//   "operational" — a WORK QUEUE. It answers "how much is on my desk right
+//                   now?". Its population is CURRENT INVENTORY across ALL
+//                   DATES. Lead (Unpaid), Paid (Unassigned), Under Review and
+//                   Pending Delivery are queues.
+//
+//   "event"       — a lifecycle EVENT that happened inside the selected
+//                   business period. Completed is the only one: an order paid
+//                   in July but completed in August belongs to August.
+//
+// THE BUG THIS REPLACES. Every card, queues included, was gated on
+// "entered this stage inside the active New York window". That is a hybrid
+// (in the queue now AND entered it this month), and it silently deletes real
+// work: an order that entered Pending Delivery on July 30 and is still waiting
+// on August 1 counted as ZERO while it sat in the queue. Observed on LIVE:
+// Pending Delivery showed 0 with one order genuinely waiting. A queue is sized
+// by WHAT IS IN IT, never by when each item arrived.
+//
+// A second, quieter consequence: `gte`/`lt` drop NULLs, so a queued order whose
+// stage-entry timestamp was never recorded was invisible on its card in EVERY
+// month. Dropping the range for queues fixes that too.
+export type KpiCardKind = "operational" | "event";
+
+export const KPI_CARD_KIND: Record<KpiCardKey, KpiCardKind> = {
+  lead_unpaid: "operational",
+  paid_unassigned: "operational",
+  under_review: "operational",
+  pending_delivery: "operational",
+  completed: "event",
+};
+
+/**
+ * THE window a card is measured over — used by BOTH the card's count and the
+ * list the card opens.
+ *
+ * This function existing is the whole parity mechanism. The count and the list
+ * previously each built their own (basis, from, to) triple from the same inputs;
+ * that is parity by coincidence, and it survives exactly until someone edits one
+ * of them. Now there is one function, so the clicked list cannot be windowed
+ * differently from the number that was clicked.
+ *
+ * Operational cards keep their stage-entry BASIS — it still drives the sort, the
+ * day ribbons and the CSV order, which is genuinely useful ("oldest in the queue
+ * first") — but carry NO range, so current workload never expires at a month
+ * rollover.
+ */
+export function kpiCardWindow(
+  key: KpiCardKey,
+  range: { from?: string; to?: string },
+): { dateBasis: OrderDateBasis; dateFrom?: string; dateTo?: string } {
+  const dateBasis = KPI_CARD_BASIS[key];
+  if (KPI_CARD_KIND[key] === "operational") {
+    return { dateBasis, dateFrom: undefined, dateTo: undefined };
+  }
+  return { dateBasis, dateFrom: range.from, dateTo: range.to };
+}
+
 export const KPI_CARD_LABEL: Record<KpiCardKey, string> = {
   lead_unpaid: "Lead (Unpaid)",
   paid_unassigned: "Paid (Unassigned)",
@@ -550,9 +610,10 @@ export async function fetchKpiCardCounts(
           applyBucket(
             applyNonStatusFilters(newCountQuery().neq("status", "archived"), {
               ...f,
-              dateBasis: KPI_CARD_BASIS[k],
-              dateFrom: range.from,
-              dateTo: range.to,
+              // ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001: the SAME helper the
+              // list uses to build its effective window (page.tsx). Operational
+              // queues come back with no range — current inventory, all dates.
+              ...kpiCardWindow(k, range),
             }),
             k,
           ),

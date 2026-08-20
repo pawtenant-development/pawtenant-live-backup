@@ -277,16 +277,32 @@ const CHECKS = [
     const body = f.slice(i, f.indexOf("\n}", i));
     return /applyBucket\(\s*applyNonStatusFilters\(/.test(body);
   }],
-  ["N27", "each card count is windowed on that card's own basis", () => {
-    const f = read(FACET);
-    return /dateBasis: KPI_CARD_BASIS\[k\]/.test(f)
-      && /dateFrom: range\.from/.test(f) && /dateTo: range\.to/.test(f);
+  // ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001 — N27/N28 previously pinned the two
+  // LITERAL expressions that built the window on each side. That encoded the old
+  // contract (every card, queues included, gated on its stage-entry date inside
+  // the active month) and it also only ever proved the two literals MATCHED, not
+  // that they came from one source.
+  //
+  // The window is now produced by a single exported function, kpiCardWindow(),
+  // used by the count and by the list. These checks are correspondingly
+  // STRICTER: they require that shared authority on both sides, so two
+  // independent-but-currently-identical expressions can no longer pass.
+  // Queue-vs-period semantics themselves are owned by
+  // check-admin-orders-kpi-list-parity.mjs, which executes the predicates.
+  ["N27", "each card count takes its window from the shared kpiCardWindow()", () => {
+    const f = stripComments(read(FACET));
+    const i = f.indexOf("export async function fetchKpiCardCounts");
+    if (i < 0) return false;
+    const body = f.slice(i, f.indexOf("\n}", i));
+    return /\.\.\.kpiCardWindow\(\s*k\s*,\s*range\s*\)/.test(body)
+      && !/dateFrom: range\.from/.test(body) && !/dateTo: range\.to/.test(body);
   }],
-  ["N28", "the list applies the card's basis and window (EFFECTIVE window)", () => {
+  ["N28", "the list applies the SAME kpiCardWindow() (EFFECTIVE window)", () => {
     const p = stripComments(read(PAGE));
-    return /const effDateBasis: OrderDateBasis = activeKpi \? KPI_CARD_BASIS\[activeKpi\] : dateBasis/.test(p)
-      && /const effDateFrom = activeKpi \? kpiFrom : \(dateFrom \|\| undefined\)/.test(p)
-      && /const effDateTo = activeKpi \? kpiTo : \(dateTo \|\| undefined\)/.test(p);
+    return /const kpiWindow = activeKpi \? kpiCardWindow\(activeKpi,/.test(p)
+      && /const effDateBasis: OrderDateBasis = kpiWindow \? kpiWindow\.dateBasis : dateBasis/.test(p)
+      && /const effDateFrom = kpiWindow \? kpiWindow\.dateFrom : \(dateFrom \|\| undefined\)/.test(p)
+      && /const effDateTo = kpiWindow \? kpiWindow\.dateTo : \(dateTo \|\| undefined\)/.test(p);
   }],
   ["N29", "the row predicate uses the EFFECTIVE window, not the raw state", () => {
     const p = stripComments(read(PAGE));
@@ -331,13 +347,33 @@ const CHECKS = [
     return /const firstLoad = kpiCountsLoading && kpiCounts == null/.test(r);
   }],
   ["N38", "selecting a card does NOT change what any card counts", () => {
-    // The count effect must not depend on activeKpi or statusFilter, or the
-    // numbers would move under the operator's cursor when a card is clicked.
-    const p = read(PAGE);
-    const m = p.match(/fetchKpiCardCounts\([\s\S]{0,900}?\}\s*,\s*\[([^\]]*)\]\s*\)/);
-    if (!m) return false;
-    const deps = m[1].split(",").map((d) => d.trim());
-    return !deps.includes("activeKpi") && !deps.includes("statusFilter") && !deps.includes("visibleCount");
+    // ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001 — asserted on the CALL ARGUMENTS
+    // *and* the dependency array.
+    //
+    // What guarantees the numbers do not move under the operator's cursor is
+    // that the INPUTS to fetchKpiCardCounts carry no trace of the selection:
+    // identical inputs return identical numbers. The dependency array is only a
+    // refetch TRIGGER, and it now includes listQueryKey on purpose so the cards
+    // and the rows are read at the same moment — without that, clicking a card
+    // refreshed the list and left the numbers describing an older world.
+    //
+    // Both halves are kept: dropping the dep pin silently disarms the "numbers
+    // move on click" control below. The old fixed-width regex also broke the
+    // moment a comment was added above the deps.
+    const p = stripComments(read(PAGE));
+    const i = p.indexOf("fetchKpiCardCounts(");
+    if (i < 0) return false;
+    const endMarker = "to: kpiTo }";
+    const j = p.indexOf(endMarker, i);
+    if (j < 0) return false;
+    const args = p.slice(i, j + endMarker.length);
+    const FORBIDDEN = ["activeKpi", "statusFilter", "visibleCount", "effDateBasis", "effDateFrom", "effDateTo"];
+    if (FORBIDDEN.some((d) => new RegExp(`\b${d}\b`).test(args))) return false;
+    if (/orders\.(filter|length)/.test(args)) return false;
+    const dm = p.match(/\}, \[listQueryKey,([^\]]*)\]\);/);
+    if (!dm) return false;
+    const deps = dm[1].split(",").map((d) => d.trim());
+    return !FORBIDDEN.some((d) => deps.includes(d)) && !deps.includes("sortOrder");
   }],
   ["N39", "the active card states the FULL result across all date groups", () => {
     const p = stripComments(read(PAGE));
@@ -509,11 +545,15 @@ const CONTROLS = [
     (s) => s.replace("applyKpiSelection(activeKpi === key ? null : key);", "applyKpiSelection(key);")],
   ["a manual status tab stops clearing the KPI card", PAGE,
     (s) => s.replace("onClick={() => onStatusTabClick(opt.value)}", "onClick={() => setStatusFilter(opt.value)}")],
+  // ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001 — repointed to the new anchors.
+  // The window is now produced by kpiCardWindow(); the old literals these
+  // controls mutated no longer exist, so they had gone NO-OP and were proving
+  // nothing.
   ["the card list drops the date window (count/list drift)", PAGE,
-    (s) => s.replace("const effDateFrom = activeKpi ? kpiFrom : (dateFrom || undefined);",
+    (s) => s.replace("const effDateFrom = kpiWindow ? kpiWindow.dateFrom : (dateFrom || undefined);",
       "const effDateFrom = dateFrom || undefined;")],
   ["the card list drops the card's basis (count/list drift)", PAGE,
-    (s) => s.replace("const effDateBasis: OrderDateBasis = activeKpi ? KPI_CARD_BASIS[activeKpi] : dateBasis;",
+    (s) => s.replace("const effDateBasis: OrderDateBasis = kpiWindow ? kpiWindow.dateBasis : dateBasis;",
       "const effDateBasis: OrderDateBasis = dateBasis;")],
   ["the row predicate stops using the effective window", PAGE,
     (s) => s.replace("matchesBasisDateRange(o, effDateBasis, effDateFrom, effDateTo)",

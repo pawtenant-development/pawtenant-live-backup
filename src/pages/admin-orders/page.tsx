@@ -72,9 +72,12 @@ import {
   // the SAME predicate builder as the list total, which is what makes
   // count-to-list parity structural rather than asserted.
   fetchKpiCardCounts,
-  KPI_CARD_BASIS,
   KPI_CARD_KEYS,
   KPI_CARD_LABEL,
+  // ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001 — one window builder shared by the
+  // card count and the list the card opens.
+  KPI_CARD_KIND,
+  kpiCardWindow,
   type KpiCardKey,
   type KpiCardCounts,
   // ADMIN-ORDERS-SERVER-BACKED-LOADING-001 — the row read borrows the SAME
@@ -968,9 +971,22 @@ export default function AdminOrdersPage() {
   // completions were correctly selected and then filed under JULY ribbons — the
   // "July groups inside the August Completed view" defect. One basis drives the
   // predicate, the count, the sort, the ribbons and the export, or they drift.
-  const effDateBasis: OrderDateBasis = activeKpi ? KPI_CARD_BASIS[activeKpi] : dateBasis;
-  const effDateFrom = activeKpi ? kpiFrom : (dateFrom || undefined);
-  const effDateTo = activeKpi ? kpiTo : (dateTo || undefined);
+  //
+  // ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001 — the window now comes from
+  // kpiCardWindow(), the SAME function fetchKpiCardCounts() calls. Previously
+  // both sides independently built (basis, kpiFrom, kpiTo); that is parity by
+  // coincidence and it hid a real defect: OPERATIONAL queues were date-gated, so
+  // an order that entered Pending Delivery in July vanished from the card on
+  // August 1 while still sitting in the queue. Queues are current inventory
+  // across ALL dates; only Completed is a period event.
+  const kpiWindow = activeKpi ? kpiCardWindow(activeKpi, { from: kpiFrom, to: kpiTo }) : null;
+  const effDateBasis: OrderDateBasis = kpiWindow ? kpiWindow.dateBasis : dateBasis;
+  const effDateFrom = kpiWindow ? kpiWindow.dateFrom : (dateFrom || undefined);
+  const effDateTo = kpiWindow ? kpiWindow.dateTo : (dateTo || undefined);
+  // Whether the ACTIVE card is a work queue (all dates) or a period event. Drives
+  // the banner copy, so the words on screen can never claim a period the rows
+  // were not actually filtered by.
+  const activeKpiKind = activeKpi ? KPI_CARD_KIND[activeKpi] : null;
   // The one label every surface names the active date by. Derived from the same
   // `effDateBasis`, so the words on screen can never describe a different column
   // than the rows were selected, sorted and grouped on.
@@ -1025,42 +1041,6 @@ export default function AdminOrdersPage() {
 
 
 
-  // ── The five KPI card counts ───────────────────────────────────────────────
-  //
-  // One narrow server COUNT per card, each on ITS OWN stage-entry basis over the
-  // active New York window, built by the SAME applyNonStatusFilters/applyBucket
-  // pair the list total uses (see orderFacetCounts.ts). Never derived from the
-  // browser's loaded rows.
-  //
-  // Deliberately independent of `statusFilter` and `activeKpi`: selecting a card
-  // must not change what any card says, or the numbers would move under the
-  // operator's cursor — the flicker this task exists to remove.
-  useEffect(() => {
-    // Values already on screen stay there while the next window loads; the
-    // skeleton is first-load only. Never reset the counts to null/zero here.
-    setKpiCountsLoading(true);
-    const t = window.setTimeout(() => {
-      void runLatest(
-        kpiCountGuard,
-        () => fetchKpiCardCounts({
-          payment: paymentFilter,
-          state: stateFilterAdv,
-          referredBy: referredByFilter,
-          assignedProvider: doctorFilter,
-          requestedProvider: selectedProviderFilter,
-          sequence: sequenceFilter,
-          search: debouncedSearch,
-          nonGhl: showNonGhlOnly,
-          source: sourceFilter ?? undefined,
-          packageFilter,
-          duplicatesOnly: showDuplicatesOnly,
-        }, { from: kpiFrom, to: kpiTo }),
-        (c) => { setKpiCounts(c); setKpiCountsLoading(false); },
-        () => setKpiCountsLoading(false),
-      );
-    }, 300);
-    return () => { window.clearTimeout(t); };
-  }, [kpiFrom, kpiTo, paymentFilter, stateFilterAdv, referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter, debouncedSearch, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly, monthlyKpiReloadToken, aggregateReloadToken, kpiCountGuard]);
 
   // ── THE ORDERS LIST QUERY (ADMIN-ORDERS-SERVER-BACKED-LOADING-001) ─────────
   //
@@ -1113,6 +1093,57 @@ export default function AdminOrdersPage() {
     () => JSON.stringify([listFilters, statusFilter, effDateBasis, sortOrder, defaultScopeActive]),
     [listFilters, statusFilter, effDateBasis, sortOrder, defaultScopeActive],
   );
+
+  // ── The five KPI card counts ───────────────────────────────────────────────
+  //
+  // One narrow server COUNT per card, each on ITS OWN stage-entry basis over the
+  // active New York window, built by the SAME applyNonStatusFilters/applyBucket
+  // pair the list total uses (see orderFacetCounts.ts). Never derived from the
+  // browser's loaded rows.
+  //
+  // Deliberately independent of `statusFilter` and `activeKpi`: selecting a card
+  // must not change what any card says, or the numbers would move under the
+  // operator's cursor — the flicker this task exists to remove.
+  useEffect(() => {
+    // Values already on screen stay there while the next window loads; the
+    // skeleton is first-load only. Never reset the counts to null/zero here.
+    setKpiCountsLoading(true);
+    const t = window.setTimeout(() => {
+      void runLatest(
+        kpiCountGuard,
+        () => fetchKpiCardCounts({
+          payment: paymentFilter,
+          state: stateFilterAdv,
+          referredBy: referredByFilter,
+          assignedProvider: doctorFilter,
+          requestedProvider: selectedProviderFilter,
+          sequence: sequenceFilter,
+          search: debouncedSearch,
+          nonGhl: showNonGhlOnly,
+          source: sourceFilter ?? undefined,
+          packageFilter,
+          duplicatesOnly: showDuplicatesOnly,
+        }, { from: kpiFrom, to: kpiTo }),
+        (c) => { setKpiCounts(c); setKpiCountsLoading(false); },
+        () => setKpiCountsLoading(false),
+      );
+    }, 300);
+    return () => { window.clearTimeout(t); };
+    // `listQueryKey` is a dependency for a reason that is easy to mistake for a
+    // bug. The cards deliberately do NOT depend on activeKpi/statusFilter — what
+    // a card counts must not change when you select one. But the LIST re-reads
+    // whenever that key changes, and if the cards do not re-read at the same
+    // moment they end up describing an OLDER world than the rows beside them.
+    //
+    // That is exactly the reported evidence: Under Review 2 against a list of
+    // "1 of 1". `orders` is not in this project's realtime publication and there
+    // is no polling loop, so nothing else would ever reconcile them — clicking a
+    // card refreshed the rows and left the numbers frozen at page-load values.
+    //
+    // Recomputing here cannot cause flicker: fetchKpiCardCounts ignores
+    // activeKpi and statusFilter, so the same inputs return the same numbers
+    // unless the underlying DATA actually moved.
+  }, [listQueryKey, kpiFrom, kpiTo, paymentFilter, stateFilterAdv, referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter, debouncedSearch, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly, monthlyKpiReloadToken, aggregateReloadToken, kpiCountGuard]);
 
   // First page of the CURRENT query. The previous query's rows deliberately
   // stay on screen (flagged loading) until this resolves, then are REPLACED —
@@ -3468,8 +3499,16 @@ export default function AdminOrdersPage() {
                   list total always equals the number on the card. */}
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-1.5 px-0.5">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Operations overview</span>
+                {/* ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001 §3 — the period
+                    applies to COMPLETED ONLY. The four queue cards are current
+                    workload across every date. Naming the period unqualified
+                    made a date-gated queue reading 0 indistinguishable from an
+                    empty desk, which is exactly what was reported. */}
                 <span className="text-[11px] font-semibold text-gray-500">
-                  · {kpiRangeExplicit
+                  · queues: now, all dates
+                </span>
+                <span className="text-[11px] font-semibold text-gray-500">
+                  · completed: {kpiRangeExplicit
                     ? `${dateFrom || "start"} → ${dateTo || "today"}`
                     : `${kpiMonth.from} – ${kpiMonth.toInclusive}`}
                 </span>
@@ -3484,8 +3523,8 @@ export default function AdminOrdersPage() {
                   className="ri-information-line text-gray-300 hover:text-gray-400 text-sm cursor-help"
                   tabIndex={0}
                   role="img"
-                  aria-label="Each card counts orders that are in that queue RIGHT NOW and entered it inside the window shown, measured on that stage's own authoritative timestamp: created, first paid, entered under review, entered pending delivery, completed. Days are America/New_York business days. Click a card to filter the list to exactly those orders — the list total always equals the number on the card. Click the same card again, or click All, to clear it. With no date filter the window is the current New York calendar month; setting From/To uses that range instead."
-                  title="Orders in each queue NOW that entered it inside the window shown (America/New_York). Click a card to see exactly those orders — the list total equals the card. Click it again, or All, to clear."
+                  aria-label="Lead (Unpaid), Paid (Unassigned), Under Review and Pending Delivery are WORK QUEUES: they count every order in that queue right now, across all dates, so an order that entered the queue in an earlier month still counts while it is unresolved. The date range does not apply to them. Completed is different — it counts orders completed inside the selected business period, measured on the completion timestamp in America/New_York; with no date filter that period is the current New York calendar month. Click a card to filter the list to exactly those orders — the list total always equals the number on the card. Click the same card again, or click All, to clear it."
+                  title="Queues (Lead, Paid Unassigned, Under Review, Pending Delivery) = what is in them NOW, all dates. Completed = completed inside the selected period (America/New_York). Click a card to see exactly those orders — the list total equals the card."
                 ></i>
               </div>
               {/* EXACTLY five permanent workflow cards — Lead (Unpaid), Paid
@@ -3561,17 +3600,29 @@ export default function AdminOrdersPage() {
                     <p className="text-xs font-bold text-[#3b6ea5]">
                       {kpiCounts?.counts[activeKpi] == null ? "—" : kpiCounts.counts[activeKpi]}
                       {" "}{KPI_CARD_LABEL[activeKpi]} order
-                      {kpiCounts?.counts[activeKpi] === 1 ? "" : "s"} in {kpiRangeExplicit
-                        ? `${dateFrom || "start"} – ${dateTo || "today"}`
-                        : `${kpiMonth.from} – ${kpiMonth.toInclusive}`}
+                      {/* ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001 §3 — the copy is
+                          derived from the card KIND, so it cannot claim a period
+                          the rows were not filtered by. A work queue is current
+                          inventory across every date; only Completed is scoped to
+                          the selected business period. The old text labelled BOTH
+                          as "in <month>", which is precisely how a queue card
+                          reading 0 looked like an empty desk instead of a
+                          date-gated one. */}
+                      {kpiCounts?.counts[activeKpi] === 1 ? "" : "s"}{" "}
+                      {activeKpiKind === "operational"
+                        ? "in this queue right now — all dates"
+                        : `completed in ${kpiRangeExplicit
+                            ? `${dateFrom || "start"} – ${dateTo || "today"}`
+                            : `${kpiMonth.from} – ${kpiMonth.toInclusive}`}`}
                     </p>
                     {/* ...-LIFECYCLE-DATE-INTEGRITY-002 — name the column the whole
                         view is measured on. The count, the rows, the day ribbons
                         and the CSV all read this one date, so the operator can
                         read a group heading as that event and not guess. */}
                     <p className="text-[10px] text-[#3b6ea5]/70 mt-0.5">
-                      Counted, listed, grouped and exported by {effDateBasisLabel} · America/New_York.
-                      Across all date groups below — &ldquo;Today&rdquo; is only one of them.
+                      {activeKpiKind === "operational"
+                        ? <>Current workload — the date range above is not applied, so older unresolved orders stay visible. Sorted and grouped by {effDateBasisLabel} · America/New_York.</>
+                        : <>Counted, listed, grouped and exported by {effDateBasisLabel} · America/New_York. Across all date groups below — &ldquo;Today&rdquo; is only one of them.</>}
                     </p>
                   </div>
                   <button
