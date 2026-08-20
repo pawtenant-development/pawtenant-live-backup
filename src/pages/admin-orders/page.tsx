@@ -1461,43 +1461,50 @@ export default function AdminOrdersPage() {
     return covered;
   }, [assignableProviders]);
 
-  // ── Real-time subscription for new/updated orders ─────────────────────────
+  // ── Privacy-safe order change signal ──────────────────────────────────────
+  // `orders` contains customer data and is deliberately not streamed to the
+  // LIVE admin browser. A one-row, admin-readable signal carries only a revision,
+  // order id, event type, and paid-transition bit. Any signal refreshes the
+  // current server-paged list and every authoritative aggregate through the
+  // existing coalesced invalidation path; no whole-table polling is introduced.
   useEffect(() => {
+    const handleSignal = (_payload: { new: Record<string, unknown> }) => {
+      setLastSyncedAt(new Date());
+      scheduleAggregateInvalidation();
+    };
+
     const channel = supabase
-      .channel("admin-orders-live")
+      .channel("admin-order-change-signal")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "orders" },
-        (payload) => {
-          const newOrder = payload.new as Order;
-          mutateOrders((prev) => {
-            if (prev.some((o) => o.id === newOrder.id)) return prev;
-            // Always prepend — filtered sort will place it correctly
-            return [newOrder, ...prev];
-          });
+        { event: "*", schema: "public", table: "admin_order_change_signal" },
+        handleSignal,
+      )
+      .subscribe((status) => {
+        // Postgres Changes does not replay gaps after a sleeping browser.
+        // Reconcile once on every initial subscription/reconnection.
+        if (status === "SUBSCRIBED") {
           setLastSyncedAt(new Date());
-          // A realtime push changes the ROWS; the KPI banner and the facet counts
-          // describe those same rows and must move with them, or the banner goes
-          // stale exactly as reported.
           scheduleAggregateInvalidation();
         }
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "orders" },
-        (payload) => {
-          const updated = payload.new as Order;
-          mutateOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
-          setLastSyncedAt(new Date());
-          // This is the transition path that produced the reported mismatch: a
-          // provider submitting a letter flips doctor_status to
-          // pending_admin_approval from ANOTHER session, so nothing in this tab
-          // called invalidateOrderAggregates().
-          scheduleAggregateInvalidation();
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+      });
+
+    const reconcileWhenActive = () => {
+      if (document.visibilityState === "visible") {
+        setLastSyncedAt(new Date());
+        scheduleAggregateInvalidation();
+      }
+    };
+    window.addEventListener("focus", reconcileWhenActive);
+    window.addEventListener("online", reconcileWhenActive);
+    document.addEventListener("visibilitychange", reconcileWhenActive);
+
+    return () => {
+      window.removeEventListener("focus", reconcileWhenActive);
+      window.removeEventListener("online", reconcileWhenActive);
+      document.removeEventListener("visibilitychange", reconcileWhenActive);
+      void supabase.removeChannel(channel);
+    };
   }, [scheduleAggregateInvalidation]);
 
   // ── Real-time subscription for new inbound SMS/calls → bump comms badge ──
