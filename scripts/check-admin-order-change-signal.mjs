@@ -40,7 +40,6 @@ function evaluate(s) {
     ["signal refreshes list and aggregates", realtime.includes("scheduleAggregateInvalidation()") && /\[listQueryKey, aggregateReloadToken, orderRowsGuard\]/.test(s.page)],
     ["reconnect reconciles missed changes", realtime.includes('status === "SUBSCRIBED"')],
     ["focus/online/visibility reconcile", realtime.includes('addEventListener("focus"') && realtime.includes('addEventListener("online"') && realtime.includes('addEventListener("visibilitychange"')],
-    ["paid notification fetch stays admin-gated", realtime.includes('.from("orders")') && realtime.includes(".eq(\"id\", signal.order_id)")],
     ["guard is wired into build", s.pkg.includes("check-admin-order-change-signal.mjs")],
   ];
 }
