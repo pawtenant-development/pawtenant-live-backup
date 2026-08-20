@@ -90,6 +90,7 @@ export const SPIKE_ROUTES: string[] = [
   "/doctors/henry-smith",
   "/doctors/chad-cunningham",
   "/doctors/karla-delgado",
+  "/doctors/cassandra-enriquez",
   // AI-SEO-LIVE-SOFT-404-COMMERCIAL-ROUTES-001
   "/are-online-esa-letters-legit",
   "/esa-vs-psd-letter",
@@ -121,6 +122,7 @@ export const ROUTE_SOURCE: Record<string, string> = {
   "/doctors/henry-smith": "src/pages/doctor-profile/page.tsx",
   "/doctors/chad-cunningham": "src/pages/doctor-profile/page.tsx",
   "/doctors/karla-delgado": "src/pages/doctor-profile/page.tsx",
+  "/doctors/cassandra-enriquez": "src/pages/doctor-profile/page.tsx",
   // AI-SEO-LIVE-SOFT-404-COMMERCIAL-ROUTES-001
   "/are-online-esa-letters-legit": "src/pages/are-online-esa-letters-legit/page.tsx",
   "/esa-vs-psd-letter": "src/pages/esa-vs-psd-letter/page.tsx",

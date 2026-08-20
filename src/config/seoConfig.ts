@@ -136,6 +136,11 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Karla Delgado is a Licensed Marriage and Family Therapist (LMFT) providing individual telehealth ESA evaluations through PawTenant. NPI-verified.",
   },
+  "/doctors/cassandra-enriquez": {
+    title: "Cassandra Enriquez, LPC | ESA Evaluations | PawTenant",
+    description:
+      "Cassandra Enriquez is a Licensed Professional Counselor (LPC) providing individual telehealth ESA evaluations through PawTenant. NPI-verified.",
+  },
   "/explore-esa-letters-all-states": {
     title: "ESA Letter by State | All 50 US States | PawTenant",
     description:

@@ -168,7 +168,7 @@ const SPIKE = [
     mustText: ["Explore ESA Letter"],
   },
   // ── Provider directory + curated provider profiles ─────────────────────────
-  // AI-SEO-PROVIDER-CANONICAL-DEDUP-AND-EXPANSION-001. Exactly 8 provider routes
+  // AI-SEO-PROVIDER-CANONICAL-DEDUP-AND-EXPANSION-001. Published provider routes
   // prerendered + the /our-providers directory.
   {
     path: "/our-providers", file: "our-providers/index.html",
@@ -219,6 +219,11 @@ const SPIKE = [
     path: "/doctors/karla-delgado", file: "doctors/karla-delgado/index.html",
     titleHas: "Karla Delgado", h1Has: "Karla Delgado", minText: 400,
     mustLink: ["/assessment", "/our-providers"], mustText: ["Karla Delgado"],
+  },
+  {
+    path: "/doctors/cassandra-enriquez", file: "doctors/cassandra-enriquez/index.html",
+    titleHas: "Cassandra Enriquez", h1Has: "Cassandra Enriquez", minText: 400,
+    mustLink: ["/assessment", "/our-providers"], mustText: ["Cassandra Enriquez"],
   },
   // ── AI-SEO-LIVE-SOFT-404-COMMERCIAL-ROUTES-001 ────────────────────────────
   // Four commercial routes GSC classified as Soft 404 on 2026-07-31…08-08. The

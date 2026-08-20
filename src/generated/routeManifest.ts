@@ -458,6 +458,7 @@ export const COLLEGE_SLUGS: readonly string[] = [
 ];
 
 export const DOCTOR_SLUGS: readonly string[] = [
+  "cassandra-enriquez",
   "chad-cunningham",
   "eve-rosno",
   "henry-smith",

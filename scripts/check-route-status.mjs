@@ -105,7 +105,7 @@ async function main() {
     "/verify",
     "/verify/abc123",
     "/our-providers",
-    // Fail-closed provider profiles: ONLY the eight curated approved slugs are valid.
+    // Fail-closed provider profiles: ONLY the nine curated approved slugs are valid.
     "/doctors/robert-staaf",
     "/doctors/michelle-lafferty",
     "/doctors/lytara-garcia",
@@ -114,6 +114,7 @@ async function main() {
     "/doctors/henry-smith",
     "/doctors/chad-cunningham",
     "/doctors/karla-delgado",
+    "/doctors/cassandra-enriquez",
     "/r/step1",
     "/esa-letter-housing",
     "/meta-esa-letter",

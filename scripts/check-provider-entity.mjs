@@ -3,7 +3,7 @@
 // AI-SEO-PROVIDER-CANONICAL-DEDUP-AND-EXPANSION-001 — blocking provider-entity guard.
 //
 // Enforces the curated, fail-closed public-provider contract:
-//   - EXACTLY eight approved providers (the four new slugs present)
+//   - EXACTLY nine approved providers (the five new slugs present)
 //   - Edna Kwan excluded from the curated set, XML + HTML sitemaps, prerender,
 //     and internal links
 //   - the four -hex alias redirects preserved; aliases never self-canonical /
@@ -38,8 +38,9 @@ const check = (name, cond) => (cond ? pass(name) : fail(name));
 const APPROVED = [
   "robert-staaf", "michelle-lafferty", "lytara-garcia", "stephanie-white",
   "eve-rosno", "henry-smith", "chad-cunningham", "karla-delgado",
+  "cassandra-enriquez",
 ];
-const NEW = ["eve-rosno", "henry-smith", "chad-cunningham", "karla-delgado"];
+const NEW = ["eve-rosno", "henry-smith", "chad-cunningham", "karla-delgado", "cassandra-enriquez"];
 const ALIASES = [
   "robert-staaf-c9240", "michelle-lafferty-ff1309",
   "lytara-garcia-5a39d", "stephanie-white-0fd45",
@@ -70,9 +71,9 @@ async function main(selfTest) {
   const PUBLISHED = [...data.PUBLISHED_PROVIDER_SLUGS];
   const UNPUBLISHED = APPROVED.filter((s) => !PUBLISHED.includes(s));
 
-  check("exactly 8 curated providers", Array.isArray(providers) && providers.length === 8);
-  check("curated slugs == approved 8", sameSet([...slugs], APPROVED));
-  check("all 4 new provider slugs present", NEW.every((s) => slugs.includes(s)));
+  check("exactly 9 curated providers", Array.isArray(providers) && providers.length === 9);
+  check("curated slugs == approved 9", sameSet([...slugs], APPROVED));
+  check("all 5 new provider slugs present", NEW.every((s) => slugs.includes(s)));
   check("Edna excluded from curated set", !slugs.some((s) => EXCLUDED.includes(s)));
   check("EXCLUDED lists both Edna slugs", EXCLUDED.every((s) => excluded.includes(s)));
 
@@ -125,7 +126,7 @@ async function main(selfTest) {
   }
   const collection = JSON.stringify(ld.buildOurProvidersJsonLd(providers));
   check("directory schema: CollectionPage once", (collection.match(/"@type":"CollectionPage"/g) || []).length === 1);
-  check("directory schema: ItemList has 8 items", (collection.match(/"@type":"ListItem"/g) || []).length >= 8);
+  check("directory schema: ItemList has 9 items", (collection.match(/"@type":"ListItem"/g) || []).length >= 9);
 
   // ── 4) SEO config: unique titles/descriptions, self-canonical routes ───────
   const seo = await jiti.import(resolve(ROOT, "src/config/seoConfig.ts"));
@@ -184,7 +185,7 @@ async function main(selfTest) {
   const { buildManifestSource } = await import("./generate-route-manifest.mjs");
   const { counts } = await buildManifestSource();
   const manifestSrc = await rd("src/generated/routeManifest.ts");
-  check("manifest DOCTOR_SLUGS == 8", counts.DOCTOR_SLUGS === 8);
+  check("manifest DOCTOR_SLUGS == 9", counts.DOCTOR_SLUGS === 9);
   const passBlock = manifestSrc.match(/PASS_THROUGH_PREFIXES[\s\S]*?\];/)?.[0] ?? "";
   check("/doctors/ NOT a pass-through prefix", passBlock.length > 0 && !passBlock.includes("/doctors/"));
   const routeStatusSrc = await rd("src/lib/routeStatus.ts");
@@ -237,7 +238,7 @@ async function main(selfTest) {
   check("M. Reeves identity removed", !/Reeves/.test(everything) && !/MFC-104821/.test(everything) && !/ESA-CA-7K3N9P/.test(everything));
   check("sample card is unmistakably illustrative", /Sample licensed provider|Illustrative/i.test(everything));
 
-  // ── 13) Internal links: no /doctors/edna anywhere; directory links all 8 ───
+  // ── 13) Internal links: no /doctors/edna anywhere; directory links all 9 ───
   const linkFiles = [
     "src/components/feature/SharedFooter.tsx",
     "src/pages/about-us/page.tsx",
@@ -256,7 +257,7 @@ async function main(selfTest) {
     console.log("\n[self-test] negative controls:");
     const ctl = (name, cond) => (cond ? pass(`control ${name}`) : fail(`control ${name} did NOT fire`));
     ctl("duplicate titles flagged", !allUnique(["A", "A", "B"]));
-    ctl("9 providers != 8", 9 !== 8);
+    ctl("10 providers != 9", 10 !== 9);
     ctl("edna in sitemap detected", doctorLocsIn("<loc>/doctors/edna-kwan-78e66</loc>").includes("edna-kwan-78e66"));
     ctl("alias in sitemap detected", ["/doctors/robert-staaf-c9240"].some((s) => s.includes("robert-staaf-c9240")));
     ctl("extra slug breaks set equality", !sameSet([...APPROVED, "intruder"], APPROVED));
@@ -270,7 +271,7 @@ async function main(selfTest) {
     console.error(`\n[check-provider-entity] FAILED — ${failures.length} violation(s).`);
     process.exit(1);
   }
-  console.log(`\n[check-provider-entity] PASSED — curated 8, fail-closed, Edna excluded, schema + sitemaps + redirects verified.`);
+  console.log(`\n[check-provider-entity] PASSED — curated 9, fail-closed, Edna excluded, schema + sitemaps + redirects verified.`);
 }
 
 main(process.argv.includes("--self-test")).catch((err) => {

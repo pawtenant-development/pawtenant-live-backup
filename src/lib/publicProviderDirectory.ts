@@ -38,7 +38,7 @@ import { supabase } from "./supabaseClient";
 
 /** Public projection returned by get_public_provider_directory(). */
 export interface PublicProviderRecord {
-  /** approved_providers.slug — matches PublicProvider.dbSlug. */
+  /** Public provider slug — matches PublicProvider.dbSlug. */
   slug: string;
   full_name: string;
   /** Admin-uploaded public headshot URL, or null when none is set. */
@@ -48,7 +48,7 @@ export interface PublicProviderRecord {
 }
 
 export interface PublicProviderDirectory {
-  /** Keyed by approved_providers.slug (a.k.a. PublicProvider.dbSlug). */
+  /** Keyed by public provider slug (a.k.a. PublicProvider.dbSlug). */
   byDbSlug: ReadonlyMap<string, PublicProviderRecord>;
   /** True once the RPC has resolved (successfully or not). */
   loaded: boolean;

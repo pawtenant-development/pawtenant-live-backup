@@ -4,7 +4,7 @@
 //
 // OWNER-CURATED PUBLIC PROVIDER SNAPSHOT — the single source of truth for the
 // public /doctors/<slug> profile pages, the /our-providers directory, the XML +
-// HTML sitemaps, and the full-body prerender. It is an ALLOWLIST: only the eight
+// HTML sitemaps, and the full-body prerender. It is an ALLOWLIST: only the nine
 // providers below may ever render publicly, regardless of what the provider
 // database contains.
 //
@@ -66,9 +66,9 @@ export const PROVIDER_SNAPSHOT_VERIFIED = "2026-07-21";
 // LIVE-PUBLIC-PAGES-...-PROVIDER-FIX-001 — date the active/published STATUS of
 // every provider below was last re-read from LIVE (approved_providers +
 // doctor_profiles). Editorial facts still carry PROVIDER_SNAPSHOT_VERIFIED.
-export const PROVIDER_STATUS_VERIFIED = "2026-07-28";
+export const PROVIDER_STATUS_VERIFIED = "2026-08-20";
 
-// The curated approved public set — EXACTLY EIGHT. Do not add a ninth.
+// The curated approved public set — EXACTLY NINE.
 export const PUBLIC_PROVIDERS: readonly PublicProvider[] = [
   {
     slug: "robert-staaf",
@@ -206,9 +206,25 @@ export const PUBLIC_PROVIDERS: readonly PublicProvider[] = [
     snapshotActive: true,
     snapshotPublished: true,
   },
+  {
+    slug: "cassandra-enriquez",
+    dbSlug: "cassandra-enriquez",
+    name: "Cassandra Enriquez",
+    title: "LPC",
+    role: "Licensed Professional Counselor",
+    bio: "Cassandra Enriquez is a Licensed Professional Counselor who provides telehealth mental health evaluations, including assessments for emotional support animal (ESA) documentation. Each evaluation is completed individually, and a letter is issued only when it is clinically appropriate.",
+    npi: "1679316806",
+    states: ["SC", "VA"],
+    highlights: ["LPC", "Telehealth Evaluations", "ESA Documentation"],
+    image: null,
+    isNew: true,
+    lastVerified: PROVIDER_STATUS_VERIFIED,
+    snapshotActive: true,
+    snapshotPublished: true,
+  },
 ];
 
-// Clean canonical slugs (exactly 8). Consumed by the route manifest generator,
+// Clean canonical slugs (exactly 9). Consumed by the route manifest generator,
 // the prerender entry, sitemaps, and the entity guard.
 export const CURATED_PROVIDER_SLUGS: readonly string[] = PUBLIC_PROVIDERS.map((p) => p.slug);
 

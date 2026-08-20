@@ -21,7 +21,7 @@
 // PASS-THROUGH prefixes — always treated valid. Unknown ids there stay a
 // client-rendered 200 (a documented residual — see the task card).
 //
-// /doctors/<slug> is the EXCEPTION: it is fail-closed. Only the eight curated
+// /doctors/<slug> is the EXCEPTION: it is fail-closed. Only the curated
 // approved provider slugs (src/data/publicProviders.ts) are valid; every other
 // /doctors/* URL (unknown, excluded, alias, DB-only) classifies notfound -> real
 // HTTP 404. AI-SEO-PROVIDER-CANONICAL-DEDUP-AND-EXPANSION-001.
@@ -116,7 +116,7 @@ export async function buildManifestSource() {
     )].map((m) => m[1])
   );
 
-  // 5) /doctors/<slug> — EXACTLY the eight curated public providers. Fail-closed:
+  // 5) /doctors/<slug> — EXACTLY the curated public providers. Fail-closed:
   // any /doctors/* slug not in this set classifies notfound (real 404). The
   // anchored `slug:` pattern skips the `dbSlug:` field on the next line.
   const doctorSlugs = new Set(
