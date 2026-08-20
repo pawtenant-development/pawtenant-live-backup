@@ -513,12 +513,23 @@ export const KPI_CARD_BASIS: Record<KpiCardKey, OrderDateBasis> = {
 //
 //   "operational" — a WORK QUEUE. It answers "how much is on my desk right
 //                   now?". Its population is CURRENT INVENTORY across ALL
-//                   DATES. Lead (Unpaid), Paid (Unassigned), Under Review and
-//                   Pending Delivery are queues.
+//                   DATES. Paid (Unassigned), Under Review and Pending Delivery
+//                   are queues.
 //
-//   "event"       — a lifecycle EVENT that happened inside the selected
-//                   business period. Completed is the only one: an order paid
-//                   in July but completed in August belongs to August.
+//   "event"       — something that HAPPENED inside the selected business
+//                   period, measured on that card's own canonical timestamp.
+//                   Completed counts completions (last_completed_at): an order
+//                   paid in July but completed in August belongs to August.
+//                   Lead (Unpaid) counts ARRIVALS (created_at): unpaid leads
+//                   that came in during the selected month.
+//
+// WHY LEAD IS AN EVENT AND NOT A QUEUE (owner decision, 2026-08-20).
+// Lead is the one card an operator reads as intake, not as a desk queue: the
+// question is "how many unpaid leads did we take this month", which is an
+// arrival rate, not a backlog depth. Counted as a queue it reported the entire
+// historical unpaid backlog — 1537 against 288 for August on this database —
+// which buried the monthly signal. The other three cards remain queues, because
+// for those the backlog IS the question.
 //
 // THE BUG THIS REPLACES. Every card, queues included, was gated on
 // "entered this stage inside the active New York window". That is a hybrid
@@ -534,7 +545,8 @@ export const KPI_CARD_BASIS: Record<KpiCardKey, OrderDateBasis> = {
 export type KpiCardKind = "operational" | "event";
 
 export const KPI_CARD_KIND: Record<KpiCardKey, KpiCardKind> = {
-  lead_unpaid: "operational",
+  // Period-scoped on created_at — see "WHY LEAD IS AN EVENT" above.
+  lead_unpaid: "event",
   paid_unassigned: "operational",
   under_review: "operational",
   pending_delivery: "operational",

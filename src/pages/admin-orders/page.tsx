@@ -3505,10 +3505,15 @@ export default function AdminOrdersPage() {
                     made a date-gated queue reading 0 indistinguishable from an
                     empty desk, which is exactly what was reported. */}
                 <span className="text-[11px] font-semibold text-gray-500">
-                  · queues: now, all dates
+                  {/* Worded WITHOUT a "(" straight after the word: the runtime
+                      -identifier guard reads `queues (` as a call to an
+                      undeclared `queues()` and fails the build. That guard
+                      exists because a real undeclared identifier crashed direct
+                      lookup, so the copy bends, not the guard. */}
+                  · queues — Paid, Under Review, Pending Delivery: now, all dates
                 </span>
                 <span className="text-[11px] font-semibold text-gray-500">
-                  · completed: {kpiRangeExplicit
+                  · Lead + Completed: {kpiRangeExplicit
                     ? `${dateFrom || "start"} → ${dateTo || "today"}`
                     : `${kpiMonth.from} – ${kpiMonth.toInclusive}`}
                 </span>
@@ -3523,8 +3528,8 @@ export default function AdminOrdersPage() {
                   className="ri-information-line text-gray-300 hover:text-gray-400 text-sm cursor-help"
                   tabIndex={0}
                   role="img"
-                  aria-label="Lead (Unpaid), Paid (Unassigned), Under Review and Pending Delivery are WORK QUEUES: they count every order in that queue right now, across all dates, so an order that entered the queue in an earlier month still counts while it is unresolved. The date range does not apply to them. Completed is different — it counts orders completed inside the selected business period, measured on the completion timestamp in America/New_York; with no date filter that period is the current New York calendar month. Click a card to filter the list to exactly those orders — the list total always equals the number on the card. Click the same card again, or click All, to clear it."
-                  title="Queues (Lead, Paid Unassigned, Under Review, Pending Delivery) = what is in them NOW, all dates. Completed = completed inside the selected period (America/New_York). Click a card to see exactly those orders — the list total equals the card."
+                  aria-label="Paid (Unassigned), Under Review and Pending Delivery are WORK QUEUES: they count every order in that queue right now, across all dates, so an order that entered the queue in an earlier month still counts while it is unresolved. The date range does not apply to them. Lead (Unpaid) and Completed are PERIOD counts scoped to the selected business period in America/New_York, each on its own timestamp: Lead counts unpaid leads CREATED in the period, Completed counts orders COMPLETED in it. With no date filter that period is the current New York calendar month. Click a card to filter the list to exactly those orders — the list total always equals the number on the card. Click the same card again, or click All, to clear it."
+                  title="Queues (Paid Unassigned, Under Review, Pending Delivery) = what is in them NOW, all dates. Lead = unpaid leads created in the selected period; Completed = completed in it (America/New_York). Click a card to see exactly those orders — the list total equals the card."
                 ></i>
               </div>
               {/* EXACTLY five permanent workflow cards — Lead (Unpaid), Paid
@@ -3611,7 +3616,12 @@ export default function AdminOrdersPage() {
                       {kpiCounts?.counts[activeKpi] === 1 ? "" : "s"}{" "}
                       {activeKpiKind === "operational"
                         ? "in this queue right now — all dates"
-                        : `completed in ${kpiRangeExplicit
+                        /* Both EVENT cards are period-scoped, but on different
+                           events: Lead counts ARRIVALS (created_at), Completed
+                           counts COMPLETIONS (last_completed_at). Naming the
+                           wrong verb would describe a window the rows were not
+                           actually selected by. */
+                        : `${activeKpi === "lead_unpaid" ? "created" : "completed"} in ${kpiRangeExplicit
                             ? `${dateFrom || "start"} – ${dateTo || "today"}`
                             : `${kpiMonth.from} – ${kpiMonth.toInclusive}`}`}
                     </p>

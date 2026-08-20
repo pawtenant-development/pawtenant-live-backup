@@ -132,7 +132,11 @@ const DATE_COLUMNS = [
   "last_meaningful_activity_at",
 ];
 
-const OPERATIONAL = ["lead_unpaid", "paid_unassigned", "under_review", "pending_delivery"];
+// ADMIN-ORDERS-UNPAID-LEADS-MONTHLY-KPI-001 (owner decision): Lead moved out of
+// the queue set. It is now PERIOD-scoped on created_at, like Completed but on a
+// different event. The other three remain all-date queues.
+const OPERATIONAL = ["paid_unassigned", "under_review", "pending_delivery"];
+const PERIOD_SCOPED = ["lead_unpaid", "completed"];
 
 async function runChecks() {
   results.length = 0;
@@ -143,12 +147,13 @@ async function runChecks() {
   const RANGE = { from: "2026-08-01", to: "2026-08-31" };
 
   const kinds = mod.KPI_CARD_KIND;
-  add("K1  Lead/Paid-Unassigned/Under-Review/Pending-Delivery are OPERATIONAL",
+  add("K1  Paid-Unassigned/Under-Review/Pending-Delivery are OPERATIONAL queues",
     OPERATIONAL.every((k) => kinds?.[k] === "operational"),
     JSON.stringify(kinds));
-  add("K2  Completed is the only EVENT card",
-    kinds?.completed === "event" &&
-      Object.entries(kinds ?? {}).filter(([, v]) => v === "event").length === 1);
+  add("K2  Lead and Completed are the EVENT (period-scoped) cards — and only those",
+    PERIOD_SCOPED.every((k) => kinds?.[k] === "event") &&
+      Object.entries(kinds ?? {}).filter(([, v]) => v === "event").length === PERIOD_SCOPED.length,
+    JSON.stringify(kinds));
 
   // Operational cards must carry NO range — current inventory across all dates.
   const opWindows = OPERATIONAL.map((k) => [k, mod.kpiCardWindow(k, RANGE)]);
@@ -160,8 +165,13 @@ async function runChecks() {
   add("K4  operational cards keep their stage-entry basis for sort/grouping",
     mod.kpiCardWindow("under_review", RANGE).dateBasis === "under_review_entered" &&
     mod.kpiCardWindow("pending_delivery", RANGE).dateBasis === "pending_delivery_entered" &&
-    mod.kpiCardWindow("lead_unpaid", RANGE).dateBasis === "created" &&
     mod.kpiCardWindow("paid_unassigned", RANGE).dateBasis === "first_paid");
+
+  // ── Lead: the selected period, on created_at, from the SAME window authority ──
+  const leadW = mod.kpiCardWindow("lead_unpaid", RANGE);
+  add("K4b Lead is period-scoped on created_at over the SELECTED range",
+    leadW.dateBasis === "created" && leadW.dateFrom === RANGE.from && leadW.dateTo === RANGE.to,
+    JSON.stringify(leadW));
 
   const compW = mod.kpiCardWindow("completed", RANGE);
   add("K5  Completed keeps the selected period on the COMPLETION timestamp",
@@ -202,6 +212,19 @@ async function runChecks() {
       bounds[0] === "2026-08-01T04:00:00.000Z" &&
       bounds[1] === "2026-09-01T04:00:00.000Z",
       JSON.stringify(bounds));
+
+    // ── ADMIN-ORDERS-UNPAID-LEADS-MONTHLY-KPI-001: the same two proofs for Lead ──
+    const leadDateOps = dateOps(perCard.lead_unpaid ?? []);
+    add("K8b Lead count IS bounded, on created_at only (never paid_at/activity)",
+      leadDateOps.length === 2 && leadDateOps.every(([, a]) => a[0] === "created_at"),
+      JSON.stringify(leadDateOps.map((o) => o[1][0])));
+
+    const leadBounds = leadDateOps.map(([, a]) => a[1]);
+    add("K9b Lead bounds are America/New_York business days, not UTC midnight",
+      leadBounds.length === 2 &&
+      leadBounds[0] === "2026-08-01T04:00:00.000Z" &&
+      leadBounds[1] === "2026-09-01T04:00:00.000Z",
+      JSON.stringify(leadBounds));
 
     // Every card is a server COUNT(head) — never derived from loaded rows.
     add("K10 every KPI count is a server-side COUNT(head), not loaded rows",
@@ -320,10 +343,23 @@ async function runChecks() {
     /\}, \[listQueryKey, kpiFrom, kpiTo,/.test(page));
 
   // Truthful copy: an operational card must not be labelled as a period count.
-  add("K22 banner copy distinguishes queue (all dates) from period Completed",
+  add("K22 banner copy distinguishes all-date queues from the period cards",
     /activeKpiKind === "operational"/.test(page) &&
     /in this queue right now — all dates/.test(page) &&
-    /queues: now, all dates/.test(page));
+    /queues — Paid, Under Review, Pending Delivery: now, all dates/.test(page) &&
+    /Lead \+ Completed: /.test(page));
+
+  // The two EVENT cards are period-scoped on DIFFERENT events, so the banner
+  // must not call a Lead arrival a "completion".
+  add("K24 Lead banner says CREATED (not completed) for the selected period",
+    /activeKpi === "lead_unpaid" \? "created" : "completed"/.test(page));
+
+  // The visible description must state Lead is the selected period, and must not
+  // still describe it as all-date workload.
+  add("K25 tooltip states Lead is period-scoped, not an all-date queue",
+    /Lead counts unpaid leads CREATED in the period/.test(page) &&
+    /Lead = unpaid leads created in the selected period/.test(page) &&
+    !/Lead \(Unpaid\), Paid \(Unassigned\), Under Review and Pending Delivery are WORK QUEUES/.test(page));
 }
 
 function report(title) {
@@ -380,6 +416,29 @@ if (SELF) {
     { name: "cards stop refetching when the list refetches (stale card returns)", file: PAGE, expect: "K23",
       from: "  }, [listQueryKey, kpiFrom, kpiTo,",
       to: "  }, [kpiFrom, kpiTo," },
+    // ── ADMIN-ORDERS-UNPAID-LEADS-MONTHLY-KPI-001 controls ────────────────
+    // 1. The Lead month restriction removed outright (back to all-date backlog).
+    { name: "Lead month restriction removed (all-date backlog returns)", file: FACETS, expect: "K2",
+      from: '  lead_unpaid: "event",',
+      to: '  lead_unpaid: "operational",' },
+    // 2. Month applied to the CARD but not the LIST: the card keeps kpiCardWindow
+    //    while page.tsx hard-codes a windowless Lead.
+    { name: "month on the CARD but not the LIST (Lead list loses the window)", file: PAGE, expect: "K17",
+      from: "  const kpiWindow = activeKpi ? kpiCardWindow(activeKpi, { from: kpiFrom, to: kpiTo }) : null;",
+      to: "  const kpiWindow = activeKpi ? (activeKpi === \"lead_unpaid\" ? { dateBasis: \"created\", dateFrom: undefined, dateTo: undefined } : kpiCardWindow(activeKpi, { from: kpiFrom, to: kpiTo })) : null;" },
+    // 3. Month applied to the LIST but not the CARD: the count builder stops
+    //    using the shared window for Lead.
+    { name: "month on the LIST but not the CARD (Lead count loses the window)", file: FACETS, expect: "K8b",
+      from: "              ...kpiCardWindow(k, range),",
+      to: "              ...(k === \"lead_unpaid\" ? { dateBasis: \"created\" } : kpiCardWindow(k, range))," },
+    // 5. Lead measured on the wrong timestamp.
+    { name: "Lead uses the wrong timestamp (paid_at instead of created_at)", file: FACETS, expect: "K8b",
+      from: '  lead_unpaid: "created",',
+      to: '  lead_unpaid: "first_paid",' },
+    // 7. A paid operational queue accidentally made monthly.
+    { name: "a paid operational queue accidentally becomes monthly", file: FACETS, expect: "K7",
+      from: '  paid_unassigned: "operational",',
+      to: '  paid_unassigned: "event",' },
     { name: "banner re-labels a work queue as a period count", file: PAGE, expect: "K22",
       from: "                        ? \"in this queue right now — all dates\"",
       to: "                        ? \"in the selected period\"" },
