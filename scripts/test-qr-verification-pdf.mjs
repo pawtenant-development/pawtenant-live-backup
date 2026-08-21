@@ -287,21 +287,23 @@ console.log("\n5. Unmodelled content is never treated as blank");
 {
   const W = 612, H = 792;
   const cases = [
-    ["XObject (Do)", "q 1 0 0 1 0 0 cm /X0 Do Q"],
-    ["inline image (BI)", "BI /W 10 /H 10 ID xxxx EI"],
-    ["shading (sh)", "/Sh0 sh"],
-    ["scaling transform", "2 0 0 2 0 0 cm BT /F1 12 Tf 100 700 Td (hi) Tj ET"],
-    ["empty stream", ""],
-    ["content outside page box", "BT /F1 12 Tf 100 5000 Td (hi) Tj ET"],
+    ["XObject (Do)", "q 1 0 0 1 0 0 cm /X0 Do Q", false],
+    ["inline image (BI)", "BI /W 10 /H 10 ID xxxx EI", false],
+    ["shading (sh)", "/Sh0 sh", false],
+    // Scale + translate is explicitly supported by the analyzer. This used to
+    // fail only because its resulting mark extended beyond MediaBox; ordinary
+    // page-edge bleed is now clipped to the visible page before placement.
+    ["scaling transform", "2 0 0 2 0 0 cm BT /F1 12 Tf 100 700 Td (hi) Tj ET", true],
+    ["empty stream", "", true],
+    // A mark wholly outside MediaBox is not visible and cannot collide with the
+    // QR. Partly visible marks remain clipped occupancy and are covered by F9.
+    ["content outside page box", "BT /F1 12 Tf 100 5000 Td (hi) Tj ET", true],
   ];
-  for (const [label, stream] of cases) {
+  for (const [label, stream, expectUnderstood] of cases) {
     const b = M.analyzePageContent(stream, W, H);
-    // An empty stream is PROOF of a blank page, so it is "understood" with no
-    // rects. Everything else in this list is genuinely unmodellable.
-    const expectUnderstood = label === "empty stream";
     check(`${label} → understood=${expectUnderstood}`, b.understood === expectUnderstood, `reason=${b.reason}`);
     const pl = M.findSafePlacement(b, W, H, { width: 80, height: 90 }, 0);
-    check(`${label} → ${expectUnderstood ? "placeable" : "safe-fail (no page appended)"}`,
+    check(`${label} → ${expectUnderstood ? "placeable after visible clipping" : "safe-fail (no page appended)"}`,
       expectUnderstood ? pl.mode === "inline" : pl.mode === "none");
   }
 }

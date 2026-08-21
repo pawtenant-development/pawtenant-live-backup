@@ -531,14 +531,32 @@ export function analyzePageContent(
   if (unresolvedXObject) return { understood: false, reason: "page paints an XObject whose extent could not be resolved" };
   if (!rects.length) return { understood: false, reason: "content stream present but nothing could be located — cannot prove the page is blank" };
 
-  const minX = Math.min(...rects.map((r) => r.x0));
-  const minY = Math.min(...rects.map((r) => r.y0));
-  const maxX = Math.max(...rects.map((r) => r.x1));
-  const maxY = Math.max(...rects.map((r) => r.y1));
-  if (minX < -1 || minY < -1 || maxX > pageW + 1 || maxY > pageH + 1) {
-    return { understood: false, reason: "located content falls outside the page box" };
+  // PDF marks are clipped by the page boundary. Provider templates commonly
+  // paint letterhead backgrounds or crop marks a few points beyond MediaBox;
+  // rejecting the whole page for that harmless bleed made every visible corner
+  // "unknown" even when it was empty. Clip each measured rectangle to the
+  // visible page before collision testing. Anything wholly outside the page is
+  // invisible and irrelevant; anything partly visible keeps its visible bounds,
+  // so it can still block a QR candidate. This preserves fail-closed placement
+  // without confusing normal print bleed with malformed geometry.
+  const visibleRects = rects.flatMap((r) => {
+    if (r.x1 < 0 || r.y1 < 0 || r.x0 > pageW || r.y0 > pageH) return [];
+    return [{
+      x0: Math.max(0, r.x0),
+      y0: Math.max(0, r.y0),
+      x1: Math.min(pageW, r.x1),
+      y1: Math.min(pageH, r.y1),
+    }];
+  });
+  if (!visibleRects.length) {
+    return { understood: true, rects: [], occupied: null };
   }
-  return { understood: true, rects, occupied: { minX, minY, maxX, maxY } };
+
+  const minX = Math.min(...visibleRects.map((r) => r.x0));
+  const minY = Math.min(...visibleRects.map((r) => r.y0));
+  const maxX = Math.max(...visibleRects.map((r) => r.x1));
+  const maxY = Math.max(...visibleRects.map((r) => r.y1));
+  return { understood: true, rects: visibleRects, occupied: { minX, minY, maxX, maxY } };
 }
 
 // ── Placement ────────────────────────────────────────────────────────────────

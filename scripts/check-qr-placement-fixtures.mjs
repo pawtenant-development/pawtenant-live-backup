@@ -304,6 +304,9 @@ const FIXTURES = [
   ["F6  landscape page", { pageSize: [792, 612] }, "inline", 1],
   ["F7  dense page, no whitespace anywhere", { bodyLines: 40, footerText: true }, "any", 1],
   ["F8  blank page (no /Contents)", { bodyLines: 0 }, "inline", 1],
+  ["F9  ordinary printer bleed outside the visible page", {
+    blocks: [[-12, 220, 24, 260], [520, 780, 630, 806]],
+  }, "inline", 1],
 ];
 
 let passed = 0, failed = 0;
@@ -323,6 +326,21 @@ if (!SELF) {
     } else {
       bad(name, `violations=${JSON.stringify(v)} mode=${built.placement.mode} pages=${built.pageCountBefore}->${built.pageCountAfter}`);
     }
+  }
+
+  // A painted shape may extend beyond the page (ordinary printer bleed), but
+  // its visible portion must remain occupancy. This executes the shipped
+  // analyzer directly and pins both halves of the contract: clip, do not reject;
+  // retain, do not discard.
+  {
+    const bleed = M.analyzePageContent("0 g -5 100 20 20 re f", 612, 792, {});
+    const r = bleed.rects?.[0];
+    const clipped = bleed.understood && bleed.rects?.length === 1 &&
+      r?.x0 === 0 && r?.y0 === 100 && r?.x1 === 15 && r?.y1 === 120;
+    clipped
+      ? ok("B1  page-edge bleed is clipped to visible occupancy")
+      : bad("B1  page-edge bleed is clipped to visible occupancy",
+          `understood=${bleed.understood} rects=${JSON.stringify(bleed.rects)}`);
   }
 
   // Idempotency: same input twice is byte-identical, and re-processing an
@@ -719,5 +737,28 @@ for (const [expectCode, label, make] of CONTROLS) {
   if (!tripped) bad2++;
   console.log(`  ${tripped ? "CAUGHT " : "MISSED "} ${expectCode.padEnd(24)} ${label}${tripped ? "" : `  (got ${JSON.stringify(got)})`}`);
 }
-console.log(`\n${CONTROLS.length - bad2}/${CONTROLS.length} negative controls caught.`);
+// 11. Reintroduce the exact production defect: reject a page merely because a
+// painted rectangle crosses its visible boundary. The direct analyzer probe
+// must become unreadable, proving the bleed fixture can detect the regression.
+{
+  const rejectBleed = MOD_SRC.replace(
+    "  const visibleRects = rects.flatMap((r) => {",
+    `  if (rects.some((r) => r.x0 < 0 || r.y0 < 0 || r.x1 > pageW || r.y1 > pageH)) {
+    return { understood: false, reason: "located content falls outside the page box" };
+  }
+  const visibleRects = rects.flatMap((r) => {`,
+  );
+  let tripped = false;
+  try {
+    if (rejectBleed === MOD_SRC) throw new Error("bleed-rejection anchor no longer matches");
+    const RM = await loadModule(rejectBleed, "reject-bleed");
+    const b = RM.analyzePageContent("0 g -5 100 20 20 re f", 612, 792, {});
+    tripped = b.understood !== true;
+  } catch { tripped = false; }
+  if (!tripped) bad2++;
+  console.log(`  ${tripped ? "CAUGHT " : "MISSED "} PAGE_EDGE_BLEED          ordinary bleed rejected as malformed geometry`);
+}
+
+const controlTotal = CONTROLS.length + 1;
+console.log(`\n${controlTotal - bad2}/${controlTotal} negative controls caught.`);
 process.exit(bad2 === 0 ? 0 : 1);
