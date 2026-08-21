@@ -30,6 +30,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import {
   classifyOrder,
+  resolveLaterTouch,
   ACQUISITION_VISUAL,
   type AcquisitionLabel,
 } from "@/lib/acquisitionClassifier";
@@ -548,8 +549,14 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
   }, [orderRow]);
 
   // ── Source detail — where did the signal come from? ────────────────────
+  // ATTRIBUTION-SOURCE-IMMUTABILITY-001: the canonical source is classified
+  // from the FIRST TOUCH when one exists, so the explainer must name it first
+  // — flat click IDs may have been filled by a later touch and are
+  // conversion-credit evidence, not the source of the badge.
   const signalSource = useMemo(() => {
     if (!orderRow) return null;
+    if (orderRow.first_touch_json && Object.keys(orderRow.first_touch_json).length > 0)
+      return "Order first_touch_json snapshot (original acquisition)";
     if (orderRow.gclid || orderRow.fbclid) return "Order click ID (gclid/fbclid)";
     if (orderRow.utm_source || orderRow.utm_medium || orderRow.utm_campaign)
       return "Order UTM parameters";
@@ -557,12 +564,19 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
       return "Order attribution_json snapshot";
     if (orderRow.last_touch_json && Object.keys(orderRow.last_touch_json).length > 0)
       return "Order last_touch_json snapshot";
-    if (orderRow.first_touch_json && Object.keys(orderRow.first_touch_json).length > 0)
-      return "Order first_touch_json snapshot";
     if (orderRow.referred_by) return "Order referred_by (legacy)";
     if (visitorSession) return "Visitor session linked by session_id";
     return "No attribution signal captured";
   }, [orderRow, visitorSession]);
+
+  // ── Later touch (separate journey fact — never the canonical source) ───
+  const laterTouch = useMemo(() => {
+    if (!orderRow) return null;
+    return resolveLaterTouch({
+      first_touch_json: orderRow.first_touch_json,
+      last_touch_json:  orderRow.last_touch_json,
+    });
+  }, [orderRow]);
 
   // ── Landing fields — coalesce best available ────────────────────────────
   const landing = useMemo(() => {
@@ -907,6 +921,33 @@ export default function AttributionJourneyTab({ order }: AttributionJourneyTabPr
             {classification.reasoning}
           </p>
         )}
+        {/* Later touch — shown separately, never replaces the canonical source. */}
+        {laterTouch && (() => {
+          const lv = ACQUISITION_VISUAL[laterTouch.classification.label as AcquisitionLabel];
+          return (
+            <div className="mt-3 bg-amber-50/60 border border-amber-100 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Later touch</span>
+                {lv && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-bold ${lv.color}`}>
+                    <i className={`${lv.icon} text-xs`}></i>
+                    {lv.label}
+                  </span>
+                )}
+                <span className="text-[10px] text-gray-500">not the acquisition source</span>
+                {laterTouch.captured_at && (
+                  <span className="text-[10px] text-gray-400">{new Date(laterTouch.captured_at).toLocaleString()}</span>
+                )}
+              </div>
+              {laterTouch.click_ids_suppressed && (
+                <p className="text-[11px] text-amber-700 mt-1">
+                  <i className="ri-shield-check-line mr-1"></i>
+                  Stored click IDs on this touch could not be proven to be a fresh ad click — not counted as paid.
+                </p>
+              )}
+            </div>
+          );
+        })()}
       </Section>
 
       {/* ── 2. Landing Page ──────────────────────────────────────────── */}

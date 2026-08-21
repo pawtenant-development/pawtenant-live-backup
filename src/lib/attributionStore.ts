@@ -186,6 +186,72 @@ const ONCE_KEYS: Set<keyof AttributionData> = new Set([
   "session_id",
 ]);
 
+// ── Click-ID provenance (ATTRIBUTION-SOURCE-IMMUTABILITY-001) ─────────────────
+//
+// Click IDs survive tab close (localStorage) so conversion evidence is never
+// lost — but a RESTORED click ID is not proof that the CURRENT visit was a
+// paid click. LIVE order PT-MT1GWHXX: an organic-first lead re-opened a clean,
+// manually-shared provider link; stale gclid/gbraid restored from localStorage
+// were stamped into the new last-touch as channel "google_ads" and from there
+// into the order's flat click-ID columns, flipping the Admin source badge to
+// Google Ads.
+//
+// Contract:
+//   provenance "url"     — the ID was present in a URL captured during THIS
+//                          tab session. Only this counts as a fresh paid click.
+//   provenance "storage" — the ID was restored from a previous session's
+//                          localStorage. It remains available for conversion
+//                          evidence (getAttribution) but must NEVER mint a new
+//                          paid touch or paid channel label.
+//   no marker            — unknown provenance. FAIL CLOSED: treated as
+//                          "storage", never as a fresh click.
+//
+// Markers live in sessionStorage (per tab session, like the touch they
+// describe) and are written only by captureFromUrl.
+export type ClickIdField = "gclid" | "gbraid" | "wbraid" | "fbclid" | "msclkid" | "ttclid";
+export type ClickIdProvenance = "url" | "storage";
+
+export const CLICK_ID_FIELDS: ClickIdField[] = [
+  "gclid", "gbraid", "wbraid", "fbclid", "msclkid", "ttclid",
+];
+
+const PROV_PREFIX = "pt_prov_";
+
+function provKey(field: ClickIdField): string {
+  return PROV_PREFIX + KEYS[field];
+}
+
+function setProvenance(field: ClickIdField, source: ClickIdProvenance): void {
+  // "url" always wins for the tab session; "storage" never downgrades it.
+  const existing = ssGet(provKey(field));
+  if (source === "storage" && existing === "url") return;
+  ssSet(provKey(field), source);
+}
+
+function clearProvenance(field: ClickIdField): void {
+  ssDel(provKey(field));
+}
+
+/**
+ * Provenance of a click ID for the CURRENT tab session.
+ * Returns null when the ID is absent entirely. A present ID with no marker
+ * (legacy tab, storage written outside captureFromUrl) fails closed to
+ * "storage" — never to "url".
+ */
+export function getClickIdProvenance(field: ClickIdField): ClickIdProvenance | null {
+  const marker = ssGet(provKey(field));
+  if (marker === "url" || marker === "storage") return marker;
+  const present = ssGet(KEYS[field]) || lsGet(KEYS[field]);
+  return present ? "storage" : null;
+}
+
+/** Full provenance map, embedded into touch snapshots for downstream audits. */
+export function getClickIdProvenanceMap(): Record<ClickIdField, ClickIdProvenance | null> {
+  const map = {} as Record<ClickIdField, ClickIdProvenance | null>;
+  CLICK_ID_FIELDS.forEach((f) => { map[f] = getClickIdProvenance(f); });
+  return map;
+}
+
 /**
  * Query params that are CREDENTIALS, not attribution signal.
  *
@@ -364,6 +430,7 @@ export function captureFromUrl(search: string): void {
     [KEYS.gclid, KEYS.fbclid, KEYS.fbc, KEYS.fbclid_ts, KEYS.gbraid, KEYS.wbraid].forEach((k) => {
       if (clearBoth(k)) cleared.push(k);
     });
+    (["gclid", "fbclid", "gbraid", "wbraid"] as ClickIdField[]).forEach(clearProvenance);
   } else if (urlFbclid) {
     // Fresh fbclid wins over stale gclid and stale utm_* / ad params.
     [KEYS.gclid, KEYS.gbraid, KEYS.wbraid,
@@ -371,6 +438,7 @@ export function captureFromUrl(search: string): void {
      ...AD_PARAM_KEYS].forEach((k) => {
       if (clearBoth(k)) cleared.push(k);
     });
+    (["gclid", "gbraid", "wbraid"] as ClickIdField[]).forEach(clearProvenance);
     ssDel("utm_captured");
   } else if (urlGclid) {
     // Fresh gclid wins over stale fbclid and stale utm_* / ad params.
@@ -379,6 +447,7 @@ export function captureFromUrl(search: string): void {
      ...AD_PARAM_KEYS].forEach((k) => {
       if (clearBoth(k)) cleared.push(k);
     });
+    clearProvenance("fbclid");
     ssDel("utm_captured");
   }
 
@@ -392,6 +461,7 @@ export function captureFromUrl(search: string): void {
     const fbc = `fb.1.${fbclidTs}.${urlFbclid}`;
     ssSet(KEYS.fbc, fbc);
     lsSet(KEYS.fbc, fbc);
+    setProvenance("fbclid", "url");
     captured.fbclid = urlFbclid;
     captured.fbc = fbc;
   } else {
@@ -403,6 +473,7 @@ export function captureFromUrl(search: string): void {
       ssSet(KEYS.fbclid_ts, storedTs);
       const storedFbc = lsGet(KEYS.fbc) || `fb.1.${storedTs}.${storedFbclid}`;
       ssSet(KEYS.fbc, storedFbc);
+      setProvenance("fbclid", "storage");
       restored.fbclid = storedFbclid;
       restored.fbc = storedFbc;
     }
@@ -412,30 +483,33 @@ export function captureFromUrl(search: string): void {
   if (urlGclid) {
     ssSet(KEYS.gclid, urlGclid);
     lsSet(KEYS.gclid, urlGclid);
+    setProvenance("gclid", "url");
     captured.gclid = urlGclid;
   } else if (!ssGet(KEYS.gclid)) {
     const stored = lsGet(KEYS.gclid);
-    if (stored) { ssSet(KEYS.gclid, stored); restored.gclid = stored; }
+    if (stored) { ssSet(KEYS.gclid, stored); setProvenance("gclid", "storage"); restored.gclid = stored; }
   }
 
   const gbraidFromUrl = params.get("gbraid");
   if (gbraidFromUrl) {
     ssSet(KEYS.gbraid, gbraidFromUrl);
     lsSet(KEYS.gbraid, gbraidFromUrl);
+    setProvenance("gbraid", "url");
     captured.gbraid = gbraidFromUrl;
   } else if (!ssGet(KEYS.gbraid)) {
     const stored = lsGet(KEYS.gbraid);
-    if (stored) { ssSet(KEYS.gbraid, stored); restored.gbraid = stored; }
+    if (stored) { ssSet(KEYS.gbraid, stored); setProvenance("gbraid", "storage"); restored.gbraid = stored; }
   }
 
   const wbraidFromUrl = params.get("wbraid");
   if (wbraidFromUrl) {
     ssSet(KEYS.wbraid, wbraidFromUrl);
     lsSet(KEYS.wbraid, wbraidFromUrl);
+    setProvenance("wbraid", "url");
     captured.wbraid = wbraidFromUrl;
   } else if (!ssGet(KEYS.wbraid)) {
     const stored = lsGet(KEYS.wbraid);
-    if (stored) { ssSet(KEYS.wbraid, stored); restored.wbraid = stored; }
+    if (stored) { ssSet(KEYS.wbraid, stored); setProvenance("wbraid", "storage"); restored.wbraid = stored; }
   }
 
   // ── 4b. msclkid — Microsoft Ads click ID ─────────────────────────────────
@@ -443,10 +517,11 @@ export function captureFromUrl(search: string): void {
   if (msclkidFromUrl) {
     ssSet(KEYS.msclkid, msclkidFromUrl);
     lsSet(KEYS.msclkid, msclkidFromUrl);
+    setProvenance("msclkid", "url");
     captured.msclkid = msclkidFromUrl;
   } else if (!ssGet(KEYS.msclkid)) {
     const stored = lsGet(KEYS.msclkid);
-    if (stored) { ssSet(KEYS.msclkid, stored); restored.msclkid = stored; }
+    if (stored) { ssSet(KEYS.msclkid, stored); setProvenance("msclkid", "storage"); restored.msclkid = stored; }
   }
 
   // ── 4c. ttclid — TikTok click ID ─────────────────────────────────────────
@@ -454,10 +529,11 @@ export function captureFromUrl(search: string): void {
   if (ttclidFromUrl) {
     ssSet(KEYS.ttclid, ttclidFromUrl);
     lsSet(KEYS.ttclid, ttclidFromUrl);
+    setProvenance("ttclid", "url");
     captured.ttclid = ttclidFromUrl;
   } else if (!ssGet(KEYS.ttclid)) {
     const stored = lsGet(KEYS.ttclid);
-    if (stored) { ssSet(KEYS.ttclid, stored); restored.ttclid = stored; }
+    if (stored) { ssSet(KEYS.ttclid, stored); setProvenance("ttclid", "storage"); restored.ttclid = stored; }
   }
 
   // ── 5. UTMs + ref ────────────────────────────────────────────────────────
@@ -706,6 +782,13 @@ interface FirstTouchSnapshot {
   landing_url: string | null;
   referrer: string | null;
   captured_at: string;
+  // ATTRIBUTION-SOURCE-IMMUTABILITY-001: per-click-ID provenance for THIS
+  // snapshot ("url" = captured from a URL in this tab session, "storage" =
+  // restored from a previous session). Absent on legacy snapshots — readers
+  // must fail closed (treat click IDs without "url" provenance as NOT a
+  // fresh paid click).
+  click_provenance?: Record<string, ClickIdProvenance | null>;
+  provenance_version?: number;
 }
 
 /**
@@ -737,19 +820,30 @@ export function getOrInitFirstTouch(): FirstTouchSnapshot | null {
   let snapshot: FirstTouchSnapshot;
   try {
     const data = getAttribution();
+    // ATTRIBUTION-SOURCE-IMMUTABILITY-001: a first touch is MINTED from the
+    // current visit, so it may only record click IDs this visit can prove
+    // (provenance "url"). Without this gate a browser whose storage already
+    // held an unmarked click ID — a pre-fix bundle, or the index.html inline
+    // capture — minted a brand-new first touch that looked like a paid
+    // acquisition, which is exactly the fabrication this task exists to stop.
+    // An ALREADY-persisted first touch is returned untouched above, so a
+    // genuine paid acquisition recorded earlier is never re-gated here.
+    const freshFt = (field: ClickIdField, value: string | null): string | null =>
+      value && getClickIdProvenance(field) === "url" ? value : null;
+    const ftFbclid = freshFt("fbclid", data.fbclid);
     snapshot = {
       session_id:    data.session_id,
       first_seen_at: data.first_seen_at,
       channel:       buildChannel(),
       fullSource:    buildFullSource(),
-      fbclid:        data.fbclid,
-      fbc:           data.fbc,
-      fbclid_ts:     data.fbclid_ts,
-      gclid:         data.gclid,
-      gbraid:        data.gbraid,
-      wbraid:        data.wbraid,
-      msclkid:       data.msclkid,
-      ttclid:        data.ttclid,
+      fbclid:        ftFbclid,
+      fbc:           ftFbclid ? data.fbc : null,
+      fbclid_ts:     ftFbclid ? data.fbclid_ts : null,
+      gclid:         freshFt("gclid", data.gclid),
+      gbraid:        freshFt("gbraid", data.gbraid),
+      wbraid:        freshFt("wbraid", data.wbraid),
+      msclkid:       freshFt("msclkid", data.msclkid),
+      ttclid:        freshFt("ttclid", data.ttclid),
       utm_source:    data.utm_source,
       utm_medium:    data.utm_medium,
       utm_campaign:  data.utm_campaign,
@@ -769,6 +863,8 @@ export function getOrInitFirstTouch(): FirstTouchSnapshot | null {
       landing_url:   data.landing_url,
       referrer:      data.referrer,
       captured_at:   new Date().toISOString(),
+      click_provenance: getClickIdProvenanceMap(),
+      provenance_version: 1,
     };
   } catch {
     return null;
@@ -798,23 +894,35 @@ export function getFirstTouch(): FirstTouchSnapshot | null {
 /**
  * Returns a last-touch snapshot in the same shape as first-touch. Always
  * reflects the current session state (overwritable). Never throws.
+ *
+ * ATTRIBUTION-SOURCE-IMMUTABILITY-001: a last-touch describes the CURRENT
+ * visit. Click IDs merely restored from a previous session's storage are NOT
+ * part of this visit — including them re-branded a clean shared/direct/
+ * internal navigation as a paid click (LIVE PT-MT1GWHXX). Only click IDs with
+ * "url" provenance for this tab session are emitted; the provenance map is
+ * embedded so the server and admin UI can verify instead of trusting labels.
+ * Stored (stale) click IDs remain available via getAttribution() for
+ * conversion-evidence paths — they are excluded from the TOUCH, not deleted.
  */
 export function getLastTouch(): FirstTouchSnapshot | null {
   try {
     const data = getAttribution();
+    const fresh = (field: ClickIdField, value: string | null): string | null =>
+      value && getClickIdProvenance(field) === "url" ? value : null;
+    const freshFbclid = fresh("fbclid", data.fbclid);
     return {
       session_id:    data.session_id,
       first_seen_at: data.first_seen_at,
       channel:       buildChannel(),
       fullSource:    buildFullSource(),
-      fbclid:        data.fbclid,
-      fbc:           data.fbc,
-      fbclid_ts:     data.fbclid_ts,
-      gclid:         data.gclid,
-      gbraid:        data.gbraid,
-      wbraid:        data.wbraid,
-      msclkid:       data.msclkid,
-      ttclid:        data.ttclid,
+      fbclid:        freshFbclid,
+      fbc:           freshFbclid ? data.fbc : null,
+      fbclid_ts:     freshFbclid ? data.fbclid_ts : null,
+      gclid:         fresh("gclid", data.gclid),
+      gbraid:        fresh("gbraid", data.gbraid),
+      wbraid:        fresh("wbraid", data.wbraid),
+      msclkid:       fresh("msclkid", data.msclkid),
+      ttclid:        fresh("ttclid", data.ttclid),
       utm_source:    data.utm_source,
       utm_medium:    data.utm_medium,
       utm_campaign:  data.utm_campaign,
@@ -834,6 +942,8 @@ export function getLastTouch(): FirstTouchSnapshot | null {
       landing_url:   data.landing_url,
       referrer:      data.referrer,
       captured_at:   new Date().toISOString(),
+      click_provenance: getClickIdProvenanceMap(),
+      provenance_version: 1,
     };
   } catch {
     return null;
@@ -882,11 +992,30 @@ export function buildAttributionJson(stage: string): Record<string, unknown> {
     "confirmation_id", "coupon_code", "selected_state",
   ];
 
+  // ATTRIBUTION-SOURCE-IMMUTABILITY-001: top-level click IDs feed the flat
+  // order columns and the conversion uploader (resolveGclid reads
+  // attribution_json). A storage-restored ID is only legitimate here when it
+  // matches this browser's own first touch (same acquisition click); a fresh
+  // URL-captured ID is always legitimate. Anything else is unproven → omitted.
+  const clickIdAllowed = (key: ClickIdField): boolean => {
+    if (getClickIdProvenance(key) === "url") return true;
+    const ftVal = firstTouch ? (firstTouch[key] as string | null) : null;
+    return !!ftVal && ftVal === data[key];
+  };
+
   fields.forEach((key) => {
-    if (data[key] !== null && data[key] !== undefined) {
-      json[key] = data[key];
+    if (data[key] === null || data[key] === undefined) return;
+    if ((CLICK_ID_FIELDS as readonly string[]).includes(key) && !clickIdAllowed(key as ClickIdField)) {
+      return;
     }
+    json[key] = data[key];
   });
+
+  // fbc / fbclid_ts are derivatives of fbclid — they ride its gate.
+  if (!("fbclid" in json)) {
+    delete json.fbc;
+    delete json.fbclid_ts;
+  }
 
   debugLog(`buildAttributionJson [${stage}]`, json);
 
@@ -899,11 +1028,17 @@ export function buildFullSource(): string {
   const data = getAttribution();
   const { ref, gclid, gbraid, wbraid, fbclid, msclkid, ttclid, utm_source, utm_medium, referrer } = data;
 
+  // ATTRIBUTION-SOURCE-IMMUTABILITY-001: a click ID only proves a paid visit
+  // when it was captured from a URL in THIS tab session. Storage-restored IDs
+  // must not label a clean return/shared/internal visit as paid.
+  const fresh = (field: ClickIdField, value: string | null): boolean =>
+    !!value && getClickIdProvenance(field) === "url";
+
   if (ref) return ref;
-  if (gclid || gbraid || wbraid) return "Google Ads";
-  if (fbclid) return "Facebook / Instagram Ads";
-  if (msclkid) return "Microsoft Ads";
-  if (ttclid) return "TikTok Ads";
+  if (fresh("gclid", gclid) || fresh("gbraid", gbraid) || fresh("wbraid", wbraid)) return "Google Ads";
+  if (fresh("fbclid", fbclid)) return "Facebook / Instagram Ads";
+  if (fresh("msclkid", msclkid)) return "Microsoft Ads";
+  if (fresh("ttclid", ttclid)) return "TikTok Ads";
   if (utm_source && utm_medium) return `${utm_source} / ${utm_medium}`;
   if (utm_source) return utm_source;
   if (referrer) {
@@ -963,12 +1098,22 @@ export function buildChannel(): string {
   }
 
   // ── 4. Stored attribution ─────────────────────────────────────────────────
+  // ATTRIBUTION-SOURCE-IMMUTABILITY-001: stored click IDs count as a paid
+  // channel ONLY when captured from a URL during this tab session ("url"
+  // provenance). A storage-restored ID (previous session) must not turn a
+  // clean direct/shared/internal visit into a paid channel. Stored UTMs are
+  // sessionStorage-scoped (same tab session) so they need no extra gate.
   const data = getAttribution();
   const { gclid, gbraid, wbraid, fbclid, utm_source, referrer } = data;
+  const fresh = (field: ClickIdField, value: string | null): boolean =>
+    !!value && getClickIdProvenance(field) === "url";
 
-  if (fbclid) return "facebook_ads";
-  if (gclid)  return "google_ads";
-  if (gbraid || wbraid) return "google_ads";
+  // gbraid / wbraid are Google Ads click ids too (iOS/app + web-to-app), so
+  // they carry the SAME provenance requirement as gclid: a stored one must
+  // not turn a clean return/shared visit into a paid channel. The URL branch
+  // above still treats a gbraid/wbraid arriving in THIS url as paid.
+  if (fresh("fbclid", fbclid)) return "facebook_ads";
+  if (fresh("gclid", gclid) || fresh("gbraid", gbraid) || fresh("wbraid", wbraid)) return "google_ads";
   if (utm_source) {
     const normalized = normalizeSource(utm_source);
     if (normalized) return normalized;
@@ -1001,20 +1146,22 @@ export function buildChannel(): string {
 // ── Build URL query string for link attribution ───────────────────────────────
 
 /**
- * Returns a query string with all attribution params for appending to links.
+ * Returns a query string with attribution params for appending to links.
  * Only includes params that have values.
+ *
+ * ATTRIBUTION-SOURCE-IMMUTABILITY-001: click IDs (gclid/gbraid/wbraid/fbclid/
+ * msclkid/ttclid) are deliberately NOT appended. Internal SPA navigation keeps
+ * them in session/localStorage, so the URL copy served no in-app purpose —
+ * but it put paid-click credentials into the address bar, where a copied /
+ * manually-shared link carried them to another person's browser and re-branded
+ * their organic visit as a paid click (LIVE PT-MT1GWHXX). Campaign LABELS
+ * (UTMs, ValueTrack, ref) stay: they describe a campaign, not a click.
  */
 export function buildAttributionQueryString(existingQuery?: string): string {
   const data = getAttribution();
   const merged = new URLSearchParams(existingQuery ?? "");
 
   const linkFields: Array<[string, string | null]> = [
-    ["fbclid",   data.fbclid],
-    ["gclid",    data.gclid],
-    ["gbraid",   data.gbraid],
-    ["wbraid",   data.wbraid],
-    ["msclkid",  data.msclkid],
-    ["ttclid",   data.ttclid],
     ["utm_source",   data.utm_source],
     ["utm_medium",   data.utm_medium],
     ["utm_campaign", data.utm_campaign],

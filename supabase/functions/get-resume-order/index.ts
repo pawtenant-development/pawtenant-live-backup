@@ -114,6 +114,47 @@ function isMeaningfulTouch(touch: unknown): boolean {
   return false;
 }
 
+// ── ATTRIBUTION-SOURCE-IMMUTABILITY-001: click-ID provenance ──────────────
+// LIVE order PT-MT1GWHXX arrived via Google Organic, then re-opened a clean,
+// manually-shared provider link. Stale gclid/gbraid restored from the browser's
+// localStorage were stamped into a new "google_ads" last touch and copied into
+// the order's previously-empty flat click-ID columns, flipping the Admin source
+// badge to Google Ads for a lead that was never a fresh paid click.
+//
+// Flat click-ID columns are CONVERSION-CREDIT EVIDENCE, so they may be filled
+// only from (a) the order's canonical FIRST touch, (b) a later touch whose click
+// ID carries proven "url" provenance (captured from a URL in that tab session),
+// or (c) a brand-new row with no touch snapshot at all (a storage-blocked
+// browser, where creation-time body values are the only capture that will ever
+// exist). Unknown provenance FAILS CLOSED.
+//
+// Raw click-ID VALUES are never logged here — only field names and order ids.
+const TOUCH_CLICK_ID_KEYS = ["gclid", "gbraid", "wbraid", "fbclid", "msclkid", "ttclid"] as const;
+type TouchClickIdKey = (typeof TOUCH_CLICK_ID_KEYS)[number];
+
+function touchClickId(touch: unknown, key: TouchClickIdKey): string | undefined {
+  if (!touch || typeof touch !== "object") return undefined;
+  const v = (touch as Record<string, unknown>)[key];
+  return isRealValue(v) ? (v as string).trim() : undefined;
+}
+
+// Only the exact marker "url" (written by attributionStore.captureFromUrl when
+// the ID was captured from a URL in that tab session) counts as a fresh click.
+// Absent map / absent field / any other value → unproven → fail closed.
+function touchClickIdIsUrlProven(touch: unknown, key: TouchClickIdKey): boolean {
+  if (!touch || typeof touch !== "object") return false;
+  const prov = (touch as Record<string, unknown>).click_provenance;
+  if (!prov || typeof prov !== "object") return false;
+  return (prov as Record<string, unknown>)[key] === "url";
+}
+
+// True when the touch claims click IDs it cannot prove were fresh clicks.
+function touchHasUnprovenClickIds(touch: unknown): boolean {
+  return TOUCH_CLICK_ID_KEYS.some(
+    (k) => touchClickId(touch, k) !== undefined && !touchClickIdIsUrlProven(touch, k),
+  );
+}
+
 async function fireGHLServerSide(opts: {
   supabase: ReturnType<typeof createClient>;
   confirmationId: string;
@@ -785,8 +826,39 @@ serve(async (req) => {
         if (existing !== null && existing !== undefined && existing !== "") return;
         upsertPayload[colKey] = bodyVal;
       };
-      stickyAttrSet(body.gclid,        existingOrder?.gclid,        "gclid");
-      stickyAttrSet(body.fbclid,       existingOrder?.fbclid,       "fbclid");
+      // ── ATTRIBUTION-SOURCE-IMMUTABILITY-001: click-ID provenance gate ────
+      // A click ID may reach a flat column only when its provenance is proven
+      // (see the helpers above). Unknown provenance is refused, so a
+      // storage-restored ID can never become conversion-credit evidence.
+      const effectiveFirstTouchForClickIds =
+        (existingOrder?.first_touch_json as Record<string, unknown> | null | undefined) ??
+        body.firstTouchJson ??
+        null;
+      const isNewRowForClickIds = !existingOrder;
+      const clickIdCandidate = (
+        key: TouchClickIdKey,
+        legacyBodyVal: string | undefined | null,
+      ): string | undefined => {
+        const fromFirstTouch = touchClickId(effectiveFirstTouchForClickIds, key);
+        if (fromFirstTouch !== undefined) return fromFirstTouch;
+        const fromLastTouch = touchClickId(body.lastTouchJson, key);
+        if (fromLastTouch !== undefined && touchClickIdIsUrlProven(body.lastTouchJson, key)) {
+          return fromLastTouch;
+        }
+        if (isNewRowForClickIds && !effectiveFirstTouchForClickIds && isRealValue(legacyBodyVal)) {
+          return (legacyBodyVal as string).trim();
+        }
+        if (isRealValue(legacyBodyVal) || fromLastTouch !== undefined) {
+          // Value offered but provenance unproven — refused. Field NAME only;
+          // never log the raw ID.
+          console.info(
+            `[get-resume-order] click-id fill REFUSED (unproven provenance) field=${key} order=${effectiveConfirmationId}`
+          );
+        }
+        return undefined;
+      };
+      stickyAttrSet(clickIdCandidate("gclid", body.gclid),   existingOrder?.gclid,  "gclid");
+      stickyAttrSet(clickIdCandidate("fbclid", body.fbclid), existingOrder?.fbclid, "fbclid");
       stickyAttrSet(body.utmSource,    existingOrder?.utm_source,   "utm_source");
       stickyAttrSet(body.utmMedium,    existingOrder?.utm_medium,   "utm_medium");
       stickyAttrSet(body.utmCampaign,  existingOrder?.utm_campaign, "utm_campaign");
@@ -802,22 +874,24 @@ serve(async (req) => {
       // / body.wbraid is also honored for forward-compat). Same STICKY rule as
       // gclid: written on first capture, never overwritten — so gclid/gbraid/wbraid
       // coexist and none clobbers another.
-      const deriveTouchStr = (key: "gbraid" | "wbraid"): string | undefined => {
+      // ATTRIBUTION-SOURCE-IMMUTABILITY-001: the BATCH-0.2A derive used to read
+      // gbraid/wbraid straight out of firstTouchJson / attributionJson /
+      // lastTouchJson and write them to the flat columns. The first-touch read is
+      // still correct (it IS the original acquisition), but the attribution_json
+      // and last-touch reads accepted storage-restored IDs — the PT-MT1GWHXX
+      // path. Both now flow through clickIdCandidate, which honours the first
+      // touch, requires "url" provenance for any later touch, and keeps the
+      // attribution_json value only as the legacy brand-new-row fallback.
+      const legacyBraidFromJson = (key: "gbraid" | "wbraid"): string | undefined => {
         const flat = body[key];
         if (typeof flat === "string" && flat.trim() !== "") return flat;
-        const fromJson = (src: unknown): string | undefined => {
-          if (!src || typeof src !== "object") return undefined;
-          const val = (src as Record<string, unknown>)[key];
-          return typeof val === "string" && val.trim() !== "" ? val : undefined;
-        };
-        return (
-          fromJson(body.firstTouchJson) ??
-          fromJson(body.attributionJson) ??
-          fromJson(body.lastTouchJson)
-        );
+        const src = body.attributionJson;
+        if (!src || typeof src !== "object") return undefined;
+        const val = (src as Record<string, unknown>)[key];
+        return typeof val === "string" && val.trim() !== "" ? val : undefined;
       };
-      stickyAttrSet(deriveTouchStr("gbraid"), existingOrder?.gbraid, "gbraid");
-      stickyAttrSet(deriveTouchStr("wbraid"), existingOrder?.wbraid, "wbraid");
+      stickyAttrSet(clickIdCandidate("gbraid", legacyBraidFromJson("gbraid")), existingOrder?.gbraid, "gbraid");
+      stickyAttrSet(clickIdCandidate("wbraid", legacyBraidFromJson("wbraid")), existingOrder?.wbraid, "wbraid");
 
       // attribution_json: same sticky rule but uses jsonb-shaped check
       // (an empty object {} still counts as "present" — we do not want
@@ -884,18 +958,29 @@ serve(async (req) => {
       // The ONLY blocked case is: existing IS meaningful AND incoming is NOT.
       // This never freezes last-touch permanently — a real newer attributable
       // touch always wins.
+      // ATTRIBUTION-SOURCE-IMMUTABILITY-001 runs FIRST: a touch claiming click
+      // IDs without proven "url" provenance is refused outright. A fixed client
+      // never produces one (stale IDs are excluded from the touch at capture);
+      // this catches old cached bundles and hand-rolled payloads so a
+      // storage-restored ID can never be re-branded as a new paid touch.
       if (body.lastTouchJson !== undefined && body.lastTouchJson !== null) {
-        const existingLast = existingOrder?.last_touch_json ?? null;
-        if (
-          !existingLast ||
-          !isMeaningfulTouch(existingLast) ||
-          isMeaningfulTouch(body.lastTouchJson)
-        ) {
-          upsertPayload.last_touch_json = body.lastTouchJson;
-        } else {
+        if (touchHasUnprovenClickIds(body.lastTouchJson)) {
           console.info(
-            `[get-resume-order] last_touch_json overwrite SKIPPED for ${effectiveConfirmationId}: incoming touch is direct/empty and would erase a meaningful last-touch`
+            `[get-resume-order] last_touch_json overwrite REFUSED for ${effectiveConfirmationId}: incoming touch carries click ID(s) with unproven provenance`
           );
+        } else {
+          const existingLast = existingOrder?.last_touch_json ?? null;
+          if (
+            !existingLast ||
+            !isMeaningfulTouch(existingLast) ||
+            isMeaningfulTouch(body.lastTouchJson)
+          ) {
+            upsertPayload.last_touch_json = body.lastTouchJson;
+          } else {
+            console.info(
+              `[get-resume-order] last_touch_json overwrite SKIPPED for ${effectiveConfirmationId}: incoming touch is direct/empty and would erase a meaningful last-touch`
+            );
+          }
         }
       }
 

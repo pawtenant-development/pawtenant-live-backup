@@ -59,9 +59,12 @@ export interface OrderCardProps {
 // title tooltip.
 import {
   classifyAcquisition,
+  buildOrderAcquisitionInputs,
+  resolveLaterTouch,
   visualFor as visualForAcquisition,
   explain as explainAcquisition,
   type AcquisitionInputs,
+  type LaterTouchView,
 } from "../../../lib/acquisitionClassifier";
 // Phase K4.5 — click-to-open attribution detail popover. Reuses the
 // classifier output already computed for the chip; no new fetches.
@@ -92,35 +95,21 @@ interface OrderAttributionSnapshot {
 
 /**
  * Build the AcquisitionInputs the classifier expects from an order row.
- * Prefers values in this order (most-recent wins for click IDs / UTMs;
- * first_touch fills in landing_url / referrer when last_touch is sparse):
- *   1. order's flat columns (utm_source, gclid, fbclid, ...)
- *   2. last_touch_json
- *   3. first_touch_json
- * Returns a shape the classifier degrades gracefully on if everything is
- * null.
+ *
+ * ATTRIBUTION-SOURCE-IMMUTABILITY-001: delegates to the canonical
+ * buildOrderAcquisitionInputs() so the Orders pill can never diverge from
+ * OrderDetailModal / dashboards / CSV export. The primary pill reflects the
+ * ORIGINAL acquisition (first_touch_json when present; creation-time flat
+ * columns for legacy rows) — never last_touch_json, never later-filled flat
+ * click IDs. The later touch is surfaced separately in the popover.
  */
 function buildAcquisitionInputs(order: Order): AcquisitionInputs {
-  const lt = ((order as Order & { last_touch_json?: OrderAttributionSnapshot | null }).last_touch_json ?? null) || null;
-  const ft = ((order as Order & { first_touch_json?: OrderAttributionSnapshot | null }).first_touch_json ?? null) || null;
-  const pick = <K extends keyof OrderAttributionSnapshot>(k: K): string | null => {
-    return (lt && (lt[k] as string | null | undefined)) || (ft && (ft[k] as string | null | undefined)) || null;
-  };
-  return {
-    utm_source:   order.utm_source   ?? pick("utm_source"),
-    utm_medium:   order.utm_medium   ?? pick("utm_medium"),
-    utm_campaign: order.utm_campaign ?? pick("utm_campaign"),
-    gclid:        order.gclid        ?? pick("gclid"),
-    gbraid:                              pick("gbraid"),
-    wbraid:                              pick("wbraid"),
-    fbclid:       order.fbclid       ?? pick("fbclid"),
-    msclkid:                             pick("msclkid"),
-    ttclid:                              pick("ttclid"),
-    ref:                                 pick("ref"),
-    referred_by:  order.referred_by,
-    referrer:                            pick("referrer"),
-    landing_url:                         pick("landing_url"),
-  };
+  return buildOrderAcquisitionInputs(
+    order as Order & {
+      first_touch_json?: OrderAttributionSnapshot | null;
+      last_touch_json?: OrderAttributionSnapshot | null;
+    },
+  );
 }
 
 /**
@@ -300,6 +289,15 @@ export default function OrderCard({
   const resolvedAttr = acqClassification
     ? resolveOrderAttribution(order as unknown as ResolvableOrder)
     : null;
+  // Later touch (separate journey fact — never replaces the primary pill).
+  const laterTouch: LaterTouchView | null = acqClassification
+    ? resolveLaterTouch(
+        order as Order & {
+          first_touch_json?: OrderAttributionSnapshot | null;
+          last_touch_json?: OrderAttributionSnapshot | null;
+        },
+      )
+    : null;
   const attrTitle = resolvedAttr
     ? [
         `Source: ${resolvedAttr.traffic_source_final}`,
@@ -309,6 +307,9 @@ export default function OrderCard({
         `Campaign: ${resolvedAttr.utm_campaign || resolvedAttr.campaign_id || "—"}`,
         `First landing: ${resolvedAttr.first_landing_page_path || "—"}`,
         `Raw source: ${resolvedAttr.traffic_source_raw || "—"}`,
+        ...(laterTouch && resolvedAttr.last_touch_source_final
+          ? [`Later touch: ${resolvedAttr.last_touch_source_final} (not the acquisition source)`]
+          : []),
       ].join("\n")
     : "";
   const [attrPopoverOpen, setAttrPopoverOpen] = useState(false);
@@ -839,6 +840,7 @@ export default function OrderCard({
           onClose={() => setAttrPopoverOpen(false)}
           contextLabel={`Order ${order.confirmation_id}`}
           resolved={resolvedAttr}
+          laterTouch={laterTouch}
         />
       )}
     </>

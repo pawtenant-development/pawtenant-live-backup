@@ -263,6 +263,20 @@ const EXPORT_COLUMNS: { label: string; get: (o: ExportableOrder, ctx: ExportCtx)
   { label: "Sequence Stage", get: (o) => sequenceStage(o) },
   { label: "GHL Contact ID", get: (o) => o.ghl_contact_id },
   { label: "Last Activity", get: (o) => fmtDate(o.last_contacted_at) },
+  // ── ATTRIBUTION-SOURCE-IMMUTABILITY-001 — appended at the END so existing
+  // column positions stay stable. FIELD SEMANTICS, explicit:
+  //   "Traffic Source Final" / "Traffic Channel Final"  = ORIGINAL ACQUISITION
+  //     (immutable first touch; legacy rows: creation-time flat columns).
+  //   "Last Touch Source/Channel/Reason/At"             = LATER TOUCH, shown
+  //     separately; paid labels require proven fresh-click provenance,
+  //     otherwise the touch is classified from its own referrer/UTM/landing.
+  //   "gclid" / "fbclid" flat columns above              = CONVERSION-CREDIT
+  //     EVIDENCE (what the conversion uploader may use), not the source badge.
+  { label: "Last Touch Source", get: (o) => attr(o).last_touch_source_final },
+  { label: "Last Touch Channel", get: (o) => attr(o).last_touch_channel_final },
+  { label: "Last Touch Reason", get: (o) => attr(o).last_touch_rule_reason },
+  { label: "Last Touch At", get: (o) => attr(o).last_touch_captured_at },
+  { label: "Last Touch Click IDs Suppressed", get: (o) => attr(o).last_touch_click_ids_suppressed },
 ];
 
 export function exportOrdersToCSV(

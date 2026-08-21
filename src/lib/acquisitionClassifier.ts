@@ -465,6 +465,15 @@ interface OrderTouchSnapshotLike {
   ref?: string | null;
   referrer?: string | null;
   landing_url?: string | null;
+  // ATTRIBUTION-SOURCE-IMMUTABILITY-001 (optional, provenance_version >= 1):
+  // per-click-ID provenance written by attributionStore.getLastTouch().
+  // "url" = captured from a URL in that tab session (fresh paid click);
+  // anything else / absent = unproven, fails closed for later-touch paid claims.
+  click_provenance?: Record<string, string | null> | null;
+  provenance_version?: number | null;
+  captured_at?: string | null;
+  channel?: string | null;
+  fullSource?: string | null;
 }
 
 /**
@@ -479,24 +488,63 @@ export interface OrderLikeAttribution {
   gclid?: string | null;
   fbclid?: string | null;
   referred_by?: string | null;
+  landing_url?: string | null;
   first_touch_json?: OrderTouchSnapshotLike | null;
   last_touch_json?:  OrderTouchSnapshotLike | null;
 }
 
+// Coalesce "" / undefined to null so an explicitly-empty snapshot field never
+// falls through `??` into a contaminated fallback.
+function touchVal(
+  t: OrderTouchSnapshotLike | null,
+  k: keyof OrderTouchSnapshotLike,
+): string | null {
+  const v = t ? (t[k] as string | null | undefined) : null;
+  return typeof v === "string" && v.trim() !== "" ? v : null;
+}
+
 /**
- * Merge an order row's flat columns + last_touch + first_touch into a
- * single AcquisitionInputs payload. Precedence: flat column → last_touch
- * → first_touch. Null-safe; returns a fully-shaped object even for
- * sparse / legacy orders.
+ * Build the PRIMARY (acquisition) inputs for an order row.
+ *
+ * ATTRIBUTION-SOURCE-IMMUTABILITY-001 — the primary source badge answers
+ * "where did this lead ORIGINALLY come from", so it reads the immutable
+ * first_touch_json snapshot when one exists. It deliberately ignores
+ * last_touch_json AND the flat click-ID columns for such orders: both are
+ * written by LATER upserts and were contaminated by storage-restored click
+ * IDs on LIVE PT-MT1GWHXX (organic first touch, badge flipped to Google Ads).
+ *
+ * Legacy orders with NO first_touch_json keep the historical merge
+ * (flat column → last_touch): their flat columns were written at creation
+ * and are the closest thing to a first touch they have.
+ *
+ * Later touches are surfaced SEPARATELY via resolveLaterTouch() — never as
+ * the primary source.
  */
 export function buildOrderAcquisitionInputs(order: OrderLikeAttribution): AcquisitionInputs {
   const lt = order.last_touch_json  ?? null;
   const ft = order.first_touch_json ?? null;
-  const pick = <K extends keyof OrderTouchSnapshotLike>(k: K): string | null => {
-    return (lt && (lt[k] as string | null | undefined)) ||
-           (ft && (ft[k] as string | null | undefined)) ||
-           null;
-  };
+
+  if (ft) {
+    return {
+      utm_source:   touchVal(ft, "utm_source"),
+      utm_medium:   touchVal(ft, "utm_medium"),
+      utm_campaign: touchVal(ft, "utm_campaign"),
+      gclid:        touchVal(ft, "gclid"),
+      gbraid:       touchVal(ft, "gbraid"),
+      wbraid:       touchVal(ft, "wbraid"),
+      fbclid:       touchVal(ft, "fbclid"),
+      msclkid:      touchVal(ft, "msclkid"),
+      ttclid:       touchVal(ft, "ttclid"),
+      ref:          touchVal(ft, "ref"),
+      // referred_by is written once at creation (sticky) — first-touch data.
+      referred_by:  order.referred_by ?? null,
+      referrer:     touchVal(ft, "referrer"),
+      // flat landing_url is creation-sticky (first landing) — safe fallback.
+      landing_url:  touchVal(ft, "landing_url") ?? order.landing_url ?? null,
+    };
+  }
+
+  const pick = (k: keyof OrderTouchSnapshotLike): string | null => touchVal(lt, k);
   return {
     utm_source:   order.utm_source   ?? pick("utm_source"),
     utm_medium:   order.utm_medium   ?? pick("utm_medium"),
@@ -510,13 +558,81 @@ export function buildOrderAcquisitionInputs(order: OrderLikeAttribution): Acquis
     ref:                                 pick("ref"),
     referred_by:  order.referred_by  ?? null,
     referrer:                            pick("referrer"),
-    landing_url:                         pick("landing_url"),
+    landing_url:  order.landing_url  ?? pick("landing_url"),
   };
 }
 
 /** Convenience: classify an order row in one call. */
 export function classifyOrder(order: OrderLikeAttribution): AcquisitionClassification {
   return classifyAcquisition(buildOrderAcquisitionInputs(order));
+}
+
+// ── Later touch (ATTRIBUTION-SOURCE-IMMUTABILITY-001) ───────────────────────
+//
+// A later touch may be shown ALONGSIDE the primary acquisition source, never
+// instead of it. Click IDs inside a stored last_touch_json are honored only
+// with proven "url" provenance; legacy touches (no provenance map) fail
+// closed — their click IDs are ignored and the touch is classified from its
+// own referrer/UTM/ref/landing signals instead (typically Direct for a
+// manually-shared or internal link).
+
+const LATER_TOUCH_CLICK_IDS = ["gclid", "gbraid", "wbraid", "fbclid", "msclkid", "ttclid"] as const;
+
+function laterTouchClickId(lt: OrderTouchSnapshotLike, key: (typeof LATER_TOUCH_CLICK_IDS)[number]): string | null {
+  const v = touchVal(lt, key);
+  if (!v) return null;
+  const prov = lt.click_provenance ? lt.click_provenance[key] : null;
+  return prov === "url" ? v : null;
+}
+
+export interface LaterTouchView {
+  classification: AcquisitionClassification;
+  captured_at: string | null;
+  landing_url: string | null;
+  /** true when the stored touch carried click IDs that were IGNORED because
+   *  their provenance is unproven (legacy touch or storage-restored IDs). */
+  click_ids_suppressed: boolean;
+}
+
+/**
+ * Resolve the separately-displayed later touch for an order, or null when the
+ * order has no later touch distinct from its first touch.
+ */
+export function resolveLaterTouch(order: OrderLikeAttribution): LaterTouchView | null {
+  const lt = order.last_touch_json ?? null;
+  if (!lt) return null;
+  const ft = order.first_touch_json ?? null;
+  // Same snapshot as the first touch (single-touch order) → nothing "later".
+  if (ft && ft.captured_at && lt.captured_at && ft.captured_at === lt.captured_at) return null;
+
+  const suppressed = LATER_TOUCH_CLICK_IDS.some(
+    (k) => !!touchVal(lt, k) && !laterTouchClickId(lt, k),
+  );
+
+  const inputs: AcquisitionInputs = {
+    utm_source:   touchVal(lt, "utm_source"),
+    utm_medium:   touchVal(lt, "utm_medium"),
+    utm_campaign: touchVal(lt, "utm_campaign"),
+    gclid:        laterTouchClickId(lt, "gclid"),
+    gbraid:       laterTouchClickId(lt, "gbraid"),
+    wbraid:       laterTouchClickId(lt, "wbraid"),
+    fbclid:       laterTouchClickId(lt, "fbclid"),
+    msclkid:      laterTouchClickId(lt, "msclkid"),
+    ttclid:       laterTouchClickId(lt, "ttclid"),
+    ref:          touchVal(lt, "ref"),
+    // The later touch never inherits the order-level referred_by — that field
+    // is first-touch data.
+    referred_by:  null,
+    referrer:     touchVal(lt, "referrer"),
+    landing_url:  touchVal(lt, "landing_url"),
+  };
+
+  return {
+    classification: classifyAcquisition(inputs),
+    captured_at: touchVal(lt, "captured_at"),
+    landing_url: touchVal(lt, "landing_url"),
+    click_ids_suppressed: suppressed,
+  };
 }
 
 // ── Canonical channel mapping (LIVE-ANALYTICS-ATTRIBUTION-METRICS-REPAIR) ──

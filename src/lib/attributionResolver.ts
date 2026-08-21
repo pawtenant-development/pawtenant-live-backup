@@ -35,6 +35,8 @@
 
 import {
   classifyAcquisition,
+  buildOrderAcquisitionInputs,
+  resolveLaterTouch,
   type AcquisitionInputs,
   type AcquisitionLabel,
 } from "./acquisitionClassifier";
@@ -91,13 +93,28 @@ export interface ResolvableOrder {
 }
 
 export interface ResolvedAttribution {
-  // Source vs channel (final, marketing-ready)
+  // ── PRIMARY = ORIGINAL ACQUISITION (first touch) ─────────────────────────
+  // ATTRIBUTION-SOURCE-IMMUTABILITY-001: traffic_source_final /
+  // traffic_channel_final answer "where did this lead ORIGINALLY come from"
+  // and resolve from the immutable first_touch_json (legacy orders without a
+  // first touch fall back to their creation-time flat columns). Later
+  // navigation, shared links, or storage-restored click IDs can never change
+  // them. The later touch is exposed SEPARATELY below.
   traffic_source_raw: string;        // legacy orders.referred_by, untouched
   traffic_source_final: string;
   traffic_channel_final: string;
   attribution_rule_reason: string;
   attribution_confidence: string;    // high | medium | low
   attribution_data_completeness: string; // e.g. "4/4 (Complete)"
+  // ── LATER TOUCH (separate journey fact — NEVER the primary source) ───────
+  // Populated only when last_touch_json is a distinct, later touch. Click IDs
+  // inside it count as paid only with proven "url" provenance; otherwise the
+  // touch is classified from its own referrer/UTM/landing (fail closed).
+  last_touch_source_final: string;   // "" when no distinct later touch
+  last_touch_channel_final: string;
+  last_touch_rule_reason: string;
+  last_touch_captured_at: string;
+  last_touch_click_ids_suppressed: string; // "yes" | "" — unproven click IDs ignored
   // Click IDs / campaign (already on the order — surfaced for convenience)
   gclid: string;
   fbclid: string;
@@ -279,22 +296,15 @@ export function resolveOrderAttribution(order: ResolvableOrder): ResolvedAttribu
   const referredByForSource = isLandingLabel(referredByRaw) ? null : (order.referred_by ?? null);
   const landingLabelHint = isLandingLabel(referredByRaw) ? referredByRaw : (isLandingLabel(refRaw) ? refRaw : "");
 
-  // Merge signals for the source classifier (flat column → last → first).
-  const inputs: AcquisitionInputs = {
-    utm_source:   order.utm_source   ?? lt?.utm_source   ?? ft?.utm_source   ?? null,
-    utm_medium:   order.utm_medium   ?? lt?.utm_medium   ?? ft?.utm_medium   ?? null,
-    utm_campaign: order.utm_campaign ?? lt?.utm_campaign ?? ft?.utm_campaign ?? null,
-    gclid:        order.gclid        ?? lt?.gclid        ?? ft?.gclid        ?? null,
-    gbraid:                             lt?.gbraid       ?? ft?.gbraid       ?? null,
-    wbraid:                             lt?.wbraid       ?? ft?.wbraid       ?? null,
-    fbclid:       order.fbclid       ?? lt?.fbclid       ?? ft?.fbclid       ?? null,
-    msclkid:                            lt?.msclkid      ?? ft?.msclkid      ?? null,
-    ttclid:                             lt?.ttclid       ?? ft?.ttclid       ?? null,
-    ref:                                lt?.ref          ?? ft?.ref          ?? null,
-    referred_by:  referredByForSource,
-    referrer:                           lt?.referrer     ?? ft?.referrer     ?? null,
-    landing_url:  order.landing_url  ?? lt?.landing_url  ?? ft?.landing_url  ?? null,
-  };
+  // PRIMARY inputs — first-touch acquisition (ATTRIBUTION-SOURCE-IMMUTABILITY-001).
+  // Delegates to the canonical builder so the Orders pill, OrderDetailModal
+  // badge, dashboards and this resolver can never diverge: first_touch_json
+  // when present, creation-time flat columns for legacy orders — never
+  // last_touch_json and never later-filled flat click IDs.
+  const inputs: AcquisitionInputs = buildOrderAcquisitionInputs({
+    ...order,
+    referred_by: referredByForSource,
+  });
 
   const cls = classifyAcquisition(inputs);
   let { source, channel } = LABEL_TO_FINAL[cls.label] ?? LABEL_TO_FINAL["Direct / Unknown"];
@@ -331,8 +341,13 @@ export function resolveOrderAttribution(order: ResolvableOrder): ResolvedAttribu
   const paidAt = s(order.paid_at);
   const firstSeenAt = s(ft?.first_seen_at ?? lt?.first_seen_at);
 
-  // ── Keyword / campaign signals (last-touch → first-touch) ───────────────
+  // ── Keyword / campaign signals (ANY-TOUCH: last-touch → first-touch) ────
   // Read verbatim from the touch snapshots — these live only in JSON today.
+  // DOCUMENTED SEMANTICS (ATTRIBUTION-SOURCE-IMMUTABILITY-001): these are
+  // campaign DETAIL fields (keyword, ValueTrack, campaign/adset/ad ids) shown
+  // for whichever touch captured them, newest first. They are display labels,
+  // not click credentials, and they do NOT feed the primary source
+  // classification above (which is strictly first-touch).
   const pickTouch = (k: keyof TouchSnapshot): string =>
     s((lt && lt[k]) ?? (ft && ft[k]) ?? null);
 
@@ -372,6 +387,12 @@ export function resolveOrderAttribution(order: ResolvableOrder): ResolvedAttribu
     completenessScore >= 1 ? "Sparse" : "None";
   const attributionDataCompleteness = `${completenessScore}/4 (${completenessLabel})`;
 
+  // ── Later touch (separate fact — never the primary source) ──────────────
+  const later = resolveLaterTouch(order);
+  const laterFinal = later
+    ? (LABEL_TO_FINAL[later.classification.label] ?? LABEL_TO_FINAL["Direct / Unknown"])
+    : null;
+
   return {
     traffic_source_raw: referredByRaw,
     traffic_source_final: source,
@@ -379,6 +400,11 @@ export function resolveOrderAttribution(order: ResolvableOrder): ResolvedAttribu
     attribution_rule_reason: reason,
     attribution_confidence: cls.confidence,
     attribution_data_completeness: attributionDataCompleteness,
+    last_touch_source_final: laterFinal ? laterFinal.source : "",
+    last_touch_channel_final: laterFinal ? laterFinal.channel : "",
+    last_touch_rule_reason: later ? later.classification.reasoning : "",
+    last_touch_captured_at: later ? s(later.captured_at) : "",
+    last_touch_click_ids_suppressed: later && later.click_ids_suppressed ? "yes" : "",
     gclid: s(inputs.gclid),
     fbclid: s(inputs.fbclid),
     gad_source: gadSource,
