@@ -180,6 +180,8 @@
     "test:command-center": "node scripts/check-command-center-identity.mjs --self-test",
     "check:export-package-addons": "node scripts/check-admin-orders-export-package-addons.mjs",
     "test:export-package-addons": "node scripts/check-admin-orders-export-package-addons.mjs --self-test",
+    "check:password-recovery": "node scripts/check-customer-password-recovery.mjs",
+    "test:password-recovery": "node scripts/check-customer-password-recovery.mjs --self-test",
     "check:email-hygiene": "node scripts/check-email-template-hygiene.mjs",
     "test:email-hygiene": "node scripts/check-email-template-hygiene.mjs --self-test"
   },

@@ -262,6 +262,29 @@
         } catch (e) { /* non-fatal */ }
       })();
 
+      // ── Password recovery credential — scanner-safe fragment ───────────
+      // Email scanners may visit links automatically. They land on this page,
+      // but only a human's explicit button click follows the real Supabase
+      // one-time link. Keep the credential in window memory only and scrub it
+      // before any analytics bootstrap can inspect the browser URL.
+      (function () {
+        try {
+          if (window.location.pathname !== '/reset-password') return;
+          var hash = window.location.hash || '';
+          var encoded = new URLSearchParams(hash.slice(1)).get('recovery_link');
+          if (!encoded) return;
+          var padded = encoded.replace(/-/g, '+').replace(/_/g, '/');
+          while (padded.length % 4) padded += '=';
+          var binary = atob(padded);
+          var bytes = new Uint8Array(binary.length);
+          for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          window.__PT_PASSWORD_RECOVERY_LINK__ = new TextDecoder().decode(bytes);
+          window.history.replaceState({}, '', window.location.pathname + window.location.search);
+        } catch (e) {
+          window.history.replaceState({}, '', '/reset-password');
+        }
+      })();
+
       (function() {
         var params = new URLSearchParams(window.location.search);
         var fields = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','gclid','gbraid','wbraid','fbclid','msclkid'];

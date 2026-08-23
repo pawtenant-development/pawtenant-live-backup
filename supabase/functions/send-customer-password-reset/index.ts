@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
+import { buildScannerSafeRecoveryUrl } from "../_shared/customerPasswordRecovery.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -201,6 +202,8 @@ serve(async (req) => {
       });
     }
 
+    const safeRecoveryLink = buildScannerSafeRecoveryUrl(actionLink, RESET_REDIRECT);
+
     // Determine email content based on action + account state
     const isWelcomeEmail = action === "welcome" || accountCreated;
 
@@ -240,7 +243,7 @@ serve(async (req) => {
             <h2 style="color:#111827;font-size:22px;font-weight:800;margin:0 0 8px 0;">${headingText}</h2>
             <p style="color:#6b7280;font-size:14px;line-height:1.7;margin:0 0 28px 0;">${bodyIntro}</p>
             <div style="text-align:center;margin:28px 0;">
-              <a href="${actionLink}" style="display:inline-block;background:#f97316;color:#ffffff;font-size:15px;font-weight:800;text-decoration:none;padding:15px 40px;border-radius:10px;letter-spacing:0.3px;">
+              <a href="${safeRecoveryLink}" style="display:inline-block;background:#f97316;color:#ffffff;font-size:15px;font-weight:800;text-decoration:none;padding:15px 40px;border-radius:10px;letter-spacing:0.3px;">
                 ${buttonLabel}
               </a>
             </div>
@@ -256,8 +259,9 @@ serve(async (req) => {
             </table>
             <p style="color:#9ca3af;font-size:12px;line-height:1.6;margin:20px 0 0 0;padding-top:20px;border-top:1px solid #f3f4f6;">
               This link expires in <strong>1 hour</strong> and can only be used once.<br><br>
+              You&apos;ll confirm once on PawTenant before the secure reset link is used.<br><br>
               If the button doesn&apos;t work, copy and paste this link:<br/>
-              <a href="${actionLink}" style="color:#1a5c4f;word-break:break-all;font-size:11px;">${actionLink}</a>
+              <a href="${safeRecoveryLink}" style="color:#1a5c4f;word-break:break-all;font-size:11px;">${safeRecoveryLink}</a>
             </p>
           </td>
         </tr>

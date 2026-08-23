@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildScannerSafeRecoveryUrl } from "../_shared/customerPasswordRecovery.ts";
 
 /**
  * Public self-serve password reset for the customer portal.
@@ -32,8 +33,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  *     RPC (indexed, no 1000-user cap; not callable from the browser).
  *   - Duplicate accounts are impossible: Supabase enforces email uniqueness on
  *     createUser, and the delegate re-checks existence before creating.
- *   - Soft rate limit per email (60s) using auth.users.recovery_sent_at so
- *     repeated clicks do not blast Resend with duplicate sends.
+ *   - Soft rate limit per email (10 minutes) using auth.users.recovery_sent_at
+ *     so repeated requests do not supersede a still-valid email.
+ *   - Email scanners land on a PawTenant interstitial and cannot consume the
+ *     real single-use Supabase recovery token without an explicit user click.
  *   - No recovery links, tokens, or passwords are ever logged.
  */
 
@@ -44,10 +47,10 @@ const corsHeaders = {
 
 // Where the recovery (set-password) link lands the customer for the
 // existing-user path. Per-environment override via PORTAL_RESET_REDIRECT
-// (TEST sets it to the test domain); production falls back to www.pawtenant.com.
+// (TEST sets it to the test domain); production falls back to the canonical host.
 const RESET_REDIRECT =
-  Deno.env.get("PORTAL_RESET_REDIRECT") ?? "https://www.pawtenant.com/reset-password";
-const MIN_RESEND_INTERVAL_MS = 60_000;
+  Deno.env.get("PORTAL_RESET_REDIRECT") ?? "https://pawtenant.com/reset-password";
+const MIN_RESEND_INTERVAL_MS = 10 * 60_000;
 
 function okResponse() {
   return new Response(
@@ -204,7 +207,8 @@ serve(async (req) => {
       }
 
       const subject = "Reset your PawTenant portal password";
-      const htmlBody = buildResetEmailHtml(subject, firstName, actionLink);
+      const safeRecoveryLink = buildScannerSafeRecoveryUrl(actionLink, RESET_REDIRECT);
+      const htmlBody = buildResetEmailHtml(subject, firstName, safeRecoveryLink);
 
       let sent = false;
       try {
@@ -310,7 +314,7 @@ serve(async (req) => {
 });
 
 /** Branded reset email (existing-user path). Kept identical to the prior copy. */
-function buildResetEmailHtml(subject: string, firstName: string, actionLink: string): string {
+function buildResetEmailHtml(subject: string, firstName: string, safeRecoveryLink: string): string {
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title></head>
@@ -329,7 +333,7 @@ function buildResetEmailHtml(subject: string, firstName: string, actionLink: str
             <h2 style="color:#111827;font-size:22px;font-weight:800;margin:0 0 8px 0;">Reset your password</h2>
             <p style="color:#6b7280;font-size:14px;line-height:1.7;margin:0 0 28px 0;">Hi ${firstName},<br><br>We received a request to reset the password for your PawTenant customer portal account. Click the button below to set a new password and regain access to your orders and ESA letters.</p>
             <div style="text-align:center;margin:28px 0;">
-              <a href="${actionLink}" style="display:inline-block;background:#f97316;color:#ffffff;font-size:15px;font-weight:800;text-decoration:none;padding:15px 40px;border-radius:10px;letter-spacing:0.3px;">
+              <a href="${safeRecoveryLink}" style="display:inline-block;background:#f97316;color:#ffffff;font-size:15px;font-weight:800;text-decoration:none;padding:15px 40px;border-radius:10px;letter-spacing:0.3px;">
                 Reset My Password
               </a>
             </div>
@@ -345,8 +349,9 @@ function buildResetEmailHtml(subject: string, firstName: string, actionLink: str
             </table>
             <p style="color:#9ca3af;font-size:12px;line-height:1.6;margin:20px 0 0 0;padding-top:20px;border-top:1px solid #f3f4f6;">
               This link expires in <strong>1 hour</strong> and can only be used once.<br><br>
+              You&apos;ll confirm once on PawTenant before the secure reset link is used.<br><br>
               If the button doesn&apos;t work, copy and paste this link:<br/>
-              <a href="${actionLink}" style="color:#1a5c4f;word-break:break-all;font-size:11px;">${actionLink}</a><br><br>
+              <a href="${safeRecoveryLink}" style="color:#1a5c4f;word-break:break-all;font-size:11px;">${safeRecoveryLink}</a><br><br>
               Didn&apos;t request this? You can safely ignore this email &mdash; your password won&apos;t change.
             </p>
           </td>

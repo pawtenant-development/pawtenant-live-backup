@@ -2,10 +2,37 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 
+declare global {
+  interface Window {
+    __PT_PASSWORD_RECOVERY_LINK__?: string;
+  }
+}
+
+function getPendingRecoveryLink(): string | null {
+  const candidate = window.__PT_PASSWORD_RECOVERY_LINK__;
+  if (!candidate) return null;
+  try {
+    const action = new URL(candidate);
+    const expectedOrigin = new URL(import.meta.env.VITE_PUBLIC_SUPABASE_URL as string).origin;
+    if (
+      action.protocol !== "https:" ||
+      action.origin !== expectedOrigin ||
+      action.pathname !== "/auth/v1/verify" ||
+      action.searchParams.get("type") !== "recovery"
+    ) return null;
+    return action.toString();
+  } catch {
+    return null;
+  }
+}
+
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isPreview = searchParams.get("preview") === "1";
+  const [pendingRecoveryLink] = useState<string | null>(() =>
+    isPreview ? null : getPendingRecoveryLink()
+  );
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -13,10 +40,10 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [sessionReady, setSessionReady] = useState(isPreview);
-  const [verifying, setVerifying] = useState(!isPreview);
+  const [verifying, setVerifying] = useState(!isPreview && !pendingRecoveryLink);
 
   useEffect(() => {
-    if (isPreview) return;
+    if (isPreview || pendingRecoveryLink) return;
 
     let settled = false;
     const settle = () => {
@@ -73,7 +100,13 @@ export default function ResetPasswordPage() {
       clearTimeout(timeout);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPreview]);
+  }, [isPreview, pendingRecoveryLink]);
+
+  const continueRecovery = () => {
+    if (!pendingRecoveryLink) return;
+    window.__PT_PASSWORD_RECOVERY_LINK__ = undefined;
+    window.location.assign(pendingRecoveryLink);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,7 +181,24 @@ export default function ResetPasswordPage() {
             </div>
 
             <div className="p-8">
-              {verifying ? (
+              {pendingRecoveryLink ? (
+                <div className="text-center py-6">
+                  <div className="w-12 h-12 flex items-center justify-center bg-[#f0faf7] rounded-full mx-auto mb-3">
+                    <i className="ri-shield-check-line text-[#1a5c4f] text-xl"></i>
+                  </div>
+                  <p className="text-sm font-bold text-gray-800 mb-2">Your secure reset is ready</p>
+                  <p className="text-xs text-gray-500 mb-5 leading-relaxed">
+                    Continue to verify this one-time request, then choose your new password.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={continueRecovery}
+                    className="whitespace-nowrap inline-flex items-center gap-2 px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] cursor-pointer"
+                  >
+                    <i className="ri-lock-line"></i>Continue Securely
+                  </button>
+                </div>
+              ) : verifying ? (
                 <div className="text-center py-8">
                   <i className="ri-loader-4-line animate-spin text-2xl text-[#1a5c4f] block mb-3"></i>
                   <p className="text-sm text-gray-500">Verifying your reset link...</p>
