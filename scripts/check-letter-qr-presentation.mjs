@@ -166,6 +166,22 @@ function run(override) {
   add("P9", "generate-qr-verification-pdf still encodes the opaque token route",
     /\/v\/t\/\$\{token\}/.test(v2));
 
+  // P10 — converted Word PDFs often emit standalone encoded SPACE glyphs at
+  // the right edge. They are invisible, but only a proven ToUnicode mapping may
+  // remove them from occupancy; unknown codes must remain fail-closed.
+  add("P10a", "font ToUnicode whitespace maps are read from PDF resources",
+    /export function readFontWhitespaceMaps/.test(mod) &&
+    /decodePDFRawStream/.test(mod) &&
+    /beginbfchar/.test(mod));
+  add("P10b", "active font and raw encoded strings drive whitespace detection",
+    /activeFont\s*=\s*lastName/.test(mod) &&
+    /fontWhitespaceMaps\[activeFont\]/.test(mod) &&
+    /whitespaceCodes\.has/.test(mod));
+  add("P10c", "proven whitespace creates no visible occupancy rectangle",
+    /if\s*\(!inText\s*\|\|\s*glyphs\s*===\s*0\)\s*return/.test(mod));
+  add("P10d", "the build passes page font maps into content analysis",
+    /readFontWhitespaceMaps\(doc,\s*idx\)/.test(mod));
+
   return r;
 }
 
@@ -211,6 +227,14 @@ if (SELF) {
         "    const line3 = `pawtenant.com/verify/${letterId}`;\n    const processedBytes = built.bytes;") }],
     ["P3g", "provider-submit-letter stops using the shared module",
       { sub: read("sub").replaceAll("buildQrVerificationPdf", "legacyStamp") }],
+    ["P10a", "ToUnicode font maps are no longer read",
+      { mod: mod.replace("export function readFontWhitespaceMaps", "function removedFontWhitespaceMaps") }],
+    ["P10b", "encoded whitespace is counted without its active font",
+      { mod: mod.replace("activeFont = lastName;", "activeFont = null;") }],
+    ["P10c", "a proven SPACE glyph again paints an occupancy rectangle",
+      { mod: mod.replace("if (!inText || glyphs === 0) return;", "if (!inText) return;") }],
+    ["P10d", "the placement build stops supplying font whitespace maps",
+      { mod: mod.replace("readFontWhitespaceMaps(doc, idx),", "{},") }],
   ];
 
   let bad = 0;
