@@ -426,35 +426,10 @@ export default function EarningsPanel() {
       return false;
     });
 
-    // Auto-populate null doctor_amount from provider's default rate
-    const toUpdate = completedEarnings.filter(
-      (e) => e.doctor_amount == null && e.status === "pending"
-    );
-    if (toUpdate.length > 0) {
-      await Promise.all(
-        toUpdate.map((e) => {
-          const rate = profileList.find((p) => p.user_id === e.doctor_user_id)?.per_order_rate;
-          if (rate != null) {
-            return supabase
-              .from("doctor_earnings")
-              .update({ doctor_amount: rate })
-              .eq("id", e.id);
-          }
-          return Promise.resolve();
-        })
-      );
-      // Reload with updated amounts
-      const { data: refreshed } = await supabase
-        .from("doctor_earnings")
-        .select("*")
-        .in("id", toUpdate.map((e) => e.id));
-      if (refreshed) {
-        refreshed.forEach((updated) => {
-          const idx = completedEarnings.findIndex((e) => e.id === (updated as Earning).id);
-          if (idx !== -1) completedEarnings[idx] = updated as Earning;
-        });
-      }
-    }
+    // PROVIDER-RATE-SNAPSHOT-SAFETY: doctor_amount is the historical amount
+    // recorded for this earning. Never fill or recalculate it from the
+    // provider's current profile rate while reading the ledger. A missing
+    // historical amount remains visibly unset for an explicit admin correction.
 
     setEarnings(completedEarnings);
     setDoctors(profileList);

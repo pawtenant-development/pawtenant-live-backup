@@ -189,11 +189,14 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
 
   const summary = useMemo(() => {
     const completed = earnings.filter((e) => e.status !== "cancelled");
-    const totalEarned = completed.reduce((s, e) => s + (e.doctor_amount ?? (perOrderRate ?? 0)), 0);
-    const paidAmount = earnings.filter((e) => e.status === "paid").reduce((s, e) => s + (e.doctor_amount ?? (perOrderRate ?? 0)), 0);
-    const unpaidAmount = earnings.filter((e) => e.status === "pending").reduce((s, e) => s + (e.doctor_amount ?? (perOrderRate ?? 0)), 0);
+    // Each earning is an immutable historical rate snapshot. The current
+    // profile rate applies to new earnings only and must never fill old/null
+    // rows or rewrite paid/pending totals.
+    const totalEarned = completed.reduce((s, e) => s + (e.doctor_amount ?? 0), 0);
+    const paidAmount = earnings.filter((e) => e.status === "paid").reduce((s, e) => s + (e.doctor_amount ?? 0), 0);
+    const unpaidAmount = earnings.filter((e) => e.status === "pending").reduce((s, e) => s + (e.doctor_amount ?? 0), 0);
     return { totalEarned, paidAmount, unpaidAmount, completedCount: completed.length };
-  }, [earnings, perOrderRate]);
+  }, [earnings]);
 
   const paidRecords = useMemo(
     () => earnings.filter((e) => e.status === "paid").sort((a, b) => new Date(b.paid_at ?? b.created_at).getTime() - new Date(a.paid_at ?? a.created_at).getTime()),
@@ -263,20 +266,16 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
         ))}
       </div>
 
-      {/* Payout formula */}
-      {perOrderRate != null && summary.completedCount > 0 && (
+      {/* Historical-rate explanation — totals come from the earning ledger,
+          never current rate × all completed cases. */}
+      {summary.completedCount > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Payout Calculation</p>
-          <div className="flex items-center gap-2 text-sm text-gray-600 flex-wrap">
-            <span className="font-mono font-bold text-[#2c5282]">${perOrderRate}</span>
-            <span className="text-gray-400">per order</span>
-            <span className="text-gray-300 mx-1">×</span>
-            <span className="font-bold text-gray-800">{summary.completedCount}</span>
-            <span className="text-gray-400">completed</span>
-            <span className="text-gray-300 mx-1">=</span>
-            <span className="font-extrabold text-gray-900">${perOrderRate * summary.completedCount}</span>
-            <span className="text-gray-400">total</span>
-          </div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">How earnings are calculated</p>
+          <p className="text-sm text-gray-600 leading-relaxed">
+            Each case keeps the rate recorded when its earning was created. Your current
+            {perOrderRate != null ? ` ${perOrderRate}` : ""} rate applies to new earnings only.
+            Total Earned is the sum of the saved amounts for all paid and unpaid cases.
+          </p>
         </div>
       )}
 

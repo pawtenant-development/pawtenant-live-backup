@@ -34,6 +34,10 @@ import { dirname, join } from "node:path";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PAYMENTS_TAB = "src/pages/admin-orders/components/PaymentHistoryTab.tsx";
 const PAYOUT_CARD = "src/pages/admin-orders/components/ProviderPayoutSummary.tsx";
+const EARNINGS_PANEL = "src/pages/admin-orders/components/EarningsPanel.tsx";
+const PROVIDER_EARNINGS = "src/pages/provider-portal/components/ProviderEarnings.tsx";
+const PROVIDER_DRAWER = "src/pages/admin-orders/components/ProviderDrawer.tsx";
+const ASSIGN_DOCTOR = "supabase/functions/assign-doctor/index.ts";
 
 let failures = 0;
 const fail = (m) => { console.error(`  ✗ ${m}`); failures++; };
@@ -151,6 +155,59 @@ function checkDefences(sources) {
   }
 }
 
+// ── Historical provider-rate snapshots ─────────────────────────────────────
+// Profile rate changes are prospective. Every total must sum the amount stored
+// on each earning; old rows must never be filled/recomputed from today's rate.
+function checkRateSnapshots(sources) {
+  const panel = sources[EARNINGS_PANEL];
+  const portal = sources[PROVIDER_EARNINGS];
+  const drawer = sources[PROVIDER_DRAWER];
+  const assign = sources[ASSIGN_DOCTOR];
+
+  !/Auto-populate null doctor_amount|update\(\{\s*doctor_amount:\s*rate\s*\}\)/.test(panel)
+    ? pass("EarningsPanel: loading the ledger cannot backfill old rows from today's rate")
+    : fail("EarningsPanel: retroactive current-rate backfill is present");
+
+  const snapshotSums = portal.match(/doctor_amount\s*\?\?\s*0/g)?.length ?? 0;
+  snapshotSums >= 3
+    ? pass("ProviderEarnings: paid, pending and total amounts sum recorded snapshots")
+    : fail(`ProviderEarnings: expected 3 historical snapshot sums, found ${snapshotSums}`);
+
+  !/doctor_amount\s*\?\?\s*\(perOrderRate\s*\?\?\s*0\)/.test(portal)
+    ? pass("ProviderEarnings: current rate is never a fallback for an old/null earning")
+    : fail("ProviderEarnings: current rate still fills an old/null earning");
+
+  !/perOrderRate\s*\*\s*summary\.completedCount/.test(portal)
+    ? pass("ProviderEarnings: historical total is not current rate × all cases")
+    : fail("ProviderEarnings: historical total is recomputed from the current rate");
+
+  !/currentRate\s*\*\s*doc\.workload\.completed/.test(drawer)
+    ? pass("ProviderDrawer: historical earnings are not estimated from the current rate")
+    : fail("ProviderDrawer: current rate is multiplied across historical completed cases");
+
+  /Applies to new earnings only[\s\S]{0,160}Existing case earnings and payouts keep their recorded amounts/.test(drawer)
+    ? pass("ProviderDrawer: rate-change scope is explicit before Save")
+    : fail("ProviderDrawer: missing prospective-only rate-change warning");
+
+  /const sameProvider\s*=/.test(assign)
+    ? pass("assign-doctor: distinguishes repeat assignment from genuine reassignment")
+    : fail("assign-doctor: same-provider snapshot discriminator missing");
+
+  /if\s*\(!sameProvider\)\s*earningPatch\.doctor_amount\s*=\s*doctorRate/.test(assign)
+    ? pass("assign-doctor: current rate is written only for a different provider")
+    : fail("assign-doctor: existing pending snapshot can be overwritten on repeat assignment");
+
+  const history = [
+    { doctor_amount: 25 },
+    { doctor_amount: 25 },
+    { doctor_amount: 30 },
+  ];
+  const ledgerTotal = history.reduce((sum, row) => sum + (row.doctor_amount ?? 0), 0);
+  ledgerTotal === 80
+    ? pass("mixed-rate ledger: $25 + $25 + future $30 = $80 overall")
+    : fail(`mixed-rate ledger expected $80, got ${ledgerTotal}`);
+}
+
 const argv = process.argv.slice(2);
 if (argv.includes("--self-test")) {
   console.log("NEGATIVE CONTROL — every assertion below MUST fail.\n");
@@ -168,13 +225,31 @@ if (argv.includes("--self-test")) {
     [PAYOUT_CARD]: strip(read(PAYOUT_CARD)),
   });
 
+  console.log("\n[3] historical-rate protections deliberately broken:");
+  const brokenPanel = read(EARNINGS_PANEL) + "\nupdate({ doctor_amount: rate }); // planted retroactive fill\n";
+  const brokenPortal = read(PROVIDER_EARNINGS)
+    .replace(/doctor_amount\s*\?\?\s*0/g, "doctor_amount ?? (perOrderRate ?? 0)")
+    + "\nconst plantedRetroTotal = perOrderRate * summary.completedCount;\n";
+  const brokenDrawer = read(PROVIDER_DRAWER)
+    + "\nconst plantedEstimate = currentRate * doc.workload.completed;\n";
+  const brokenAssign = read(ASSIGN_DOCTOR)
+    .replace("if (!sameProvider) earningPatch.doctor_amount = doctorRate;", "earningPatch.doctor_amount = doctorRate;");
+  const rateBefore = failures;
+  checkRateSnapshots({
+    [EARNINGS_PANEL]: brokenPanel,
+    [PROVIDER_EARNINGS]: brokenPortal,
+    [PROVIDER_DRAWER]: brokenDrawer,
+    [ASSIGN_DOCTOR]: brokenAssign,
+  });
+  const rateTripped = failures - rateBefore;
+
   const tripped = failures - before;
   // 4 math assertions: 2 regressions trip, file-count and all-cancelled also trip.
   // 6 defence assertions: 2 files x (defence1 + defence2) trip; reduce survives.
   const EXPECTED_MIN = 7;
   console.log("");
-  if (tripped >= EXPECTED_MIN) {
-    console.log(`✅ SELF-TEST PASSED — ${tripped} assertions tripped on broken input (>= ${EXPECTED_MIN}).`);
+  if (tripped >= EXPECTED_MIN && rateTripped >= 6) {
+    console.log(`✅ SELF-TEST PASSED — ${tripped} assertions tripped on broken input (>= ${EXPECTED_MIN}); ${rateTripped} historical-rate controls bit (>= 6).`);
     console.log("   The guard genuinely detects the regression it claims to prevent.");
     process.exit(0);
   }
@@ -188,6 +263,13 @@ console.log("Payout math (cancelled rows are void):");
 checkMath(false);
 console.log("\nReader defences (both must exclude cancelled twice):");
 checkDefences({ [PAYMENTS_TAB]: read(PAYMENTS_TAB), [PAYOUT_CARD]: read(PAYOUT_CARD) });
+console.log("\nHistorical provider-rate snapshots:");
+checkRateSnapshots({
+  [EARNINGS_PANEL]: read(EARNINGS_PANEL),
+  [PROVIDER_EARNINGS]: read(PROVIDER_EARNINGS),
+  [PROVIDER_DRAWER]: read(PROVIDER_DRAWER),
+  [ASSIGN_DOCTOR]: read(ASSIGN_DOCTOR),
+});
 
 console.log("");
 if (failures > 0) {

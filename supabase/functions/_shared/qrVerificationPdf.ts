@@ -57,7 +57,7 @@
 // DPI, no image to recompress, and identical in grayscale.
 
 import {
-  PDFDocument, PDFPage, PDFName, PDFArray, PDFDict, rgb, StandardFonts, PDFFont,
+  decodePDFRawStream, PDFDocument, PDFPage, PDFName, PDFArray, PDFDict, rgb, StandardFonts, PDFFont,
 } from "https://esm.sh/pdf-lib@1.17.1";
 import qrcode from "https://esm.sh/qrcode-generator@1.4.4";
 
@@ -238,6 +238,99 @@ export function readXObjectBoxes(doc: PDFDocument, pageIndex: number): Record<st
   }
 }
 
+export interface FontWhitespaceMap {
+  /** Fixed-width source character code size in hexadecimal digits. */
+  codeHexWidth: number;
+  /** Source character codes whose ToUnicode mapping is only whitespace. */
+  whitespaceCodes: Set<string>;
+}
+
+const UNICODE_WHITESPACE = new Set([
+  0x0009, 0x000a, 0x000d, 0x0020, 0x00a0,
+  0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006,
+  0x2007, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f,
+  0x205f, 0x3000, 0xfeff,
+]);
+
+function unicodeHexIsWhitespace(hex: string): boolean {
+  if (!hex || hex.length % 4 !== 0) return false;
+  for (let i = 0; i < hex.length; i += 4) {
+    const cp = Number.parseInt(hex.slice(i, i + 4), 16);
+    if (!Number.isFinite(cp) || !UNICODE_WHITESPACE.has(cp)) return false;
+  }
+  return true;
+}
+
+/**
+ * Read only the narrow part of each font's ToUnicode CMap needed by placement:
+ * which encoded character codes are whitespace. Unknown fonts remain unknown
+ * and keep the old conservative occupancy behavior.
+ */
+export function readFontWhitespaceMaps(
+  doc: PDFDocument,
+  pageIndex: number,
+): Record<string, FontWhitespaceMap> {
+  const out: Record<string, FontWhitespaceMap> = {};
+  try {
+    const page = doc.getPage(pageIndex);
+    // deno-lint-ignore no-explicit-any
+    const res = (page as any).node.Resources?.();
+    if (!res) return out;
+    const fontRef = res.get(PDFName.of("Font"));
+    if (!fontRef) return out;
+    // deno-lint-ignore no-explicit-any
+    const fonts = (fontRef instanceof PDFDict ? fontRef : (doc as any).context.lookup(fontRef)) as PDFDict;
+    if (!fonts?.keys) return out;
+
+    for (const key of fonts.keys()) {
+      const name = key.asString().replace(/^\//, "");
+      // deno-lint-ignore no-explicit-any
+      const font = (doc as any).context.lookup(fonts.get(key));
+      const toUnicodeRef = font?.get?.(PDFName.of("ToUnicode"));
+      if (!toUnicodeRef) continue;
+      // deno-lint-ignore no-explicit-any
+      const stream: any = (doc as any).context.lookup(toUnicodeRef);
+      let decoded: Uint8Array;
+      if (typeof stream?.getUnencodedContents === "function") {
+        decoded = stream.getUnencodedContents();
+      } else if (stream?.dict && stream?.contents) {
+        decoded = decodePDFRawStream(stream).decode();
+      } else {
+        continue;
+      }
+      const cmap = new TextDecoder().decode(decoded);
+      const whitespaceCodes = new Set<string>();
+      const widths = new Set<number>();
+
+      for (const section of cmap.matchAll(/beginbfchar([\s\S]*?)endbfchar/g)) {
+        for (const m of section[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)) {
+          const source = m[1].toUpperCase();
+          widths.add(source.length);
+          if (unicodeHexIsWhitespace(m[2].toUpperCase())) whitespaceCodes.add(source);
+        }
+      }
+      for (const section of cmap.matchAll(/beginbfrange([\s\S]*?)endbfrange/g)) {
+        for (const m of section[1].matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)) {
+          const start = m[1].toUpperCase();
+          const end = m[2].toUpperCase();
+          widths.add(start.length);
+          // Only accept a single-code range. Multi-code ranges are deliberately
+          // left occupied unless every mapping can be proven individually.
+          if (start === end && unicodeHexIsWhitespace(m[3].toUpperCase())) {
+            whitespaceCodes.add(start);
+          }
+        }
+      }
+      if (widths.size === 1 && whitespaceCodes.size > 0) {
+        out[name] = { codeHexWidth: [...widths][0], whitespaceCodes };
+      }
+    }
+  } catch {
+    // Fail closed: an absent map means every encoded byte remains occupancy.
+  }
+  return out;
+}
+
 // ── Content-bounds detection ─────────────────────────────────────────────────
 
 export interface ContentBounds {
@@ -267,7 +360,7 @@ type Tok =
   | { t: "num"; v: number }
   | { t: "name"; v: string }
   | { t: "op"; v: string }
-  | { t: "str"; len: number }
+  | { t: "str"; len: number; literal?: string; hex?: string }
   | { t: "other" };
 
 export function* tokenize(s: string): Generator<Tok> {
@@ -280,24 +373,32 @@ export function* tokenize(s: string): Generator<Tok> {
     if (isWS(c)) { i++; continue; }
     if (c === "%") { while (i < n && s[i] !== "\n" && s[i] !== "\r") i++; continue; }
     if (c === "(") {                       // literal string
-      let depth = 1; i++; let len = 0;
+      let depth = 1; i++; let len = 0; let literal = "";
       while (i < n && depth > 0) {
-        if (s[i] === "\\") { i += 2; len++; continue; }
-        if (s[i] === "(") { depth++; len++; }
-        else if (s[i] === ")") { depth--; if (depth > 0) len++; }
-        else len++;
+        if (s[i] === "\\") {
+          // Escaped whitespace is still whitespace; unknown escapes remain
+          // conservative because any non-whitespace byte makes the whole
+          // string count at its original length.
+          if (i + 1 < n) literal += s[i + 1];
+          i += 2; len++; continue;
+        }
+        if (s[i] === "(") { depth++; len++; literal += s[i]; }
+        else if (s[i] === ")") {
+          depth--;
+          if (depth > 0) { len++; literal += s[i]; }
+        } else { len++; literal += s[i]; }
         i++;
       }
-      yield { t: "str", len }; continue;
+      yield { t: "str", len, literal }; continue;
     }
     if (c === "<" && s[i + 1] === "<") { i += 2; yield { t: "other" }; continue; }
     if (c === ">" && s[i + 1] === ">") { i += 2; yield { t: "other" }; continue; }
-    if (c === "<") {                       // hex string: 2 digits per glyph
+    if (c === "<") {                       // encoded PDF string
       const j0 = ++i;
       while (i < n && s[i] !== ">") i++;
-      const hexLen = s.slice(j0, i).replace(/\s/g, "").length;
+      const hex = s.slice(j0, i).replace(/\s/g, "").toUpperCase();
       i++;
-      yield { t: "str", len: Math.ceil(hexLen / 2) }; continue;
+      yield { t: "str", len: Math.ceil(hex.length / 2), hex }; continue;
     }
     if (c === "[" || c === "]" || c === "{" || c === "}") { i++; yield { t: "other" }; continue; }
     if (c === "/") {
@@ -327,6 +428,7 @@ export function analyzePageContent(
   pageW: number,
   pageH: number,
   xobjBoxes?: Record<string, Rect> | null,
+  fontWhitespaceMaps: Record<string, FontWhitespaceMap> = {},
 ): ContentBounds {
   // A page whose /Contents key is absent draws nothing at all. That is PROOF of
   // a blank page, not a failure to read one, and the two must not be conflated:
@@ -357,6 +459,7 @@ export function analyzePageContent(
   // Operand stack: PDF is postfix, so operands accumulate until an operator.
   let st: number[] = [];
   let lastName: string | null = null;
+  let activeFont: string | null = null;
   // Glyphs shown by the pending operator. Tj/'/" take one string; TJ takes an
   // array of strings interleaved with kerning numbers (kerning only ever pulls
   // glyphs closer, so ignoring it overestimates the width — the safe way).
@@ -416,12 +519,14 @@ export function analyzePageContent(
   const WIDTH_PAD_PT = 12;
 
   const showText = (glyphs: number) => {
-    if (!inText) return;
+    // A text-show operator containing only characters proven by that font's
+    // ToUnicode map to be whitespace paints no visible mark.
+    if (!inText || glyphs === 0) return;
     const baseY = cf + ty * cd;
     const h = Math.abs(size * cd * tmD);
     const x = ce + tx * ca;
     let x1: number;
-    if (fullWidthText || glyphs <= 0) {
+    if (fullWidthText || glyphs < 0) {
       x1 = pageW;
     } else {
       const w = glyphs * size * EM_PER_GLYPH * Math.abs(tmA) * Math.abs(ca) + WIDTH_PAD_PT;
@@ -433,7 +538,23 @@ export function analyzePageContent(
   for (const tok of tokenize(raw)) {
     if (tok.t === "num") { st.push(tok.v); continue; }
     if (tok.t === "name") { lastName = tok.v; continue; }
-    if (tok.t === "str") { glyphs += tok.len; continue; }
+    if (tok.t === "str") {
+      if (tok.literal !== undefined && /^[\s\0]*$/.test(tok.literal)) {
+        // A literal string made entirely of ordinary whitespace is invisible.
+      } else if (tok.hex !== undefined && activeFont && fontWhitespaceMaps[activeFont]) {
+        const map = fontWhitespaceMaps[activeFont];
+        if (tok.hex.length % map.codeHexWidth === 0) {
+          for (let i = 0; i < tok.hex.length; i += map.codeHexWidth) {
+            if (!map.whitespaceCodes.has(tok.hex.slice(i, i + map.codeHexWidth))) glyphs++;
+          }
+        } else {
+          glyphs += tok.len; // malformed/ambiguous encoding: preserve fail-closed behavior
+        }
+      } else {
+        glyphs += tok.len;
+      }
+      continue;
+    }
     if (tok.t === "other") { continue; }
 
     const op = tok.v;
@@ -453,9 +574,12 @@ export function analyzePageContent(
         }
         break;
       }
-      case "BT": inText = true; tx = 0; ty = 0; tmA = 1; tmD = 1; break;
+      case "BT": inText = true; tx = 0; ty = 0; tmA = 1; tmD = 1; activeFont = null; break;
       case "ET": inText = false; break;
-      case "Tf": if (st.length) size = st[st.length - 1]; break;
+      case "Tf":
+        if (st.length) size = st[st.length - 1];
+        activeFont = lastName;
+        break;
       case "TL": if (st.length) lead = st[st.length - 1]; break;
       case "Tm":
         if (st.length >= 6) {
@@ -942,7 +1066,13 @@ export async function buildQrVerificationPdf(
     try { raw = await readPageContent(doc, idx); } catch { raw = null; }
     const bounds: ContentBounds = raw === null
       ? { understood: false, reason: "page content stream unreadable (compressed or unsupported filter)" }
-      : analyzePageContent(raw, width, height, readXObjectBoxes(doc, idx));
+      : analyzePageContent(
+          raw,
+          width,
+          height,
+          readXObjectBoxes(doc, idx),
+          readFontWhitespaceMaps(doc, idx),
+        );
 
     const p = findSafePlacement(bounds, width, height, metrics, idx);
     if (p.mode === "inline") {
