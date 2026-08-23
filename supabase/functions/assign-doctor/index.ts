@@ -325,12 +325,31 @@ Deno.serve(async (req: Request) => {
   // Guard against duplicate BASE earnings: filter to the base earning only (an add-on row
   // shares the same confirmation_id and would break a bare .maybeSingle() with a
   // multiple-rows error, silently returning null and re-inserting a duplicate base row).
-  const { data: existingEarning } = await supabase.from("doctor_earnings").select("id, status, doctor_amount").eq("confirmation_id", confirmationId).eq("earning_type", "base").neq("status", "cancelled").order("created_at", { ascending: true }).limit(1).maybeSingle();
+  const { data: existingEarning } = await supabase.from("doctor_earnings").select("id, status, doctor_amount, doctor_user_id, doctor_email").eq("confirmation_id", confirmationId).eq("earning_type", "base").neq("status", "cancelled").order("created_at", { ascending: true }).limit(1).maybeSingle();
 
   if (existingEarning) {
     if (existingEarning.status === "pending") {
-      await supabase.from("doctor_earnings").update({ doctor_user_id: doctorUserId ?? existingEarning.id, doctor_name: doctorName, doctor_email: normalizedEmail, doctor_amount: doctorRate, order_amount: orderAmount, patient_name: patientName, patient_state: order.state ?? null }).eq("id", existingEarning.id as string);
-      earningsAction = "updated";
+      const sameProvider = (
+        !!doctorUserId && existingEarning.doctor_user_id === doctorUserId
+      ) || (
+        !doctorUserId &&
+        String(existingEarning.doctor_email ?? "").trim().toLowerCase() === normalizedEmail
+      );
+      const earningPatch: Record<string, unknown> = {
+        doctor_user_id: doctorUserId ?? existingEarning.doctor_user_id,
+        doctor_name: doctorName,
+        doctor_email: normalizedEmail,
+        order_amount: orderAmount,
+        patient_name: patientName,
+        patient_state: order.state ?? null,
+      };
+      // PROVIDER-RATE-SNAPSHOT-SAFETY: repeating assignment to the same
+      // provider must not rewrite this case with the provider's newest rate.
+      // A genuine reassignment transfers the pending earning to a different
+      // provider, so that new provider's current rate becomes the new snapshot.
+      if (!sameProvider) earningPatch.doctor_amount = doctorRate;
+      await supabase.from("doctor_earnings").update(earningPatch).eq("id", existingEarning.id as string);
+      earningsAction = sameProvider ? "updated_snapshot_preserved" : "updated_for_reassignment";
     } else { earningsAction = "skipped_already_paid"; }
   } else {
     const { error: earnErr } = await supabase.from("doctor_earnings").insert({ doctor_user_id: doctorUserId ?? null, doctor_name: doctorName, doctor_email: normalizedEmail, order_id: order.id as string, confirmation_id: confirmationId, patient_name: patientName, patient_state: order.state ?? null, order_amount: orderAmount, doctor_amount: doctorRate, status: "pending", earning_type: "base", notes: doctorRate == null ? "Rate not set — please set payout amount in the Providers tab" : null });
