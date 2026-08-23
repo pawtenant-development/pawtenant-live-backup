@@ -243,10 +243,11 @@ function runChecks(f) {
     && has(f.notifyDoc, "no_deliverable_documents"));
 
   // ── Phase 6 · default sort + filter drawer ───────────────────────────────
-  add("P20", "Created date is the DEFAULT basis without overriding a saved choice",
-    hasRe(f.page, /localStorage\.getItem\("adminOrdersDateBasis"\)[\s\S]{0,140}isOrderDateBasis\(saved\) \? saved : "created"/)
-    && hasRe(f.page, /catch \{ return "created"; \}/)
-    && !hasRe(f.page, /isOrderDateBasis\(saved\) \? saved : "activity"/));
+  add("P20", "Latest activity is the device-consistent DEFAULT basis",
+    hasRe(f.page, /ADMIN_ORDERS_DATE_BASIS_STORAGE_KEY = "adminOrdersDateBasisV2"/)
+    && hasRe(f.page, /localStorage\.getItem\(ADMIN_ORDERS_DATE_BASIS_STORAGE_KEY\)[\s\S]{0,140}isOrderDateBasis\(saved\) \? saved : "activity"/)
+    && hasRe(f.page, /catch \{ return "activity"; \}/)
+    && !hasRe(f.page, /localStorage\.getItem\("adminOrdersDateBasis"\)/));
 
   {
     // "Date Basis" also appears in the KPI banner aria-label earlier in the file,
@@ -473,8 +474,8 @@ const CONTROLS = [
     (f) => ({ ...f, notifyDoc: f.notifyDoc.replace(
       /const signedUrl = order\.signed_letter_url \?\? null;[\s\S]*?\.forEach\(\(doc\) => allDocs\.push\(\{ label: doc\.label, url: resolveUrl\(doc\), id: doc\.id \}\)\);/,
       "docs\n    .filter((d) => d.customer_visible && d.file_url !== order.signed_letter_url && d.processed_file_url !== order.signed_letter_url)\n    .forEach((doc) => allDocs.push({ label: doc.label, url: resolveUrl(doc), id: doc.id }));") })],
-  ["P20", "the default basis reverts to activity",
-    (f) => ({ ...f, page: f.page.replace('isOrderDateBasis(saved) ? saved : "created"', 'isOrderDateBasis(saved) ? saved : "activity"') })],
+  ["P20", "the default basis reverts to created date",
+    (f) => ({ ...f, page: f.page.replace('isOrderDateBasis(saved) ? saved : "activity"', 'isOrderDateBasis(saved) ? saved : "created"') })],
   ["P21", "the standalone Date basis row returns above the list",
     (f) => ({ ...f, page: f.page.replace(
       '<label className="block text-xs font-bold text-gray-500 mb-1.5 flex items-center gap-1">\n                      Date Basis',

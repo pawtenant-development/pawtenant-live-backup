@@ -251,8 +251,15 @@ export function policyFails(src) {
   if (!/const\s+handleDirectLookup\s*=/.test(code)) {
     fails.push("`handleDirectLookup` has no declaration in this file");
   }
-  if (!/setOrderFactsReady\(true\)[\s\S]{0,400}\}\s*,\s*\[\s*aggregateReloadToken\s*\]\s*\)/.test(code)) {
-    fails.push("the whole-table facts projection is not keyed on `aggregateReloadToken`");
+  if (!/setOrderFactsReady\(true\)[\s\S]{0,500}\}\s*,\s*\[\s*ordersReady\s*,\s*aggregateReloadToken\s*\]\s*\)/.test(code)) {
+    fails.push("the whole-table facts projection is not gated on `ordersReady` and keyed on `aggregateReloadToken`");
+  }
+  if (!/if\s*\(\s*!ordersReady\s*\)\s*return;/.test(code)) {
+    fails.push("the whole-table facts projection competes with the primary list before `ordersReady`");
+  }
+  if (!/const\s+deferredLoad\s*=\s*window\.setTimeout\(/.test(code)
+      || !/window\.clearTimeout\(deferredLoad\)/.test(code)) {
+    fails.push("the whole-table facts projection is not safely deferred and cancelled");
   }
   // LIVE has exactly two legitimate reload counters. Any THIRD one is the
   // "redundant second refresh counter" this adaptation exists to avoid — the
@@ -333,7 +340,7 @@ function runSelfTest() {
   // NC1 — the first production crash: the facts effect keyed on a counter that
   // does not exist in this file.
   plant("NC1 refreshNonce in dep array",
-    /\}, \[aggregateReloadToken\]\);/, "}, [refreshNonce]);",
+    /\}, \[ordersReady, aggregateReloadToken\]\);/, "}, [ordersReady, refreshNonce]);",
     /refreshNonce/);
 
   // NC2 — the second production crash: call site kept, declaration gone.
@@ -344,8 +351,8 @@ function runSelfTest() {
   // NC3 — the one type-check caught before it shipped: a call site dragged in
   // from TEST with no declaration on this side.
   plant("NC3 notifyOrderPaid called but undeclared",
-    /const newOrder = payload\.new as Order;/,
-    "const newOrder = payload.new as Order;\n          if (newOrder.status === \"paid\") notifyOrderPaid(newOrder);",
+    /const entry = payload\.new as \{ direction: string \};/,
+    "const entry = payload.new as { direction: string };\n          notifyOrderPaid(entry);",
     /notifyOrderPaid/);
 
   // NC4 — the removed 30-second whole-table order poll, reintroduced.
@@ -393,6 +400,14 @@ function runSelfTest() {
   if (!calledIdentifiers('if (o.status === "paid") notifyOrderPaid(o);').includes("notifyOrderPaid")) {
     fails.push("NC8: the prose filter swallowed the notifyOrderPaid call shape");
   }
+
+  plant("NC9 facts load races primary list",
+    /if \(!ordersReady\) return;/, "if (false) return;",
+    /competes with the primary list/);
+
+  plant("NC10 facts defer loses cancellation",
+    /window\.clearTimeout\(deferredLoad\);/, "void deferredLoad;",
+    /not safely deferred and cancelled/);
 
   if (fails.length) {
     console.error(`${RED}✗ admin-orders runtime identifiers SELF-TEST FAILED${RESET} (${fails.length}/${n})`);

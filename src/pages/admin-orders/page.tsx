@@ -206,6 +206,7 @@ const ORDER_FACTS_COLUMNS =
   "id,confirmation_id,email,phone,state,status,doctor_status,doctor_email," +
   "doctor_user_id,payment_intent_id,selected_provider,ghl_synced_at," +
   "refund_status,refunded_at,sent_followup_at,source_system,historical_import";
+const ADMIN_ORDERS_DATE_BASIS_STORAGE_KEY = "adminOrdersDateBasisV2";
 
 // COS-042 Phase A — Shared column projection for the Orders list query and
 // the direct-lookup query. Keeping these in sync guarantees that an order
@@ -725,25 +726,23 @@ export default function AdminOrdersPage() {
   // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — ONE date basis drives the list
   // sort, the day ribbons, the From/To filter AND the KPI cards. Sorting by
   // latest activity while silently filtering by created_at is the exact
-  // ambiguity this removes. Default "activity", so a June lead that pays in July
-  // surfaces the moment the payment webhook lands; "created" keeps acquisition
-  // cohort work available. Persisted per operator.
+  // ambiguity this removes. Default "activity", so an older order completed or
+  // reviewed today stays visible on the first All page; "created" keeps
+  // acquisition-cohort work available as an explicit operator choice.
+  //
+  // V2 intentionally resets the former device-local default. The old key stored
+  // both an implicit default and explicit choices, so desktop and mobile could
+  // silently show different first pages for the same account.
   const [dateBasis, setDateBasis] = useState<OrderDateBasis>(() => {
     try {
-      // ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001 — the DEFAULT is
-      // now Created date, newest first. Only the FALLBACK changed: a saved
-      // per-operator choice still wins, so an explicit selection is never
-      // silently reset. Direction is already descending everywhere (fetchPage
-      // orders <basis> DESC, created_at DESC, id DESC), so "newest first" needs
-      // no separate flag.
-      const saved = localStorage.getItem("adminOrdersDateBasis");
-      return isOrderDateBasis(saved) ? saved : "created";
-    } catch { return "created"; }
+      const saved = localStorage.getItem(ADMIN_ORDERS_DATE_BASIS_STORAGE_KEY);
+      return isOrderDateBasis(saved) ? saved : "activity";
+    } catch { return "activity"; }
   });
   const dateBasisRef = useRef<OrderDateBasis>(dateBasis);
   useEffect(() => {
     dateBasisRef.current = dateBasis;
-    try { localStorage.setItem("adminOrdersDateBasis", dateBasis); } catch { /* private mode */ }
+    try { localStorage.setItem(ADMIN_ORDERS_DATE_BASIS_STORAGE_KEY, dateBasis); } catch { /* private mode */ }
   }, [dateBasis]);
   // Hidden source filter — only settable from dashboard, not shown in filter UI
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
@@ -1767,8 +1766,12 @@ export default function AdminOrdersPage() {
   // (Unassigned) from going stale after an assignment, which is the exact defect
   // invalidateOrderAggregates was introduced to fix.
   useEffect(() => {
+    // The paged list is the operator's primary surface. Let it paint before
+    // starting the nine-request whole-table facts projection on today's LIVE
+    // dataset; this projection only feeds secondary badges and filter choices.
+    if (!ordersReady) return;
     let cancelled = false;
-    void (async () => {
+    const deferredLoad = window.setTimeout(() => { void (async () => {
       const acc: Order[] = [];
       try {
         for (let page = 0; page < ORDERS_MAX_PAGES; page++) {
@@ -1793,9 +1796,12 @@ export default function AdminOrdersPage() {
         // values rather than flipping to a confident zero.
         if (!cancelled) setOrderFactsReady(true);
       }
-    })();
-    return () => { cancelled = true; };
-  }, [aggregateReloadToken]);
+    })(); }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(deferredLoad);
+    };
+  }, [ordersReady, aggregateReloadToken]);
 
   // ── The whole-table snapshot loads ON DEMAND ──────────────────────────────
   // Opening Dashboard / Analytics / Communications is what asks for it, once
@@ -4160,7 +4166,7 @@ export default function AdminOrdersPage() {
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                 <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#e8f0f9] border border-[#b8cce4] text-[#3b6ea5] font-semibold">
                   <i className="ri-focus-3-line"></i>
-                  Last {DEFAULT_SCOPE_DAYS} days + all open work
+                  {effDateBasisLabel} · Last {DEFAULT_SCOPE_DAYS} days + all open work
                 </span>
                 <span>Older completed orders are excluded — searching or filtering looks at every order.</span>
                 <button
