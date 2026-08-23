@@ -548,7 +548,9 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     if (doc.contact) updates.push(Promise.resolve(supabase.from("doctor_contacts").update({ per_order_rate: rate }).eq("id", doc.contact.id)));
     await Promise.all(updates);
     setSavingRate(false); setRateOpen(false);
-    showToast(rate != null ? `Rate set to $${rate}/order for ${doc.name}.` : `Rate cleared for ${doc.name}.`);
+    showToast(rate != null
+      ? `Rate set to ${rate}/order for new earnings for ${doc.name}. Existing earnings and payouts were not changed.`
+      : `Rate cleared for future earnings for ${doc.name}. Existing earnings and payouts were not changed.`);
     onRefresh();
   };
 
@@ -598,7 +600,6 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
   const rawStates = doc?.contact?.licensed_states ?? doc?.profile?.licensed_states ?? [];
   const displayStates = normalizeStateListForDisplay(rawStates);
   const currentRate = doc?.profile?.per_order_rate ?? doc?.contact?.per_order_rate ?? null;
-  const estimatedEarnings = currentRate != null && doc ? currentRate * doc.workload.completed : null;
   const total = doc ? doc.workload.active + doc.workload.completed : 0;
   const completionRate = total > 0 && doc ? Math.round((doc.workload.completed / total) * 100) : 0;
   const initials = doc ? doc.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2) : "";
@@ -913,6 +914,9 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                   </div>
                   {rateOpen && (
                     <div className="mb-3 p-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl">
+                      <p className="text-xs text-[#2c5282] mb-2 leading-relaxed">
+                        Applies to new earnings only. Existing case earnings and payouts keep their recorded amounts.
+                      </p>
                       <div className="flex items-center gap-2">
                         <div className="relative flex-1">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#3b6ea5] font-bold text-sm">$</span>
@@ -933,7 +937,7 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                     {[
                       { label: "Active Cases", value: doc.workload.active, color: "text-sky-600" },
                       { label: "Completed", value: doc.workload.completed, color: "text-[#3b6ea5]" },
-                      { label: "Est. Earned", value: estimatedEarnings != null ? `$${estimatedEarnings}` : "—", color: "text-[#3b6ea5]" },
+                      { label: "Rate for New Cases", value: currentRate != null ? `${currentRate}` : "—", color: "text-[#3b6ea5]" },
                     ].map(({ label, value, color }) => (
                       <div key={label} className="bg-gray-50 rounded-xl border border-gray-100 p-3 text-center">
                         <p className={`text-lg font-extrabold ${color}`}>{value}</p>
