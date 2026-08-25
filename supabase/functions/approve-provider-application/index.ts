@@ -474,7 +474,7 @@ async function sendProviderInviteEmail(toEmail: string, providerName: string, se
   } catch (e) { console.warn("[approve-provider-application] Resend error:", e); return false; }
 }
 
-// PAWTENANT-PROVIDER-RECRUITMENT-V2: branded final onboarding / welcome email.
+// PAWTENANT-PROVIDER-SELF-SERVICE-SETUP: branded final welcome email.
 // Renders the editable Communications Template Hub template
 // `provider_final_onboarding_welcome` (substitutes {name}, {per_order_rate},
 // {company_name}) and sends via Resend. Falls back to a minimal inline body if
@@ -494,11 +494,13 @@ async function sendOnboardingWelcomeEmail(
     company_name: COMPANY_NAME,
   };
   const subst = (s: string) => s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
-  let subject = "Welcome to PawTenant — Final Onboarding Steps";
+  let subject = "Welcome to PawTenant — Complete Your Provider Setup";
   let html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#374151;">`
     + `<p>Hi <strong>${vars.name}</strong>,</p>`
     + `<p>Your application has been approved — welcome to the ${COMPANY_NAME} provider network. Your confirmed rate is <strong>$${perOrderRate} per completed, approved case</strong>.</p>`
-    + `<p>Please reply with a voided check (or ACH details) for payouts, your LinkedIn (optional), and your availability for a short onboarding call. Please also confirm your headshot, license details, and preferred display name.</p>`
+    + `<p><strong>No onboarding meeting is required.</strong> To complete setup before cases can be assigned, please reply with or confirm any outstanding items:</p>`
+    + `<ul><li>A voided check or ACH details for payouts</li><li>Your professional headshot and short bio</li><li>Your active license details for each state and your NPI</li><li>Your preferred display name and professional title</li><li>Your LinkedIn profile link (optional)</li></ul>`
+    + `<p>Once the required payout, profile, and licensing details are complete and verified, your account will be ready for case assignments. You can then manage assigned cases through the Provider Portal.</p>`
     + `<p>Welcome again,<br/>The ${COMPANY_NAME} Provider Partnerships Team<br/>${SUPPORT_EMAIL}</p></body></html>`;
   try {
     const { data: tpl } = await adminClient

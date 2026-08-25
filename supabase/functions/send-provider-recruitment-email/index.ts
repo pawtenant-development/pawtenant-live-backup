@@ -4,7 +4,9 @@
 // Admin-only outreach tool: emails potential licensed mental health providers
 // in ANY U.S. state where PawTenant is expanding coverage. Renders the editable
 // DB template `provider_recruitment_outreach` (Communications Template Hub),
-// falling back to a built-in branded default. CTA points to /join-our-network.
+// falling back to a built-in branded default. An operator-written plain-text
+// message can replace the standard body for one send. CTA points to
+// /join-our-network.
 //
 // Security: owner/admin_manager JWT only; Resend key server-side; recipient cap;
 // join URL validated to a PawTenant host. Logs every attempt to
@@ -25,6 +27,7 @@ const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png
 const DEFAULT_JOIN_URL = "https://pawtenant.com/join-our-network";
 
 const MAX_RECIPIENTS = 50;
+const MAX_CUSTOM_MESSAGE = 4_000;
 
 // All 50 states + DC — campaigns may target any U.S. state.
 const US_STATES = [
@@ -56,9 +59,16 @@ function substitute(s: string, vars: Record<string, string>): string {
 }
 
 function statesSentence(states: string[]): string {
+  if (states.length === 0) return "U.S. markets where we need additional coverage";
   if (states.length === 1) return states[0];
   if (states.length === 2) return `${states[0]} and ${states[1]}`;
   return `${states.slice(0, -1).join(", ")}, and ${states[states.length - 1]}`;
+}
+
+function plainTextToHtml(value: string): string {
+  return value.trim().split(/\n{2,}/).map((paragraph) =>
+    `<p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">${escapeHtml(paragraph).replace(/\n/g, "<br/>")}</p>`,
+  ).join("");
 }
 
 // Only allow join URLs on a PawTenant host pointing at the join page.
@@ -101,9 +111,9 @@ async function sendViaResend(opts: {
 interface RecipientIn { email?: string; name?: string }
 
 // Built-in fallback used only if the DB template is missing.
-function fallbackEmail(vars: Record<string, string>): string {
-  const introBlock = vars.custom_intro
-    ? `<p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">${vars.custom_intro}</p>` : "";
+function fallbackEmail(vars: Record<string, string>, customMessageHtml = ""): string {
+  const bodyHtml = customMessageHtml ||
+    `<p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">PawTenant is expanding its licensed mental health provider network in <strong>${vars.states}</strong>. Providers review structured client intake, apply their own clinical judgment, and approve only when clinically appropriate.</p>`;
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center">
@@ -113,12 +123,11 @@ function fallbackEmail(vars: Record<string, string>): string {
 <h1 style="margin:0;font-size:24px;font-weight:800;color:#ffffff;">Partner with PawTenant</h1></td></tr>
 <tr><td style="padding:32px;">
 <p style="margin:0 0 20px;font-size:15px;color:#374151;">Hi <strong>${vars.name}</strong>,</p>
-${introBlock}
-<p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">PawTenant is expanding its licensed mental health provider network in <strong>${vars.states}</strong>. Providers review structured client intake, apply their own clinical judgment, and approve only when clinically appropriate.</p>
+${bodyHtml}
 <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;"><tr><td align="center">
 <a href="${vars.join_url}" style="display:inline-block;background:#f97316;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Join Our Provider Network &rarr;</a>
 </td></tr></table>
-<p style="margin:0;font-size:13px;color:#6b7280;">Or reply with your licensed state(s).<br/><br/>Warm regards,<br/><strong>The PawTenant Provider Partnerships Team</strong><br/>${SUPPORT_EMAIL}</p>
+<p style="margin:0;font-size:13px;color:#6b7280;">Questions? Reply to this email.<br/><br/>Warm regards,<br/><strong>The PawTenant Provider Partnerships Team</strong><br/>${SUPPORT_EMAIL}</p>
 </td></tr></table></td></tr></table></body></html>`;
 }
 
@@ -147,13 +156,17 @@ Deno.serve(async (req: Request) => {
 
   let body: {
     recipients?: RecipientIn[]; emails?: string[]; targetStates?: string[];
-    subject?: string; intro?: string; sendTest?: boolean; joinUrl?: string;
+    subject?: string; intro?: string; customMessage?: string; sendTest?: boolean; joinUrl?: string;
   };
   try { body = await req.json(); } catch { return json({ ok: false, error: "Invalid JSON body" }, 400); }
 
   const sendTest = body.sendTest === true;
-  const targetStates = (body.targetStates ?? []).filter((s) => US_STATES_SET.has(s));
-  if (targetStates.length === 0) return json({ ok: false, error: "Select at least one valid U.S. state." }, 400);
+  const requestedStates = body.targetStates ?? [];
+  const invalidStates = requestedStates.filter((s) => !US_STATES_SET.has(s));
+  if (invalidStates.length > 0) {
+    return json({ ok: false, error: `Invalid U.S. state(s): ${invalidStates.slice(0, 5).join(", ")}` }, 400);
+  }
+  const targetStates = requestedStates.filter((s) => US_STATES_SET.has(s));
 
   const rawRecipients: RecipientIn[] = body.recipients?.length
     ? body.recipients : (body.emails ?? []).map((e) => ({ email: e }));
@@ -175,7 +188,11 @@ Deno.serve(async (req: Request) => {
   if (recipients.length > MAX_RECIPIENTS) return json({ ok: false, error: `Too many recipients (${recipients.length}). Max ${MAX_RECIPIENTS} per send.` }, 400);
 
   const baseSubjectDefault = "Partner with PawTenant — Licensed Provider Network";
-  const intro = (body.intro ?? "").trim();
+  const legacyIntro = (body.intro ?? "").trim();
+  const customMessage = (body.customMessage ?? "").trim();
+  if (customMessage.length > MAX_CUSTOM_MESSAGE) {
+    return json({ ok: false, error: `Email message must be ${MAX_CUSTOM_MESSAGE} characters or fewer.` }, 400);
+  }
   const joinUrl = safeJoinUrl(body.joinUrl);
   const statesText = statesSentence(targetStates);
   const actorName = profile?.full_name ?? "Admin";
@@ -202,8 +219,8 @@ Deno.serve(async (req: Request) => {
   const results: Array<{ email: string; ok: boolean; messageId: string | null; error: string | null }> = [];
 
   for (const r of recipients) {
-    const introHtml = intro
-      ? `<p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">${escapeHtml(intro)}</p>` : "";
+    const introHtml = legacyIntro
+      ? `<p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">${escapeHtml(legacyIntro)}</p>` : "";
     const vars: Record<string, string> = {
       name: escapeHtml(r.name || "there"),
       states: escapeHtml(statesText),
@@ -213,7 +230,9 @@ Deno.serve(async (req: Request) => {
       sender_name: escapeHtml(actorName),
     };
     const subjVars = { ...vars, states: statesText };
-    const html = tplBody ? substitute(tplBody, vars) : fallbackEmail(vars);
+    const html = customMessage
+      ? fallbackEmail(vars, plainTextToHtml(customMessage))
+      : tplBody ? substitute(tplBody, vars) : fallbackEmail(vars);
     const finalSubject = substitute(subject, subjVars);
 
     const res = await sendViaResend({

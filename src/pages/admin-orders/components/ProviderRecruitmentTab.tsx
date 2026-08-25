@@ -2,8 +2,9 @@
 //
 // Admin-side outreach: email potential licensed mental health providers in ANY
 // U.S. state. Renders the editable Communications Template Hub template
-// `provider_recruitment_outreach` for both preview and sending; CTA points to
-// /join-our-network. Mounted inside the Providers tab (DoctorsTab sub-tab).
+// `provider_recruitment_outreach` for the saved default, while allowing an
+// operator-written message to replace that default for a single send. CTA
+// points to /join-our-network. Mounted inside Providers (DoctorsTab sub-tab).
 //
 // Sending is gated to owner / admin_manager (canAccessBroadcast).
 
@@ -15,7 +16,9 @@ import type { DoctorProfile } from "../types";
 
 const DEFAULT_SUBJECT = "Partner with PawTenant — Licensed Provider Network";
 const SUPPORT_EMAIL = "hello@pawtenant.com";
+const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_CUSTOM_MESSAGE = 4_000;
 const STATE_NAMES = US_STATES.map((s) => s.name);
 
 interface OutreachRow {
@@ -31,10 +34,36 @@ interface OutreachRow {
 interface SendResult { email: string; ok: boolean; messageId: string | null; error: string | null }
 
 function statesSentence(states: string[]): string {
-  if (states.length === 0) return "the selected state(s)";
+  if (states.length === 0) return "U.S. markets where we need additional coverage";
   if (states.length === 1) return states[0];
   if (states.length === 2) return `${states[0]} and ${states[1]}`;
   return `${states.slice(0, -1).join(", ")}, and ${states[states.length - 1]}`;
+}
+
+function plainTextToHtml(value: string): string {
+  return value.trim().split(/\n{2,}/).map((paragraph) =>
+    `<p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">${escapeHtml(paragraph).replace(/\n/g, "<br/>")}</p>`,
+  ).join("");
+}
+
+function fallbackEmail(vars: Record<string, string>, customMessageHtml = ""): string {
+  const bodyHtml = customMessageHtml ||
+    `<p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">PawTenant is expanding its licensed mental health provider network in <strong>${vars.states}</strong>. Providers review structured client intake, apply their own clinical judgment, and approve only when clinically appropriate.</p>`;
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:32px 16px;"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;border:1px solid #e5e7eb;overflow:hidden;max-width:600px;width:100%;">
+<tr><td style="background:#4a9e8a;padding:32px;text-align:center;">
+<img src="${LOGO_URL}" width="180" alt="PawTenant" style="display:block;margin:0 auto 16px;height:auto;" />
+<h1 style="margin:0;font-size:24px;font-weight:800;color:#ffffff;">Partner with PawTenant</h1></td></tr>
+<tr><td style="padding:32px;">
+<p style="margin:0 0 20px;font-size:15px;color:#374151;">Hi <strong>${vars.name}</strong>,</p>
+${bodyHtml}
+<table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;"><tr><td align="center">
+<a href="${vars.join_url}" style="display:inline-block;background:#f97316;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Join Our Provider Network &rarr;</a>
+</td></tr></table>
+<p style="margin:0;font-size:13px;color:#6b7280;">Questions? Reply to this email.<br/><br/>Warm regards,<br/><strong>The PawTenant Provider Partnerships Team</strong><br/>${SUPPORT_EMAIL}</p>
+</td></tr></table></td></tr></table></body></html>`;
 }
 
 function parseEmails(raw: string): string[] {
@@ -59,7 +88,7 @@ export default function ProviderRecruitmentTab({ adminProfile }: { adminProfile:
   const [stateQuery, setStateQuery] = useState("");
   const [emailsRaw, setEmailsRaw] = useState("");
   const [subject, setSubject] = useState(DEFAULT_SUBJECT);
-  const [intro, setIntro] = useState("");
+  const [customMessage, setCustomMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [testing, setTesting] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -104,18 +133,17 @@ export default function ProviderRecruitmentTab({ adminProfile }: { adminProfile:
   useEffect(() => { void loadLog(); }, []);
 
   const previewHtml = useMemo(() => {
-    if (!tplBody) return null;
-    const introHtml = intro.trim()
-      ? `<p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">${escapeHtml(intro.trim())}</p>` : "";
-    return substitute(tplBody, {
+    const vars = {
       name: "there",
       states: escapeHtml(statesSentence(selectedStates)),
       join_url: joinUrl,
-      custom_intro: introHtml,
+      custom_intro: "",
       company_name: "PawTenant",
       sender_name: escapeHtml(adminProfile?.full_name ?? "PawTenant Team"),
-    });
-  }, [tplBody, intro, selectedStates, joinUrl, adminProfile]);
+    };
+    if (customMessage.trim()) return fallbackEmail(vars, plainTextToHtml(customMessage));
+    return tplBody ? substitute(tplBody, vars) : fallbackEmail(vars);
+  }, [tplBody, customMessage, selectedStates, joinUrl, adminProfile]);
 
   async function callSend(opts: { sendTest: boolean; recipientList: string[] }) {
     const token = await getAdminToken();
@@ -127,7 +155,7 @@ export default function ProviderRecruitmentTab({ adminProfile }: { adminProfile:
         recipients: opts.recipientList.map((e) => ({ email: e })),
         targetStates: selectedStates,
         subject: subject.trim() || DEFAULT_SUBJECT,
-        intro: intro.trim() || undefined,
+        customMessage: customMessage.trim() || undefined,
         sendTest: opts.sendTest,
         joinUrl,
       }),
@@ -138,7 +166,6 @@ export default function ProviderRecruitmentTab({ adminProfile }: { adminProfile:
   }
 
   const validate = (): string | null => {
-    if (selectedStates.length === 0) return "Select at least one target state.";
     if (validEmails.length === 0) return "Add at least one recipient email.";
     if (invalidEmails.length > 0) return `Fix invalid email(s): ${invalidEmails.slice(0, 3).join(", ")}`;
     return null;
@@ -202,7 +229,7 @@ export default function ProviderRecruitmentTab({ adminProfile }: { adminProfile:
           {/* States */}
           <div>
             <label className="block text-xs font-bold text-gray-600 mb-1.5">
-              Target State(s) <span className="text-gray-400 font-normal">— search & select any U.S. state</span>
+              Target State(s) <span className="text-gray-400 font-normal">— optional context only</span>
             </label>
             {selectedStates.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-2">
@@ -254,15 +281,18 @@ export default function ProviderRecruitmentTab({ adminProfile }: { adminProfile:
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
           </div>
 
-          {/* Custom intro */}
+          {/* Per-send message override */}
           <div>
             <label className="block text-xs font-bold text-gray-600 mb-1.5">
-              Custom Intro <span className="text-gray-400 font-normal">(optional — added above the standard message)</span>
+              Email Message <span className="text-gray-400 font-normal">(optional — replaces the standard message for this send)</span>
             </label>
-            <textarea value={intro} onChange={(e) => setIntro(e.target.value.slice(0, 600))} rows={3}
-              placeholder="e.g. I came across your practice and thought PawTenant might be a great fit…"
+            <textarea value={customMessage} onChange={(e) => setCustomMessage(e.target.value.slice(0, MAX_CUSTOM_MESSAGE))} rows={7}
+              placeholder="Write the complete message you want these providers to receive. Leave blank to use the saved standard message."
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] resize-none" />
-            <p className="text-xs text-gray-400 text-right mt-0.5">{intro.length}/600</p>
+            <div className="flex items-center justify-between mt-0.5">
+              <p className="text-xs text-gray-400">Plain text only. Branding, greeting, CTA and signature remain consistent.</p>
+              <p className="text-xs text-gray-400">{customMessage.length}/{MAX_CUSTOM_MESSAGE}</p>
+            </div>
           </div>
 
           <p className="text-[11px] text-gray-400 flex items-center gap-1">
@@ -277,14 +307,14 @@ export default function ProviderRecruitmentTab({ adminProfile }: { adminProfile:
 
           <div className="flex items-center gap-2 pt-1">
             <button type="button" onClick={handleSendTest}
-              disabled={busy || validEmails.length === 0 || selectedStates.length === 0}
+              disabled={busy || validEmails.length === 0}
               title="Send a single [TEST] email to the first recipient"
               className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 border border-[#3b6ea5] text-[#3b6ea5] hover:bg-[#e8f0f9] rounded-lg text-sm font-bold cursor-pointer transition-colors disabled:opacity-50">
               {testing ? <><i className="ri-loader-4-line animate-spin"></i>Sending test…</> : <><i className="ri-mail-check-line"></i>Send Test</>}
             </button>
             <button type="button"
               onClick={() => { setMsg(null); const v = validate(); if (v) { setMsg({ kind: "err", text: v }); return; } setShowConfirm(true); }}
-              disabled={busy || validEmails.length === 0 || selectedStates.length === 0}
+              disabled={busy || validEmails.length === 0}
               className="whitespace-nowrap flex items-center gap-1.5 px-4 py-2.5 bg-[#3b6ea5] text-white hover:bg-[#2d5a8e] rounded-lg text-sm font-bold cursor-pointer transition-colors disabled:opacity-50">
               {sending ? <><i className="ri-loader-4-line animate-spin"></i>Sending…</> : <><i className="ri-send-plane-fill"></i>Send Outreach</>}
             </button>
@@ -297,13 +327,11 @@ export default function ProviderRecruitmentTab({ adminProfile }: { adminProfile:
           <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1">
             <i className="ri-eye-line"></i>Email Preview
           </p>
-          {previewHtml ? (
-            <iframe title="Recruitment email preview" srcDoc={previewHtml}
-              className="w-full rounded-lg border border-gray-200 bg-white" style={{ height: 520 }} />
-          ) : (
-            <p className="text-xs text-gray-400 py-8 text-center">Loading template preview…</p>
-          )}
-          <p className="text-[11px] text-gray-400 mt-2">Preview reflects the saved template. Edit copy in Communications → Templates.</p>
+          <iframe title="Recruitment email preview" srcDoc={previewHtml}
+            className="w-full rounded-lg border border-gray-200 bg-white" style={{ height: 520 }} />
+          <p className="text-[11px] text-gray-400 mt-2">
+            {customMessage.trim() ? "Preview reflects your complete per-send message." : "Preview reflects the saved standard message (or the safe built-in fallback)."}
+          </p>
         </div>
       </div>
 
@@ -375,7 +403,7 @@ export default function ProviderRecruitmentTab({ adminProfile }: { adminProfile:
               <div>
                 <p className="text-sm font-extrabold text-gray-900">Send provider recruitment email?</p>
                 <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                  This will email <strong>{validEmails.length}</strong> recipient{validEmails.length !== 1 ? "s" : ""} for <strong>{statesSentence(selectedStates)}</strong>. Recipients cannot see each other.
+                  This will email <strong>{validEmails.length}</strong> recipient{validEmails.length !== 1 ? "s" : ""}. State context: <strong>{statesSentence(selectedStates)}</strong>. Recipients cannot see each other.
                 </p>
               </div>
             </div>
