@@ -146,14 +146,14 @@ function buildProviderConfirmationEmail(opts: ApplicationPayload): string {
 
   const stepsHtml = `
     ${step("1", "Credential Verification", "Our clinical team verifies your license. Usually within 48 hours.")}
-    ${step("2", "Onboarding Call", "A short orientation covering platform use and ESA documentation standards.")}
-    ${step("3", "Go Live & Start Accepting Cases", "Your profile goes live and you begin receiving matched ESA evaluation requests.")}
+    ${step("2", "Application Decision", "We email you as soon as the review is complete and explain any remaining account details.")}
+    ${step("3", "Account Setup", "Once approved and ready, you can access the Provider Portal and receive matched evaluation requests.")}
   `;
 
   const content = `
     <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.7;">Hi <strong>${escapeHtml(opts.firstName)}</strong>,</p>
     <p style="margin:0 0 24px;font-size:14px;color:#4b5563;line-height:1.7;">
-      We&apos;ve received your application to join our network of licensed mental health professionals. Our clinical team will carefully review your credentials and reach out within <strong>48 hours</strong> to schedule your onboarding call.
+      We&apos;ve received your application to join our network of licensed mental health professionals. Our clinical team will carefully review your credentials and email you with an update within <strong>48 hours</strong>.
     </p>
     ${card("Your Application Summary", summaryRows)}
     ${card("What Happens Next", stepsHtml)}
