@@ -44,7 +44,7 @@ function buildProviderFollowUpHtml(firstName: string, email: string): string {
               Thank you for applying to join the <strong>${COMPANY_NAME} Provider Network</strong>. Our clinical team is still reviewing your credentials and we want to make sure we give your application the attention it deserves.
             </p>
             <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.7;">
-              We expect to reach out to you within the next <strong>24 hours</strong> to schedule your onboarding call. In the meantime, here&apos;s a quick reminder of what to expect:
+              We expect to complete the review within the next <strong>24 hours</strong> and email you with an update. In the meantime, here&apos;s a quick reminder of what to expect:
             </p>
 
             <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:14px;margin:0 0 28px;">
@@ -65,8 +65,8 @@ function buildProviderFollowUpHtml(firstName: string, email: string): string {
                       <div style="width:24px;height:24px;background:${ACCENT};border-radius:50%;text-align:center;line-height:24px;font-size:11px;font-weight:700;color:#fff;">2</div>
                     </td>
                     <td style="padding:8px 0 8px 10px;">
-                      <p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#111827;">Onboarding Call</p>
-                      <p style="margin:0;font-size:12px;color:#6b7280;">A short orientation covering platform use and ESA documentation standards.</p>
+                      <p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#111827;">Application Decision</p>
+                      <p style="margin:0;font-size:12px;color:#6b7280;">We email you when the review is complete and explain any remaining account details.</p>
                     </td>
                   </tr>
                   <tr>
@@ -74,8 +74,8 @@ function buildProviderFollowUpHtml(firstName: string, email: string): string {
                       <div style="width:24px;height:24px;background:#f97316;border-radius:50%;text-align:center;line-height:24px;font-size:11px;font-weight:700;color:#fff;">3</div>
                     </td>
                     <td style="padding:8px 0 8px 10px;">
-                      <p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#111827;">Go Live &amp; Start Earning</p>
-                      <p style="margin:0;font-size:12px;color:#6b7280;">Your profile goes live and you begin receiving matched ESA evaluation requests.</p>
+                      <p style="margin:0 0 2px;font-size:13px;font-weight:700;color:#111827;">Account Setup &amp; Case Eligibility</p>
+                      <p style="margin:0;font-size:12px;color:#6b7280;">Once approved and ready, you can access the Provider Portal and receive matched evaluation requests.</p>
                     </td>
                   </tr>
                 </table>
@@ -88,7 +88,7 @@ function buildProviderFollowUpHtml(firstName: string, email: string): string {
                   <tr>
                     <td style="vertical-align:top;padding-right:10px;font-size:16px;">&#128276;</td>
                     <td style="font-size:13px;color:#92400e;line-height:1.6;">
-                      <strong>Make sure to check your spam folder</strong> for our upcoming onboarding email. Add <a href="mailto:${SUPPORT_EMAIL}" style="color:#92400e;font-weight:700;">${SUPPORT_EMAIL}</a> to your contacts to ensure you don&apos;t miss it.
+                      <strong>Make sure to check your spam folder</strong> for our application update. Add <a href="mailto:${SUPPORT_EMAIL}" style="color:#92400e;font-weight:700;">${SUPPORT_EMAIL}</a> to your contacts to ensure you don&apos;t miss it.
                     </td>
                   </tr>
                 </table>
