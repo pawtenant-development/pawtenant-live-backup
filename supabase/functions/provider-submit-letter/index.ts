@@ -711,12 +711,22 @@ Deno.serve(async (req: Request) => {
     // ordinary provider re-upload.
     if (slot.rejected === true) {
       await discardUploadedObject(supabase, uploadedFilePath);
+      // ADDITIONAL-PET-SUBMISSION-BYPASS-PROTECTION-001 §1: an Additional Pet
+      // review still awaiting this provider's decision is a DIFFERENT refusal
+      // from "the letter is already delivered", and it must redirect them to
+      // the Additional Pet workflow rather than tell them to ask for a reopen —
+      // a reopen is exactly what used to let this submission through.
+      const slotReason = slot.reason ?? "approved_document_requires_reopen";
+      const rejectionMessage = slotReason === "additional_pet_review_pending"
+        ? "This order has an Additional Pet request awaiting your clinical decision. " +
+          "Open the Additional Pet review on this case and approve or decline it first. " +
+          "Approving it is what authorises a revised letter covering the added pet."
+        : "This order already has an approved letter delivered to the customer. " +
+          "Ask PawTenant to reopen the order before uploading a replacement.";
       return json({
         ok: false,
-        error:
-          "This order already has an approved letter delivered to the customer. " +
-          "Ask PawTenant to reopen the order before uploading a replacement.",
-        reason: slot.reason ?? "approved_document_requires_reopen",
+        error: rejectionMessage,
+        reason: slotReason,
         documentId: slot.document_id ?? null,
       }, 409);
     }
