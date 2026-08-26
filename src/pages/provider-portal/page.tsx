@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import { normalizeStateListForDisplay } from "../../lib/usStates";
 import ProviderOrderDetail from "./components/ProviderOrderDetail";
+import ProviderAdditionalPetQueue from "./components/ProviderAdditionalPetQueue";
 import ProviderEarnings from "./components/ProviderEarnings";
 import ProviderLicensePanel from "./components/ProviderLicensePanel";
 import ProviderProfilePanel from "./components/ProviderProfilePanel";
@@ -834,6 +835,12 @@ export default function ProviderPortalPage({ previewContext }: { previewContext?
         {/* ── ORDERS TAB ── */}
         {activeTab === "orders" && (
           <div>
+            {/* ADDITIONAL-PET-REJECTION-REASSIGNMENT-AND-DOCUMENT-REVISION-001:
+                Additional Pet reviews are assigned at the REQUEST level, so a
+                reassigned review never appears in the order list below — this
+                queue is its only surface. Renders nothing when empty. */}
+            <ProviderAdditionalPetQueue readOnly={readOnly} />
+
             {/* Filters bar */}
             <div className="bg-white rounded-xl border border-gray-200 px-5 py-3 mb-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center flex-wrap">
               <div className="flex items-center gap-2 flex-wrap">

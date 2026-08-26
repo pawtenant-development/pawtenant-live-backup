@@ -24,8 +24,18 @@ const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const MAX_PETS = 3;
 
 /** Canonical pet shape — must match orders.assessment_answers->'pets'. */
-interface PetInput { name: string; type: string; breed: string; age: string; weight: string }
-const EMPTY_PET: PetInput = { name: "", type: "", breed: "", age: "", weight: "" };
+interface PetInput {
+  name: string; type: string; breed: string; age: string; weight: string;
+  /** Optional therapeutic-support explanation, shown to the reviewing provider. */
+  supportReason?: string;
+}
+const EMPTY_PET: PetInput = { name: "", type: "", breed: "", age: "", weight: "", supportReason: "" };
+
+/** DB rows store the explanation as new_pet.support_reason (snake case). */
+function fromDbPet(p: (PetInput & { support_reason?: string }) | null | undefined): PetInput {
+  if (!p) return EMPTY_PET;
+  return { ...EMPTY_PET, ...p, supportReason: p.supportReason ?? p.support_reason ?? "" };
+}
 
 interface Pricing {
   eligible: boolean;
@@ -71,7 +81,7 @@ export interface AdditionalPetOrder {
 const ACTIVE = new Set([
   "draft", "manual_review_required", "payment_required", "checkout_created",
   "paid_pending_details", "pending_provider_review", "clarification_requested",
-  "resubmitted", "approved_pending_document", "refund_pending",
+  "resubmitted", "needs_reassignment", "approved_pending_document", "refund_pending",
 ]);
 
 /** Customer-facing label + tone for every workflow status. Text always carries the
@@ -87,6 +97,8 @@ const STATUS_UI: Record<string, { label: string; detail: string; tone: string; i
     detail: "A licensed provider is reviewing this addition. Your current letter stays valid." },
   resubmitted: { label: "Resubmitted for review", tone: "review", icon: "ri-refresh-line",
     detail: "Thank you — your updated details were sent back to the provider." },
+  needs_reassignment: { label: "Under review — matching a provider", tone: "review", icon: "ri-user-search-line",
+    detail: "We're arranging for another licensed provider to review this addition. Your payment stays applied and your current letter stays valid — nothing is needed from you." },
   clarification_requested: { label: "More information needed", tone: "amber", icon: "ri-question-answer-line",
     detail: "The provider needs more detail before deciding." },
   approved_pending_document: { label: "Approved — updating your document", tone: "emerald", icon: "ri-loader-4-line",
@@ -186,6 +198,11 @@ function customerCardState(r: PetRequest): { title: string; badgeStatus: string;
   }
   if (s === "cancelled") {
     return { title: "Additional Pet Request — Cancelled", badgeStatus: "cancelled", detail: STATUS_UI.cancelled.detail };
+  }
+  if (s === "needs_reassignment") {
+    // A provider decline is NOT a rejection and NOT a refund: the review simply
+    // continues with another provider. The customer is never told otherwise.
+    return { title: "Additional Pet Under Review", badgeStatus: s, detail: STATUS_UI.needs_reassignment.detail };
   }
   if (s === "clarification_requested") {
     return { title: "Additional Pet Under Review", badgeStatus: s, detail: STATUS_UI.clarification_requested.detail };
@@ -306,6 +323,7 @@ export default function AdditionalPetRequest({
     if (!p.type) return "Please select the type of animal.";
     if (isPsd && p.type !== "dog") return "A Psychiatric Service Dog letter can only cover a dog.";
     if (!p.breed.trim()) return "Please enter your pet's breed.";
+    if ((p.supportReason ?? "").length > 1000) return "The support explanation is too long (1000 characters max).";
     return "";
   }
 
@@ -448,7 +466,7 @@ export default function AdditionalPetRequest({
                 <button
                   ref={openerRef}
                   type="button"
-                  onClick={() => { setPet(activeRequest.new_pet ?? EMPTY_PET); setError(""); setOpen(true); }}
+                  onClick={() => { setPet(fromDbPet(activeRequest.new_pet)); setError(""); setOpen(true); }}
                   className="rounded-lg bg-[#1a5c4f] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#14483e] focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[#1a5c4f]"
                 >
                   Update pet details
@@ -738,6 +756,19 @@ export default function AdditionalPetRequest({
                     className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label htmlFor="addpet-support-reason" className="block text-xs font-semibold text-gray-700 mb-1">
+                  How does this pet support you? <span className="font-normal text-gray-400">(optional)</span>
+                </label>
+                <textarea
+                  id="addpet-support-reason" rows={3} value={pet.supportReason ?? ""}
+                  onChange={(e) => setPet({ ...pet, supportReason: e.target.value })}
+                  maxLength={1000}
+                  placeholder="Sharing the specific role this animal plays in your day-to-day wellbeing helps the reviewing provider evaluate your request."
+                  className="w-full rounded-lg border border-[#e2e8f0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a5c4f]"
+                />
               </div>
 
               {error && (

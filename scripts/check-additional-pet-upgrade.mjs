@@ -278,16 +278,19 @@ const CHECKS = [
   ["P12c", "refund cannot double-refund (Stripe idempotencyKey)",
     (s) => /idempotencyKey:\s*`addpet-refund:\$\{reqRow\.id\}`/.test(s.decision)],
   // ADDITIONAL-PET-REJECTION-REFUND-TEST-PORT-001 — two rules the refund port
-  // relies on but did not itself assert.
+  // relies on but did not itself assert. Re-anchored 2026-08-26 for
+  // ADDITIONAL-PET-REJECTION-REASSIGNMENT-AND-DOCUMENT-REVISION-001: the
+  // refund now lives behind the explicit admin `refund` action, and an unpaid
+  // or $0 request is turned away at its gate with nothing_to_refund.
   ["P12b10", "an unpaid / $0 included request never enters the refund path at all",
     (s) => {
       const c = stripComments(s.decision);
       // The whole Stripe block is gated on wasPaid, and wasPaid demands BOTH a
       // settled paid_at and the paid_upgrade outcome — so an included $0 request
-      // (or an unpaid one) is rejected outright with no refund object created.
+      // (or an unpaid one) can never produce a refund object.
       return /const\s+wasPaid\s*=\s*!!reqRow\.paid_at\s*&&\s*\(reqRow\.pricing_outcome as string\)\s*===\s*"paid_upgrade"/.test(c)
-          && /if\s*\(\s*wasPaid\s*\)\s*\{/.test(c)
-          && /status:\s*wasPaid\s*\?\s*"refund_pending"\s*:\s*"rejected"/.test(c);
+          && /if\s*\(\s*!wasPaid\s*\)\s*\{/.test(c)
+          && /nothing_to_refund/.test(c);
     }],
   ["P12b11", "provider rejection never creates or alters a provider earning",
     (s) => {

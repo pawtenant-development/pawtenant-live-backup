@@ -53,15 +53,25 @@ function json(status: number, body: Record<string, unknown>): Response {
   });
 }
 
-interface PetInput { name?: string; type?: string; breed?: string; age?: string; weight?: string }
+interface PetInput {
+  name?: string; type?: string; breed?: string; age?: string; weight?: string;
+  // ADDITIONAL-PET-REJECTION-REASSIGNMENT-AND-DOCUMENT-REVISION-001 §3: the
+  // customer's OPTIONAL explanation of how this specific animal supports them.
+  // Clinical context only — reviewers repeatedly declined for lack of exactly
+  // this. Never priced, never required.
+  supportReason?: string;
+}
 
-/** Normalise to the canonical pet shape {name,type,breed,age,weight}. */
+/** Normalise to the canonical pet shape {name,type,breed,age,weight[,support_reason]}. */
 function normalisePet(input: PetInput): Record<string, string> {
   const s = (v: unknown) => String(v ?? "").trim();
-  return {
+  const pet: Record<string, string> = {
     name: s(input.name), type: s(input.type).toLowerCase(),
     breed: s(input.breed), age: s(input.age), weight: s(input.weight),
   };
+  const support = s(input.supportReason);
+  if (support) pet.support_reason = support;
+  return pet;
 }
 
 function validatePet(pet: Record<string, string>, serviceType: string): string | null {
@@ -75,6 +85,9 @@ function validatePet(pet: Record<string, string>, serviceType: string): string |
       : "That animal type is not supported.";
   }
   if (!pet.breed) return "Please enter the pet's breed.";
+  if ((pet.support_reason ?? "").length > 1000) {
+    return "The support explanation is too long (1000 characters max).";
+  }
   return null;
 }
 

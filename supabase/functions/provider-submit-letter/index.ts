@@ -535,7 +535,27 @@ Deno.serve(async (req: Request) => {
       !!order.doctor_email && !!profile.email &&
       order.doctor_email.toLowerCase() === profile.email.toLowerCase();
 
+    // ADDITIONAL-PET-REJECTION-REASSIGNMENT-AND-DOCUMENT-REVISION-001 §3/§4:
+    // a REASSIGNED Additional Pet reviewer submits the revised letter through
+    // this same authenticated path WITHOUT holding the base order. They are
+    // authorized only while an approved_pending_document request on this order
+    // is assigned to them at the REQUEST level, and (enforced below) only for
+    // the ESA/PSD letter itself — never the housing workflow. This path never
+    // writes orders.doctor_user_id: the completed base order's provider
+    // history is not this reviewer's to inherit.
+    let isAddPetReviewerOnly = false;
     if (!matchesById && !matchesByEmail) {
+      const { data: reviewReq } = await supabase
+        .from("order_additional_pet_requests")
+        .select("id")
+        .eq("order_id", order.id)
+        .eq("status", "approved_pending_document")
+        .eq("assigned_provider_user_id", user.id)
+        .maybeSingle();
+      isAddPetReviewerOnly = !!reviewReq?.id;
+    }
+
+    if (!matchesById && !matchesByEmail && !isAddPetReviewerOnly) {
       return json({ ok: false, error: "Not authorized to update this order" }, 403);
     }
 
@@ -618,6 +638,13 @@ Deno.serve(async (req: Request) => {
     // Stored type is product-accurate: final letters become esa_letter/psd_letter
     // (from the order), completed housing forms canonicalize to housing_completed.
     const storedDocType = isHousingCompleted ? "housing_completed" : `${letterType}_letter`;
+
+    // A reassigned Additional Pet reviewer's authority extends exactly to the
+    // revised ESA/PSD letter that their approval requires. Every other document
+    // class on this order still belongs to the order's own provider.
+    if (isAddPetReviewerOnly && !storedDocType.endsWith("_letter")) {
+      return json({ ok: false, error: "Additional Pet reviewers may only submit the revised letter for this order" }, 403);
+    }
 
     // ── PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §5 ───────────────
     // Provider submission is no longer customer delivery. Every provider-generated
@@ -931,9 +958,14 @@ Deno.serve(async (req: Request) => {
     // letter, and they carry no customer-visible file.
     const orderUpdatePatch: Record<string, unknown> = {
       doctor_status: "pending_admin_approval",
-      doctor_user_id: user.id,
       letter_expiry_date: expiryDate,
     };
+    // ADDITIONAL-PET-REJECTION-REASSIGNMENT-AND-DOCUMENT-REVISION-001 §2: a
+    // REASSIGNED Additional Pet reviewer must never inherit the completed base
+    // order — its provider history (and the payout that hangs off it) belongs
+    // to the provider who completed it. For the order's own provider this
+    // write is the long-standing id self-heal and stays.
+    if (!isAddPetReviewerOnly) orderUpdatePatch.doctor_user_id = user.id;
     if (isNewIssue) orderUpdatePatch.letter_issue_date = issueDate;
 
     await supabase.from("orders").update(orderUpdatePatch).eq("id", order.id);
@@ -993,7 +1025,12 @@ Deno.serve(async (req: Request) => {
     // linked to the version after activation succeeds.
     let addPetRequest: Record<string, unknown> | null = null;
     let addPetSnapshot: Record<string, unknown> | null = null;
-    if (isRevision) {
+    // ADDITIONAL-PET-REJECTION-REASSIGNMENT-AND-DOCUMENT-REVISION-001 §4: the
+    // lookup runs for FIRST letters as well as revisions — a pre-completion
+    // approval means the FIRST letter is the document that must carry the
+    // approved pet, and the request must complete when that letter activates
+    // (it used to stay at approved_pending_document forever on this path).
+    if (storedDocType.endsWith("_letter")) {
       try {
         const { data: apr } = await supabase
           .from("order_additional_pet_requests")
@@ -1006,12 +1043,23 @@ Deno.serve(async (req: Request) => {
         if (apr) {
           addPetRequest = apr as Record<string, unknown>;
           const { data: st } = await supabase.rpc("additional_pet_effective_state", { p_order_id: order.id });
-          const originals = ((st as { original_pets?: unknown[] } | null)?.original_pets ?? []) as unknown[];
+          const stObj = (st ?? {}) as { original_pets?: unknown[]; approved_added_pets?: unknown[] };
+          const originals = (stObj.original_pets ?? []) as unknown[];
+          // EVERY approved additional pet, exactly once. approved_added_pets
+          // already contains THIS request's pet (its approval is what put it in
+          // approved_pending_document) PLUS any pet approved in an earlier
+          // revision — which orders.assessment_answers never contains, so
+          // originals + this request's pet alone would silently drop a
+          // previously approved addition. An unapproved pet can never appear:
+          // the array is built exclusively from provider_decision = 'approved'
+          // rows.
+          const approvedAdded = (stObj.approved_added_pets ?? [apr.new_pet]) as unknown[];
+          const pets = [...originals, ...approvedAdded];
           addPetSnapshot = {
-            pets: [...originals, apr.new_pet],
+            pets,
             source: "additional_pet_approval",
             additional_pet_request_id: apr.id,
-            total_pets: originals.length + 1,
+            total_pets: pets.length,
           };
         }
       } catch (err) {
@@ -1187,8 +1235,10 @@ Deno.serve(async (req: Request) => {
             p_idempotency_key: `submit:${order.id}:${documentId}`,
             p_letter_id: resolvedLetterId,
             p_provider_id: versionProviderId,
-            p_revision_reason: "provider letter submission",
-            p_pet_snapshot: null,
+            p_revision_reason: addPetRequest
+              ? "provider letter submission — includes approved additional pet"
+              : "provider letter submission",
+            p_pet_snapshot: addPetSnapshot,
             p_order_document_id: documentId,
             p_file_url: finalUrl,
             p_storage_path: null,
@@ -1211,6 +1261,40 @@ Deno.serve(async (req: Request) => {
             console.info(
               `[documentVersion] order ${confirmationId} → version ${createdVersion.version} active (letter_id=${resolvedLetterId ?? "none"})`,
             );
+
+            // ADDITIONAL-PET-REJECTION-REASSIGNMENT-AND-DOCUMENT-REVISION-001
+            // §4: a PRE-COMPLETION approval is fulfilled by the FIRST letter —
+            // the pet snapshot above already covers it, so the request
+            // completes here exactly as the revision path completes its
+            // requests. Linked only after activation succeeded; a failed
+            // generation leaves the request at approved_pending_document for a
+            // safe retry.
+            if (addPetRequest) {
+              try {
+                await supabase.from("order_additional_pet_requests").update({
+                  status: "completed",
+                  document_version_id: createdVersion.id,
+                  letter_id: resolvedLetterId,
+                }).eq("id", addPetRequest.id as string)
+                  .eq("status", "approved_pending_document");
+                await supabase.from("order_additional_pet_request_events").insert({
+                  request_id: addPetRequest.id as string,
+                  order_id: order.id,
+                  event_type: "included_in_first_document",
+                  from_status: "approved_pending_document",
+                  to_status: "completed",
+                  actor_role: "system",
+                  detail: {
+                    document_version_id: createdVersion.id,
+                    version: Number(createdVersion.version ?? 1),
+                    letter_id: resolvedLetterId,
+                  },
+                });
+                console.info(`[addPet] request ${addPetRequest.id} completed — covered by first letter v${createdVersion.version}`);
+              } catch (err) {
+                console.error("[addPet] first-letter completion link failed:", err instanceof Error ? err.message : String(err));
+              }
+            }
           }
         }
       }
