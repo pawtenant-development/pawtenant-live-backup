@@ -403,7 +403,7 @@ function buildProviderInviteHtml(providerName: string, toEmail: string, setupLin
                   <table width="100%" cellpadding="0" cellspacing="0">
                     <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;">&#9656; <strong>Headshot</strong> &mdash; a clear, recent professional photo</td></tr>
                     <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;">&#9656; <strong>Bio</strong> &mdash; a short paragraph about your background and approach</td></tr>
-                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;">&#9656; <strong>License &amp; NPI details</strong> &mdash; license numbers per state and your NPI on file</td></tr>
+                    <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;">&#9656; <strong>Display name &amp; professional title</strong> &mdash; how your name and credentials should appear</td></tr>
                     <tr><td style="padding:3px 0;font-size:13px;color:#374151;line-height:1.6;">&#9656; <strong>Public profile preference</strong> &mdash; whether you'd like your profile shown publicly</td></tr>
                   </table>
                 </td>
@@ -498,9 +498,9 @@ async function sendOnboardingWelcomeEmail(
   let html = `<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;color:#374151;">`
     + `<p>Hi <strong>${vars.name}</strong>,</p>`
     + `<p>Your application has been approved — welcome to the ${COMPANY_NAME} provider network. Your confirmed rate is <strong>$${perOrderRate} per completed, approved case</strong>.</p>`
-    + `<p><strong>No onboarding meeting is required.</strong> To complete setup before cases can be assigned, please reply with or confirm any outstanding items:</p>`
-    + `<ul><li>A voided check or ACH details for payouts</li><li>Your professional headshot and short bio</li><li>Your active license details for each state and your NPI</li><li>Your preferred display name and professional title</li><li>Your LinkedIn profile link (optional)</li></ul>`
-    + `<p>Once the required payout, profile, and licensing details are complete and verified, your account will be ready for case assignments. You can then manage assigned cases through the Provider Portal.</p>`
+    + `<p>Please complete any outstanding account details before cases can be assigned:</p>`
+    + `<ul><li>A voided check or ACH details for payouts</li><li>Your professional headshot and short bio</li><li>Your preferred display name and professional title</li><li>Your LinkedIn profile link (optional)</li></ul>`
+    + `<p>Once the required payout and profile details are complete and verified, your account will be ready for case assignments. You can then manage assigned cases through the Provider Portal.</p>`
     + `<p>Welcome again,<br/>The ${COMPANY_NAME} Provider Partnerships Team<br/>${SUPPORT_EMAIL}</p></body></html>`;
   try {
     const { data: tpl } = await adminClient
