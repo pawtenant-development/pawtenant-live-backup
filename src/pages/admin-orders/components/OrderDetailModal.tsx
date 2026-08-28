@@ -38,6 +38,7 @@ import RefundModal from "./RefundModal";
 import OrderRaOverviewStatus from "./OrderRaOverviewStatus";
 import OrderAdditionalPetPanel from "./OrderAdditionalPetPanel";
 import OrderAdditionalPetMenuAction from "./OrderAdditionalPetMenuAction";
+import OrderCustomerPetsMenuAction from "./OrderCustomerPetsMenuAction";
 // ORDER-LINKED-CUSTOM-STRIPE-INVOICE-001: isolated component mounts. Eligibility,
 // dialog, validation, idempotency and the request list all live in the children.
 import OrderCustomPaymentMenuAction from "./OrderCustomPaymentMenuAction";
@@ -3348,6 +3349,23 @@ export default function OrderDetailModal({
                       orderId={order.id}
                       confirmationId={order.confirmation_id}
                       onCloseMenu={() => setShowHeaderMore(false)}
+                    />
+                    {/* ADMIN-ORDER-CUSTOMER-PET-EDITING-001: isolated component
+                        mount. Admin correction of first/last name, state and the
+                        canonical assessment_answers.pets rows. Every rule —
+                        admin identity, the 1-3 limit, purchased entitlement,
+                        paid-invoice evidence and its single-use consumption,
+                        provider-licence compatibility, the document-reissue
+                        transition and the audit row — is enforced server-side by
+                        admin_update_order_customer_and_pets() in ONE transaction
+                        on a row-locked order. This frozen file gets only the
+                        mount; onSaved receives the COMMITTED server snapshot and
+                        pushes it into the modal and the Orders list. */}
+                    <OrderCustomerPetsMenuAction
+                      orderId={order.id}
+                      confirmationId={order.confirmation_id}
+                      onCloseMenu={() => setShowHeaderMore(false)}
+                      onSaved={(patch) => { void updateOrderField(patch as Partial<Order>); }}
                     />
                     {/* ORDER-LINKED-CUSTOM-STRIPE-INVOICE-001: isolated component
                         mount. A distinct action — deliberately NOT folded into

@@ -41,6 +41,15 @@ const MIN_CENTS = 100;        // $1.00
 const MAX_CENTS = 200_000;    // $2,000.00
 const VALID_PURPOSES = ["supplemental_charge", "outstanding_order_balance"] as const;
 
+// ADMIN-ORDER-CUSTOMER-PET-EDITING-001 — the ONLY thing a custom invoice may be
+// declared to authorise. Written to order_custom_payment_requests.metadata so
+// the admin pet editor can tell WHAT a payment bought instead of guessing from
+// the amount (two unrelated $30 charges are indistinguishable by amount alone).
+//
+// This is a LABEL, not a price and not a billing rule. The admin still sets the
+// amount; nothing here reads it, and the Stripe objects are untouched.
+const VALID_AUTHORIZES = ["additional_pet"] as const;
+
 function json(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     status,
@@ -72,6 +81,7 @@ Deno.serve(async (req) => {
     customerDescription?: string;
     internalNote?: string;
     operationToken?: string;
+    authorizes?: string;
   };
   try {
     body = await req.json();
@@ -102,10 +112,16 @@ Deno.serve(async (req) => {
   const customerDescription = (body.customerDescription ?? "").toString().trim();
   const internalNote = (body.internalNote ?? "").toString().trim() || null;
   const operationToken = (body.operationToken ?? "").toString().trim();
+  const authorizes = (body.authorizes ?? "").toString().trim();
 
   if (!confirmationId) return json(400, { ok: false, error: "confirmationId is required" });
   if (!VALID_PURPOSES.includes(purpose as typeof VALID_PURPOSES[number])) {
     return json(400, { ok: false, error: `Unsupported purpose: ${purpose}` });
+  }
+  // Optional and closed-set. An unrecognised value is REFUSED rather than
+  // stored, so a typo can never become an entitlement the editor honours.
+  if (authorizes && !VALID_AUTHORIZES.includes(authorizes as typeof VALID_AUTHORIZES[number])) {
+    return json(400, { ok: false, error: `Unsupported authorizes: ${authorizes}` });
   }
   if (!customerDescription) {
     return json(400, { ok: false, error: "A customer-facing description is required" });
@@ -172,6 +188,7 @@ Deno.serve(async (req) => {
       created_by_user_id: actor.id,
       created_by_name: actor.name,
       idempotency_key: idemKey,
+      metadata: authorizes ? { authorizes } : null,
     })
     .select("id")
     .maybeSingle();
@@ -250,7 +267,11 @@ Deno.serve(async (req) => {
       stripe_customer_id: customerId,
       stripe_invoice_id: finalized.id,
       hosted_url: finalized.hosted_invoice_url ?? null,
-      metadata: { stripe_invoice_number: finalized.number ?? null },
+      // MERGE, never replace. `metadata` is a whole-column write, so listing
+      // only the invoice number here would ERASE the `authorizes` label the
+      // claim wrote — and the admin pet editor would stop recognising a paid
+      // Additional Pet invoice the moment Stripe finalised it.
+      metadata: { ...(authorizes ? { authorizes } : {}), stripe_invoice_number: finalized.number ?? null },
     }).eq("id", requestId);
 
     await admin.from("audit_logs").insert({
@@ -291,7 +312,7 @@ Deno.serve(async (req) => {
       status: "failed",
       failed_at: new Date().toISOString(),
       idempotency_key: null,
-      metadata: { stripe_error: msg },
+      metadata: { ...(authorizes ? { authorizes } : {}), stripe_error: msg },
     }).eq("id", requestId);
     return json(502, { ok: false, error: `Stripe request failed: ${msg}` });
   }

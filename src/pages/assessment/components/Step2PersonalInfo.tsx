@@ -94,7 +94,11 @@ const inputClass =
 const errorInputClass =
   "w-full px-4 py-2.5 text-sm border border-red-400 rounded-lg bg-white focus:outline-none focus:border-red-400 transition-colors text-gray-800";
 
-const PET_TYPES = ["Dog", "Cat", "Bird", "Rabbit", "Hamster", "Guinea Pig", "Other"];
+// ADMIN-ORDER-CUSTOMER-PET-EDITING-LIVE-001: exported so the admin
+// Edit Customer & Pets editor offers the SAME animal types the customer was
+// offered at intake. Exporting is the whole change — the list, its order and
+// its use in this file are untouched, and this stays the single source.
+export const PET_TYPES = ["Dog", "Cat", "Bird", "Rabbit", "Hamster", "Guinea Pig", "Other"];
 
 const emptyPet = (): PetInfo => ({ name: "", age: "", breed: "", type: "", weight: "" });
 
