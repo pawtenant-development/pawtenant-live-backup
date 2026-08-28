@@ -10,6 +10,7 @@ import ProviderLicensePanel from "./components/ProviderLicensePanel";
 import ProviderProfilePanel from "./components/ProviderProfilePanel";
 import ProviderPublicContactPanel from "./components/ProviderPublicContactPanel";
 import ProviderOnboardingGuide from "./components/ProviderOnboardingGuide";
+import FirstLoginPasswordGate from "./FirstLoginPasswordGate";
 
 interface DoctorProfile {
   user_id: string;
@@ -186,6 +187,10 @@ export default function ProviderPortalPage({ previewContext }: { previewContext?
   const [showNotifications, setShowNotifications] = useState(false);
   const [profileDropdown, setProfileDropdown] = useState(false);
   const [showOnboardingGuide, setShowOnboardingGuide] = useState(false);
+  // PROVIDER-TEMPORARY-PASSWORD-ONBOARDING-001: server-authoritative first-login
+  // gate. Providers who signed in with an approval-issued temporary password
+  // cannot reach any case data until they set their own password.
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   // New-case toast — auto-dismissed after 6s
   const [newCaseToast, setNewCaseToast] = useState<{ title: string; message: string; type?: "success" | "error" | "warning" } | null>(null);
@@ -246,8 +251,26 @@ export default function ProviderPortalPage({ previewContext }: { previewContext?
         return;
       }
       if (prof.is_active === false) { await supabase.auth.signOut(); navigate("/provider-login"); return; }
+
+      // PROVIDER-TEMPORARY-PASSWORD-ONBOARDING-001: check the forced-change gate
+      // BEFORE the portal renders. The row is readable only by its own provider
+      // (RLS) and writable only by the service role, so a client can neither
+      // fake nor clear it. A missing row means no temporary password is
+      // outstanding — the normal case for every established provider.
+      const { data: gate } = await supabase
+        .from("provider_password_gate")
+        .select("must_change_password")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+      const gateActive = (gate as { must_change_password?: boolean } | null)?.must_change_password === true;
+      setMustChangePassword(gateActive);
+
       setProfile(prof as DoctorProfile);
       setLoading(false);
+
+      // A provider still holding a temporary password must not be walked
+      // through onboarding or marked as having completed portal setup.
+      if (gateActive) return;
 
       // PROVIDER-FIRST-LOGIN-GUIDE: show the onboarding walkthrough once to
       // active providers (never admin/staff). DB marker is the source of
@@ -558,6 +581,19 @@ export default function ProviderPortalPage({ previewContext }: { previewContext?
       <div className="min-h-screen bg-[#f8f7f4] flex items-center justify-center">
         <i className="ri-loader-4-line animate-spin text-3xl text-[#2c5282]"></i>
       </div>
+    );
+  }
+
+  // PROVIDER-TEMPORARY-PASSWORD-ONBOARDING-001: hard block. Rendered INSTEAD of
+  // the portal, so no case data is fetched or shown while a temporary password
+  // is still outstanding. Admin preview never sees this — it is the previewing
+  // admin's session, not the provider's.
+  if (mustChangePassword && !previewMode) {
+    return (
+      <FirstLoginPasswordGate
+        providerName={profile?.full_name ?? ""}
+        onComplete={() => setMustChangePassword(false)}
+      />
     );
   }
 

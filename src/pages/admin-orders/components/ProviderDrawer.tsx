@@ -144,6 +144,9 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
   // Reset PW
   const [resetMsg, setResetMsg] = useState<{ text: string; link?: string; success?: boolean } | null>(null);
   const [resetSending, setResetSending] = useState(false);
+  // PROVIDER-TEMPORARY-PASSWORD-ONBOARDING-001 — reissue sign-in credentials.
+  const [issueMsg, setIssueMsg] = useState<{ text: string; success?: boolean; confirmable?: boolean } | null>(null);
+  const [issueSending, setIssueSending] = useState(false);
 
   // Copy invite link
   const [copyingLink, setCopyingLink] = useState(false);
@@ -447,6 +450,65 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
     } catch (fetchErr) {
       setResetMsg({ text: `Network error: ${fetchErr instanceof Error ? fetchErr.message : "Unknown"}`, success: false });
     } finally { setResetSending(false); }
+  };
+
+  // PROVIDER-TEMPORARY-PASSWORD-ONBOARDING-001
+  // Issue a fresh cryptographically random temporary password and email the
+  // provider their sign-in details. This is the safe retry when approval could
+  // not deliver credentials — nobody holds the undelivered password, so
+  // replacing it strands nothing.
+  //
+  // For a provider who has ALREADY completed portal setup the server refuses
+  // with requires_confirmation, because re-issuing would break a login they are
+  // actively using. We surface that as an explicit confirm rather than
+  // resending blindly. The password itself never reaches this client.
+  const handleIssueTempPassword = async (confirmRotate = false) => {
+    if (!doc) return;
+    // DoctorRow carries the profile, not a bare id — the auth user_id is the
+    // identifier the issuance endpoint keys on.
+    const providerUserId = doc.profile?.user_id ?? null;
+    if (!providerUserId) {
+      setIssueMsg({ text: "This provider has no linked portal account yet — use Create Portal Account first.", success: false });
+      return;
+    }
+    setIssueSending(true);
+    setIssueMsg(null);
+    try {
+      const token = await getAdminToken();
+      const res = await fetch(`${supabaseUrl}/functions/v1/admin-issue-provider-temp-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userId: providerUserId, confirmRotate }),
+      });
+      let result: {
+        ok?: boolean;
+        error?: string;
+        username?: string;
+        credentials_email_sent?: boolean;
+        requires_confirmation?: boolean;
+      };
+      try { result = await res.json(); }
+      catch {
+        setIssueMsg({ text: `Server returned invalid response (HTTP ${res.status}). Please try again.`, success: false });
+        return;
+      }
+
+      if (result.requires_confirmation) {
+        setIssueMsg({ text: result.error ?? "This provider is already using the portal.", success: false, confirmable: true });
+        return;
+      }
+      if (!result.ok) {
+        setIssueMsg({ text: result.error ?? `Failed to issue sign-in details (HTTP ${res.status})`, success: false });
+        return;
+      }
+      setIssueMsg({
+        text: `Sign-in details emailed to ${result.username ?? doc.email}. They must change the password at first login.`,
+        success: true,
+      });
+      onRefresh();
+    } catch (fetchErr) {
+      setIssueMsg({ text: `Network error: ${fetchErr instanceof Error ? fetchErr.message : "Unknown"}`, success: false });
+    } finally { setIssueSending(false); }
   };
 
   const handleUpdateAuthEmail = async () => {
@@ -991,6 +1053,33 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
                             <i className={`mt-0.5 flex-shrink-0 text-sm ${copyLinkMsg.success ? "ri-checkbox-circle-line text-sky-600" : "ri-error-warning-line text-red-500"}`}></i>
                             <p className="leading-relaxed">{copyLinkMsg.text}</p>
                           </div>
+                        </div>
+                      )}
+
+                      {/* PROVIDER-TEMPORARY-PASSWORD-ONBOARDING-001 */}
+                      <button type="button" onClick={() => handleIssueTempPassword(false)} disabled={issueSending}
+                        className="whitespace-nowrap w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 text-left hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-50">
+                        <div className="w-7 h-7 flex items-center justify-center bg-emerald-50 rounded-lg flex-shrink-0">
+                          <i className="ri-mail-lock-line text-emerald-600 text-sm"></i>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-800">{issueSending ? "Issuing..." : "Resend Sign-in Details"}</p>
+                          <p className="text-xs text-gray-400">Email a new temporary password &mdash; no link to click</p>
+                        </div>
+                        {issueSending && <i className="ri-loader-4-line animate-spin text-emerald-600 flex-shrink-0"></i>}
+                      </button>
+                      {issueMsg && (
+                        <div className={`px-4 py-3 rounded-xl border text-xs font-semibold ${issueMsg.success ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"}`}>
+                          <div className="flex items-start gap-2">
+                            <i className={`mt-0.5 flex-shrink-0 text-sm ${issueMsg.success ? "ri-checkbox-circle-line text-emerald-600" : "ri-error-warning-line text-red-500"}`}></i>
+                            <p className="leading-relaxed">{issueMsg.text}</p>
+                          </div>
+                          {issueMsg.confirmable && (
+                            <button type="button" onClick={() => handleIssueTempPassword(true)} disabled={issueSending}
+                              className="whitespace-nowrap mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-red-700 disabled:opacity-50">
+                              <i className="ri-alert-line"></i>Replace their password anyway
+                            </button>
+                          )}
                         </div>
                       )}
 
