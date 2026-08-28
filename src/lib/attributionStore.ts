@@ -217,6 +217,12 @@ export const CLICK_ID_FIELDS: ClickIdField[] = [
 
 const PROV_PREFIX = "pt_prov_";
 
+// Internal links deliberately carry campaign labels (UTMs/ValueTrack) but not
+// raw click IDs. Without an explicit marker, captureFromUrl() mistakes those
+// repeated labels for a brand-new campaign and clears the genuine gclid /
+// gbraid / wbraid on the first in-site navigation.
+const INTERNAL_ATTR_PARAM = "pt_internal_attr";
+
 function provKey(field: ClickIdField): string {
   return PROV_PREFIX + KEYS[field];
 }
@@ -400,6 +406,7 @@ export function captureFromUrl(search: string): void {
   const urlUtmSource = sanitizeMacroValue(params.get("utm_source"));
   const urlFbclid    = params.get("fbclid");
   const urlGclid     = params.get("gclid");
+  const isInternalCarry = params.get(INTERNAL_ATTR_PARAM) === "1";
 
   // ── 1. Session ID — generate once, never change ───────────────────────────
   const existingSessionId = ssGet(KEYS.session_id) || lsGet(KEYS.session_id);
@@ -425,7 +432,7 @@ export function captureFromUrl(search: string): void {
 
   // ── 2b. LAST-TOUCH override: clear stale attribution from OTHER channels ──
   //        Only runs when this URL itself carries a fresh campaign signal.
-  if (urlUtmSource) {
+  if (urlUtmSource && !isInternalCarry) {
     // Fresh utm_source wins over any previously stored click IDs.
     [KEYS.gclid, KEYS.fbclid, KEYS.fbc, KEYS.fbclid_ts, KEYS.gbraid, KEYS.wbraid].forEach((k) => {
       if (clearBoth(k)) cleared.push(k);
@@ -545,7 +552,7 @@ export function captureFromUrl(search: string): void {
     ["utm_content",  "utm_content"],
   ];
 
-  if (urlUtmSource) {
+  if (urlUtmSource && !isInternalCarry) {
     // LAST-TOUCH: fresh utm_source in URL → OVERRIDE any previously stored UTMs.
     utmFields.forEach(([field, param]) => {
       const val = sanitizeMacroValue(params.get(param));
@@ -601,7 +608,7 @@ export function captureFromUrl(search: string): void {
   //        values; otherwise we fill-missing (set-once) so later internal
   //        navigation doesn't blank them. Mirrors the UTM precedence above.
   {
-    const freshCampaign = !!(urlUtmSource || urlFbclid || urlGclid);
+    const freshCampaign = !isInternalCarry && !!(urlUtmSource || urlFbclid || urlGclid);
     AD_PARAM_ALIASES.forEach(([field, aliases]) => {
       let val: string | null = null;
       for (const alias of aliases) {
@@ -1160,6 +1167,7 @@ export function buildChannel(): string {
 export function buildAttributionQueryString(existingQuery?: string): string {
   const data = getAttribution();
   const merged = new URLSearchParams(existingQuery ?? "");
+  let carriesStoredAttribution = false;
 
   const linkFields: Array<[string, string | null]> = [
     ["utm_source",   data.utm_source],
@@ -1181,10 +1189,17 @@ export function buildAttributionQueryString(existingQuery?: string): string {
   ];
 
   linkFields.forEach(([key, value]) => {
+    if (value) carriesStoredAttribution = true;
     if (value && !merged.has(key)) {
       merged.set(key, value);
     }
   });
+
+  // Tell captureFromUrl that these labels came from PawTenant's own stored
+  // attribution, not from a new external campaign click. Keep click IDs out of
+  // the URL; they remain in session/localStorage with their original
+  // provenance.
+  if (carriesStoredAttribution) merged.set(INTERNAL_ATTR_PARAM, "1");
 
   const str = merged.toString();
   return str ? `?${str}` : "";

@@ -253,11 +253,39 @@ async function runBehavioralChecks(srcDir) {
 
     // ── Scenario chain B: fresh URL click IDs on a brand-new browser ──────
     newBrowser();
-    newTab("https://pawtenant.com/esa-letter?gclid=TESTGCLIDNEW22", "https://www.google.com/");
-    store.captureFromUrl("?gclid=TESTGCLIDNEW22");
+    newTab(
+      "https://pawtenant.com/esa-letter?gclid=TESTGCLIDNEW22&utm_source=google&utm_medium=cpc",
+      "https://www.google.com/",
+    );
+    store.captureFromUrl("?gclid=TESTGCLIDNEW22&utm_source=google&utm_medium=cpc");
     const ajFresh = store.buildAttributionJson("step2_lead");
     check("B1 fresh gclid kept in attribution_json", ajFresh.gclid === "TESTGCLIDNEW22",
       "a genuine fresh click ID was dropped (conversion evidence lost)");
+
+    // B2. The site's own decorated CTA carries campaign labels but never raw
+    // click IDs. The explicit internal-carry marker must stop those repeated
+    // labels from being mistaken for a fresh campaign that clears the real
+    // click ID on the first internal navigation.
+    const internalHref = store.appendAttribution("/assessment?plan=subscription");
+    check("B2 internal CTA is marked as carried attribution",
+      /(^|[?&])pt_internal_attr=1(?:&|$)/.test(internalHref),
+      `internal href ${internalHref}`);
+    check("B2 internal CTA still carries no raw click IDs",
+      !/(^|[?&])(gclid|gbraid|wbraid|fbclid|msclkid|ttclid)=/.test(internalHref),
+      `internal href ${internalHref}`);
+    const internalUrl = new URL(internalHref, "https://pawtenant.com");
+    env.loc = { href: internalUrl.href, search: internalUrl.search, origin: internalUrl.origin };
+    store.captureFromUrl(internalUrl.search);
+    check("B2 internal navigation preserves gclid",
+      store.getAttribution().gclid === "TESTGCLIDNEW22",
+      "internal UTM carry cleared the Google click ID");
+    check("B2 internal navigation preserves URL provenance",
+      store.getClickIdProvenance("gclid") === "url",
+      `got ${store.getClickIdProvenance("gclid")}`);
+    const ajAfterInternal = store.buildAttributionJson("step2_lead");
+    check("B2 conversion evidence survives internal navigation",
+      ajAfterInternal.gclid === "TESTGCLIDNEW22",
+      "the first internal click removed Google conversion evidence");
 
     // ── Read-side: the PT-MT1GWHXX order shape ────────────────────────────
     const contaminatedOrder = {
