@@ -659,7 +659,10 @@ export default function ProviderDrawer({ doc, pendingSetupIds, onClose, onRefres
   const isPendingSetup = !!doc?.profile && pendingSetupIds.has(doc.profile.user_id);
   // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-A: dedupe licensed states
   // for display so legacy ["VA", "Virginia"] renders one badge.
-  const rawStates = doc?.contact?.licensed_states ?? doc?.profile?.licensed_states ?? [];
+  // Portal providers own their canonical state list in doctor_profiles.
+  // doctor_contacts is only the fallback for legacy providers without a portal
+  // profile; preferring it can hide states a provider just saved themselves.
+  const rawStates = doc?.profile?.licensed_states ?? doc?.contact?.licensed_states ?? [];
   const displayStates = normalizeStateListForDisplay(rawStates);
   const currentRate = doc?.profile?.per_order_rate ?? doc?.contact?.per_order_rate ?? null;
   const total = doc ? doc.workload.active + doc.workload.completed : 0;

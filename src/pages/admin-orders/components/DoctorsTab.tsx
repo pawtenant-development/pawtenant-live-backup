@@ -272,7 +272,7 @@ export default function DoctorsTab({ onProviderAdded, adminProfile }: { onProvid
       // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-A: dedupe state badges
       // and license rows for the CSV so legacy mixed values (e.g. ["VA",
       // "Virginia"]) export as a single canonical row each.
-      const rawStates = doc.contact?.licensed_states ?? doc.profile?.licensed_states ?? [];
+      const rawStates = doc.profile?.licensed_states ?? doc.contact?.licensed_states ?? [];
       const displayStates = normalizeStateListForDisplay(rawStates);
       const isActive = doc.profile ? doc.profile.is_active !== false : doc.contact?.is_active !== false;
       const rate = doc.profile?.per_order_rate ?? doc.contact?.per_order_rate ?? null;
@@ -312,7 +312,7 @@ export default function DoctorsTab({ onProviderAdded, adminProfile }: { onProvid
   // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-A: dedupe entries by code so
   // legacy mixed "VA"/"Virginia" produces a single dropdown entry.
   const allStatesInRoster = (() => {
-    const flat = doctors.flatMap((d) => d.contact?.licensed_states ?? d.profile?.licensed_states ?? []);
+    const flat = doctors.flatMap((d) => d.profile?.licensed_states ?? d.contact?.licensed_states ?? []);
     return normalizeStateListForDisplay(flat).map((s) => s.label).sort();
   })();
 
@@ -342,12 +342,9 @@ export default function DoctorsTab({ onProviderAdded, adminProfile }: { onProvid
       const isCovering = profileActive && contactActive && availStatus !== "inactive";
       if (!isCovering) continue;
 
-      // Combine licensed states from both profile and contact rows so we never
-      // miss a state that's only listed on one of the two records.
-      const states = [
-        ...(profile?.licensed_states ?? []),
-        ...(contact?.licensed_states ?? []),
-      ];
+      // Portal profile is canonical. Contact is a legacy-only fallback; using
+      // both can resurrect a state the provider intentionally removed.
+      const states = profile?.licensed_states ?? contact?.licensed_states ?? [];
       for (const raw of states) {
         const code = normalizeStateToCode(raw);
         if (code) covered.add(code);
@@ -367,7 +364,7 @@ export default function DoctorsTab({ onProviderAdded, adminProfile }: { onProvid
       (filterStatus === "active" && availStatus === "active") ||
       (filterStatus === "at_capacity" && availStatus === "at_capacity") ||
       (filterStatus === "inactive" && availStatus === "inactive");
-    const states = doc.contact?.licensed_states ?? doc.profile?.licensed_states ?? [];
+    const states = doc.profile?.licensed_states ?? doc.contact?.licensed_states ?? [];
     const matchesState = filterState === "all" || states.includes(filterState);
     return matchesSearch && matchesStatus && matchesState;
   });
@@ -608,7 +605,7 @@ export default function DoctorsTab({ onProviderAdded, adminProfile }: { onProvid
             // OPS-PROVIDER-LICENSE-STATE-NORMALIZATION-PHASE-A: dedupe by code so
             // legacy ["VA", "Virginia"] renders one entry. Display label uses
             // full state name; rawValues retained for callers that still need them.
-            const rawStates = doc.contact?.licensed_states ?? doc.profile?.licensed_states ?? [];
+            const rawStates = doc.profile?.licensed_states ?? doc.contact?.licensed_states ?? [];
             const displayStates = normalizeStateListForDisplay(rawStates);
             const states = displayStates.map((s) => s.label);
             const initials = doc.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
@@ -749,7 +746,7 @@ export default function DoctorsTab({ onProviderAdded, adminProfile }: { onProvid
       )}
       {statesModalDoc && (
         <EditStatesModal
-          doctor={{ profileId: statesModalDoc.profile?.id, contactId: statesModalDoc.contact?.id, name: statesModalDoc.name, email: statesModalDoc.email, currentStates: statesModalDoc.contact?.licensed_states ?? statesModalDoc.profile?.licensed_states ?? [] }}
+          doctor={{ profileId: statesModalDoc.profile?.id, contactId: statesModalDoc.contact?.id, name: statesModalDoc.name, email: statesModalDoc.email, currentStates: statesModalDoc.profile?.licensed_states ?? statesModalDoc.contact?.licensed_states ?? [] }}
           onClose={() => setStatesModalDoc(null)}
           onSaved={(name, count) => { setStatesModalDoc(null); showToast(`${name} — ${count} licensed states saved`); loadData(); }} />
       )}

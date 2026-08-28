@@ -19,6 +19,8 @@ interface ProfileData {
   application_id: string | null;
 }
 
+type LicenseSnapshot = Pick<ProfileData, "state_license_numbers" | "licensed_states">;
+
 // OPS-PROVIDER-PORTAL-PROFILE-LICENSE-REVIEW-PHASE1: structured license rows
 // captured by the Join Our Network application (V2). Provider portal can read
 // these to display the credential per state alongside the license number that
@@ -165,6 +167,37 @@ export default function ProviderLicensePanel({ userId, providerName, readOnly = 
     }
   };
 
+  // Always calculate license mutations from the latest durable row, then
+  // require Supabase to return the updated row. This prevents a stale browser
+  // snapshot (or a zero-row RLS update) from producing a false success toast
+  // and admin email while the database remains unchanged.
+  const loadLatestLicenseSnapshot = async (): Promise<LicenseSnapshot> => {
+    const { data, error } = await supabase
+      .from("doctor_profiles")
+      .select("state_license_numbers, licensed_states")
+      .eq("user_id", userId)
+      .single();
+    if (error || !data) throw new Error(error?.message ?? "Provider profile not found.");
+    return data as LicenseSnapshot;
+  };
+
+  const persistLicenseSnapshot = async (
+    licensedStates: string[],
+    stateLicenseNumbers: Record<string, string> | null,
+  ): Promise<LicenseSnapshot> => {
+    const { data, error } = await supabase
+      .from("doctor_profiles")
+      .update({
+        licensed_states: licensedStates,
+        state_license_numbers: stateLicenseNumbers,
+      })
+      .eq("user_id", userId)
+      .select("state_license_numbers, licensed_states")
+      .single();
+    if (error || !data) throw new Error(error?.message ?? "License update did not persist.");
+    return data as LicenseSnapshot;
+  };
+
   // ── Save NPI ──
   const handleSaveNpi = async () => {
     if (readOnly) { showToast("Admin preview — action disabled.", false); return; }
@@ -192,22 +225,32 @@ export default function ProviderLicensePanel({ userId, providerName, readOnly = 
     if (!profile) return;
     setSavingLicense(true);
     const targetCode = normalizeStateToCode(stateAbbr) ?? stateAbbr.toUpperCase();
-    const current = profile.state_license_numbers ?? {};
-    const cleaned: Record<string, string> = {};
-    Object.entries(current).forEach(([k, v]) => {
-      if (normalizeStateToCode(k) !== targetCode) cleaned[k] = v;
-    });
-    const updated = { ...cleaned, [targetCode]: licenseInput.trim() };
-    const { error } = await supabase
-      .from("doctor_profiles")
-      .update({ state_license_numbers: updated })
-      .eq("user_id", userId);
+    const nextLicenseNumber = licenseInput.trim();
+    let saved: LicenseSnapshot;
+    try {
+      const latest = await loadLatestLicenseSnapshot();
+      const cleaned: Record<string, string> = {};
+      Object.entries(latest.state_license_numbers ?? {}).forEach(([k, v]) => {
+        if (normalizeStateToCode(k) !== targetCode) cleaned[k] = v;
+      });
+      const updated = { ...cleaned, [targetCode]: nextLicenseNumber };
+      const latestStates = new Set(
+        (latest.licensed_states ?? [])
+          .map((s) => normalizeStateToCode(s))
+          .filter((c): c is string => !!c),
+      );
+      latestStates.add(targetCode);
+      saved = await persistLicenseSnapshot(Array.from(latestStates), updated);
+    } catch {
+      setSavingLicense(false);
+      showToast("Failed to save license number.", false);
+      return;
+    }
     setSavingLicense(false);
-    if (error) { showToast("Failed to save license number.", false); return; }
-    setProfile((p) => p ? { ...p, state_license_numbers: updated } : p);
+    setProfile((p) => p ? { ...p, ...saved } : p);
     setEditingLicenseState(null);
     showToast(`License number for ${targetCode} updated.`, true);
-    await fireAdminNotification("License Number Updated", `State ${targetCode} license number updated to: ${licenseInput.trim()}`);
+    await fireAdminNotification("License Number Updated", `State ${targetCode} license number updated to: ${nextLicenseNumber}`);
   };
 
   // ── Add new state ──
@@ -222,40 +265,32 @@ export default function ProviderLicensePanel({ userId, providerName, readOnly = 
     // addStateAbbr might come from a code dropdown but we normalize defensively.
     const abbr = (normalizeStateToCode(addStateAbbr) ?? addStateAbbr.toUpperCase());
 
-    // Update state_license_numbers (keyed by code)
-    const currentLicenses = profile.state_license_numbers ?? {};
-    const updatedLicenses = { ...currentLicenses, [abbr]: addLicenseNum.trim() };
-
-    // Update licensed_states (array of codes). Collapse any legacy full-name
-    // or duplicate-code entries through normalizeStateToCode + Set.
-    const currentStates = profile.licensed_states ?? [];
-    const existingCodes = new Set(
-      currentStates
-        .map((s) => normalizeStateToCode(s))
-        .filter((c): c is string => !!c)
-    );
-    existingCodes.add(abbr);
-    const updatedStates = Array.from(existingCodes);
-
-    const results = await Promise.all([
-      supabase.from("doctor_profiles").update({
-        state_license_numbers: updatedLicenses,
-        licensed_states: updatedStates,
-      }).eq("user_id", userId),
-      supabase.from("doctor_contacts").update({
-        licensed_states: updatedStates,
-      }).eq("email", (profile.email ?? "").toLowerCase()),
-    ]);
+    const nextLicenseNumber = addLicenseNum.trim();
+    let saved: LicenseSnapshot;
+    try {
+      const latest = await loadLatestLicenseSnapshot();
+      const updatedLicenses = { ...(latest.state_license_numbers ?? {}), [abbr]: nextLicenseNumber };
+      const existingCodes = new Set(
+        (latest.licensed_states ?? [])
+          .map((s) => normalizeStateToCode(s))
+          .filter((c): c is string => !!c),
+      );
+      existingCodes.add(abbr);
+      saved = await persistLicenseSnapshot(Array.from(existingCodes), updatedLicenses);
+    } catch {
+      setAddingState(false);
+      showToast("Failed to add state.", false);
+      return;
+    }
 
     setAddingState(false);
-    if (results[0].error) { showToast("Failed to add state.", false); return; }
-    setProfile((p) => p ? { ...p, state_license_numbers: updatedLicenses, licensed_states: updatedStates } : p);
+    setProfile((p) => p ? { ...p, ...saved } : p);
     setShowAddState(false);
     setAddStateAbbr("");
     setAddLicenseNum("");
     const stateName = STATE_ABBR_MAP[abbr] ?? abbr;
     showToast(`${abbr} added to your licensed states.`, true);
-    await fireAdminNotification("State Added", `Provider added new licensed state: ${abbr} (${stateName}) with license #${addLicenseNum.trim()}`);
+    await fireAdminNotification("State Added", `Provider added new licensed state: ${abbr} (${stateName}) with license #${nextLicenseNumber}`);
   };
 
   // ── Remove state ──
@@ -272,37 +307,31 @@ export default function ProviderLicensePanel({ userId, providerName, readOnly = 
 
     // Remove from state_license_numbers — handle legacy duplicate keys (both
     // "VA" and "Virginia" pointing to the same state).
-    const currentLicenses = { ...(profile.state_license_numbers ?? {}) };
-    Object.keys(currentLicenses).forEach((k) => {
-      if (normalizeStateToCode(k) === targetCode) delete currentLicenses[k];
-    });
-
-    // Remove from licensed_states — by code OR legacy name OR raw match — and
-    // re-canonicalize the remaining entries to codes.
-    const updatedStates = Array.from(new Set(
-      (profile.licensed_states ?? [])
-        .filter((s) => s !== stateName && s !== stateAbbr && normalizeStateToCode(s) !== targetCode)
-        .map((s) => normalizeStateToCode(s))
-        .filter((c): c is string => !!c)
-    ));
-
-    const removeResults = await Promise.all([
-      supabase.from("doctor_profiles").update({
-        state_license_numbers: Object.keys(currentLicenses).length > 0 ? currentLicenses : null,
-        licensed_states: updatedStates,
-      }).eq("user_id", userId),
-      supabase.from("doctor_contacts").update({
-        licensed_states: updatedStates,
-      }).eq("email", (profile.email ?? "").toLowerCase()),
-    ]);
+    let saved: LicenseSnapshot;
+    try {
+      const latest = await loadLatestLicenseSnapshot();
+      const currentLicenses = { ...(latest.state_license_numbers ?? {}) };
+      Object.keys(currentLicenses).forEach((k) => {
+        if (normalizeStateToCode(k) === targetCode) delete currentLicenses[k];
+      });
+      const updatedStates = Array.from(new Set(
+        (latest.licensed_states ?? [])
+          .filter((s) => s !== stateName && s !== stateAbbr && normalizeStateToCode(s) !== targetCode)
+          .map((s) => normalizeStateToCode(s))
+          .filter((c): c is string => !!c),
+      ));
+      saved = await persistLicenseSnapshot(
+        updatedStates,
+        Object.keys(currentLicenses).length > 0 ? currentLicenses : null,
+      );
+    } catch {
+      setRemovingState(false);
+      showToast("Failed to remove state.", false);
+      return;
+    }
 
     setRemovingState(false);
-    if (removeResults[0].error) { showToast("Failed to remove state.", false); return; }
-    setProfile((p) => p ? {
-      ...p,
-      state_license_numbers: Object.keys(currentLicenses).length > 0 ? currentLicenses : null,
-      licensed_states: updatedStates,
-    } : p);
+    setProfile((p) => p ? { ...p, ...saved } : p);
     setConfirmRemoveState(null);
     showToast(`${stateAbbr} removed from your licensed states.`, true);
     await fireAdminNotification("State Removed", `Provider removed licensed state: ${stateAbbr} (${stateName})`);
