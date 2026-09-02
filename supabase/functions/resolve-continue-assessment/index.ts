@@ -97,6 +97,9 @@ Deno.serve(async (req: Request) => {
         deliverySpeed: r.delivery_speed,
         pets: r.pets,
         dob: r.dob,
+        // Paid-incomplete PSD orders may finish clinical questions, but this
+        // flag keeps the client out of lead upsert and payment entirely.
+        alreadyPaid: r.already_paid === true,
       },
       // Counts and missing question IDs only — never answer values.
       status: r.status,
