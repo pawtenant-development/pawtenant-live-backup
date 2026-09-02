@@ -624,60 +624,61 @@ serve(async (req) => {
         }
       }
 
-      // 3. Email fallback — applies to BOTH lead and payment upserts
-      //    For PAID-email matches we still block (different user must use different email).
-      //    For UNPAID-email matches we reuse the existing row.
+      // 3. Email fallback — applies to BOTH lead and payment upserts.
+      //    A lead save may resume an UNPAID order only for the same product.
+      //    A PAID-email match is neither reused nor blocked: a returning customer
+      //    may place a separate ESA or PSD order under a new confirmation id.
       if (!existingOrder && normalizedEmail) {
-        const { data: byEmail } = await supabase
+        let emailQuery = supabase
           .from("orders")
           .select(
             "id, confirmation_id, status, email_log, first_name, last_name, email, phone, state, delivery_speed, letter_type, payment_intent_id, paid_at, price, plan_type, payment_method, selected_provider, session_id, first_touch_json, last_touch_json, referred_by, gclid, gbraid, wbraid, fbclid, utm_source, utm_medium, utm_campaign, utm_term, utm_content, landing_url, attribution_json, coupon_code, coupon_discount, assessment_answers"
           )
           .ilike("email", normalizedEmail)
-          .not("status", "in", `("refunded","cancelled")`)
+          .not("status", "in", `("refunded","cancelled")`);
+        // Repeat-purchase isolation: never let a PSD lead hijack an unpaid ESA
+        // lead (or vice versa). Payment reconciliation keeps its broader lookup.
+        if (!isPaymentUpsert && typeof body.letterType === "string" && body.letterType) {
+          emailQuery = emailQuery.eq("letter_type", body.letterType);
+        }
+        const { data: byEmail } = await emailQuery
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
 
         if (byEmail) {
           if (isAlreadyPaid(byEmail) && !isPaymentUpsert) {
-            // Lead save attempted against an email that already has a paid order — block
-            console.warn(
-              `[get-resume-order] Email conflict (paid): ${normalizedEmail} already has order ${byEmail.confirmation_id}`
+            // Order identity is the confirmation id, not the email. Leave
+            // existingOrder null so Step 3 creates the new repeat-purchase row.
+            console.info(
+              `[get-resume-order] repeat purchase: ${normalizedEmail} already has paid order ${byEmail.confirmation_id}; creating a new order for ${effectiveConfirmationId}`
             );
-            return new Response(
-              JSON.stringify({
-                ok: false,
-                error: "An order already exists for this email. Please use a different email.",
-                emailConflict: true,
-              }),
-              { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-          }
-          if (isAlreadyPaid(byEmail) && isPaymentUpsert) {
-            // Payment upsert against an already-paid email row with a different PI
-            const incomingPi = body.paymentIntentId ?? null;
-            if (incomingPi && byEmail.payment_intent_id && byEmail.payment_intent_id !== incomingPi) {
-              console.error(
-                `[get-resume-order] payment conflict (email): ${normalizedEmail} already paid with PI ${byEmail.payment_intent_id}, incoming PI ${incomingPi}`
-              );
-              return new Response(
-                JSON.stringify({
-                  ok: false,
-                  error: "Order already paid with a different payment intent",
-                  alreadyPaid: true,
-                  confirmationId: byEmail.confirmation_id,
-                }),
-                { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-              );
+          } else {
+            if (isAlreadyPaid(byEmail) && isPaymentUpsert) {
+              // Payment upsert against an already-paid email row with a different PI
+              const incomingPi = body.paymentIntentId ?? null;
+              if (incomingPi && byEmail.payment_intent_id && byEmail.payment_intent_id !== incomingPi) {
+                console.error(
+                  `[get-resume-order] payment conflict (email): ${normalizedEmail} already paid with PI ${byEmail.payment_intent_id}, incoming PI ${incomingPi}`
+                );
+                return new Response(
+                  JSON.stringify({
+                    ok: false,
+                    error: "Order already paid with a different payment intent",
+                    alreadyPaid: true,
+                    confirmationId: byEmail.confirmation_id,
+                  }),
+                  { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                );
+              }
             }
+            existingOrder = byEmail;
+            effectiveConfirmationId = byEmail.confirmation_id as string;
+            matchedBy = "email";
+            console.info(
+              `[get-resume-order] matched by email: ${normalizedEmail} -> ${effectiveConfirmationId} (status=${byEmail.status})`
+            );
           }
-          existingOrder = byEmail;
-          effectiveConfirmationId = byEmail.confirmation_id as string;
-          matchedBy = "email";
-          console.info(
-            `[get-resume-order] matched by email: ${normalizedEmail} -> ${effectiveConfirmationId} (status=${byEmail.status})`
-          );
         }
       }
 
