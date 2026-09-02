@@ -196,6 +196,7 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
 
     (async () => {
       const o = handoff as Record<string, unknown>;
+      setPaidAssessmentCompletion(o.alreadyPaid === true);
       setConfirmationId(String(o.confirmationId ?? ""));
       setStep2((prev) => ({
         ...prev,
@@ -256,6 +257,9 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
     return id;
   });
   const [saving, setSaving] = useState(false);
+  const [leadSaveError, setLeadSaveError] = useState("");
+  const [paidAssessmentCompletion, setPaidAssessmentCompletion] = useState(false);
+  const [paidCompletionError, setPaidCompletionError] = useState("");
   // NO STEP-1 FLASH. `checkoutResume` belongs in this initial value, not just in
   // the effect that consumes it: without it the first paint rendered the state
   // picker / Question 1 for a customer the server had already resolved to
@@ -611,6 +615,8 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
 
   const saveLeadToSupabase = async (step2Data: Step2Data) => {
     setSaving(true);
+    setLeadSaveError("");
+    let leadSaved = false;
     const assessmentPayload = {
       ...step1,
       pets: step2Data.pets,
@@ -693,10 +699,13 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
         await autosave.flushDraft();
       } catch { /* autosave degrades; the lead is still saved */ }
       if (upsertRes?.ok) {
+        leadSaved = true;
         try { trackAssessmentSubmitted(confirmationId, "psd"); } catch { /* analytics never blocks */ }
+      } else {
+        setLeadSaveError("We could not save your completed assessment. Please try Continue again — your answers are still on this device.");
       }
     } catch {
-      // silent — GHL webhook + Google Sheets still fire below
+      setLeadSaveError("We could not save your completed assessment. Check your connection and try Continue again — your answers are still on this device.");
     }
 
     // Trigger full Google Sheets sync after 2s so all columns are correct
@@ -755,6 +764,7 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
     }
 
     setSaving(false);
+    return leadSaved;
   };
 
   // ── State-first + OTP gate handlers ───────────────────────────────────────
@@ -790,11 +800,52 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
   };
 
   const handleStep2Next = async () => {
-    await saveLeadToSupabase(step2);
+    const leadSaved = await saveLeadToSupabase(step2);
+    if (!leadSaved) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     const needOtp = !otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase();
     if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
     else setCheckoutGate(directCheckout ? "pay" : "package");
     setStep(3);
+  };
+
+  const handleStep1Next = async () => {
+    if (!paidAssessmentCompletion) {
+      setStep(2);
+      return;
+    }
+
+    setPaidCompletionError("");
+    await autosave.flush();
+    const tok = readAssessmentToken();
+    if (!tok) {
+      setPaidCompletionError("Your secure assessment session expired. Please reopen the continuation link.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/psd-assessment-answers`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        body: JSON.stringify({ action: "status", token: tok }),
+      });
+      const data = await res.json().catch(() => null) as {
+        status?: { complete?: boolean };
+      } | null;
+      if (!res.ok || data?.status?.complete !== true) {
+        setPaidCompletionError("One or more answers could not be saved. Please check the questions and try again.");
+        return;
+      }
+      navigate(`/my-orders?order=${encodeURIComponent(confirmationId)}`, { replace: true });
+    } catch {
+      setPaidCompletionError("We could not confirm the saved answers. Check your connection and try again.");
+    }
   };
 
   // Dedicated PSD package step → advance to checkout with the chosen package.
@@ -953,11 +1004,22 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
 
               {step === 1 && (
                 <>
+                {paidAssessmentCompletion && (
+                  <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    <p className="font-bold">Payment already received — no second payment is required.</p>
+                    <p className="mt-1">Complete the remaining PSD questions. When they are securely saved, you will return to your order.</p>
+                  </div>
+                )}
+                {paidCompletionError && (
+                  <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                    {paidCompletionError}
+                  </div>
+                )}
                 <PSDStep1
                   data={step1}
                   onChange={setStep1}
                   onAnswerChange={(qid, val) => autosave.saveAnswer(qid, val)}
-                  onNext={() => setStep(2)}
+                  onNext={handleStep1Next}
                 />
                 {/* Save state. The customer must never be told "Saved" for a
                     write the server did not accept — a silent failure here is
@@ -986,14 +1048,21 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
               )}
 
               {step === 2 && (
-                <Step2PersonalInfo
-                  data={step2}
-                  onChange={setStep2}
-                  onNext={handleStep2Next}
-                  onBack={() => setStep(1)}
-                  mode="psd"
-                  onEditState={() => { setStateConfirmed(false); window.scrollTo(0, 0); }}
-                />
+                <>
+                  {leadSaveError && (
+                    <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                      {leadSaveError}
+                    </div>
+                  )}
+                  <Step2PersonalInfo
+                    data={step2}
+                    onChange={setStep2}
+                    onNext={handleStep2Next}
+                    onBack={() => setStep(1)}
+                    mode="psd"
+                    onEditState={() => { setStateConfirmed(false); window.scrollTo(0, 0); }}
+                  />
+                </>
               )}
 
               {/* Checkout gates: email OTP → assurance → payment. */}
