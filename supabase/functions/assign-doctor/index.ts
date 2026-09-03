@@ -54,15 +54,18 @@ async function sendProviderEmail(opts: {
   providerEmail: string; providerName: string; patientFirstName: string; patientLastName: string;
   patientEmail: string; patientPhone: string; patientState: string; confirmationId: string;
   portalUrl: string; additionalDocs?: AdditionalDocRequest | null; isPSD?: boolean;
+  incompletePsd?: { answered: number; requiredTotal: number; missingCount: number } | null;
 }): Promise<boolean> {
   const extraDocs = opts.additionalDocs?.types?.filter((t) => t !== "ESA Letter" && t !== "PSD Letter") ?? [];
   const hasExtraDocs = extraDocs.length > 0;
   const letterTypeLabel = opts.isPSD ? "PSD Letter" : "ESA Letter";
   const portalLabel = opts.isPSD ? "PSD Provider Portal" : "ESA Provider Portal";
 
+  const incompletePsdHtml = opts.incompletePsd ? `<tr><td style="padding:14px 24px;border-top:1px solid #e5e7eb;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:14px 18px;"><tr><td><p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:0.08em;">Incomplete PSD intake — follow-up required</p><p style="margin:0;font-size:13px;color:#7c2d12;line-height:1.55;">This owner-approved case contains ${opts.incompletePsd.answered} of ${opts.incompletePsd.requiredTotal} required answers (${opts.incompletePsd.missingCount} missing). Contact the customer and confirm the missing clinical information before approving or issuing documentation. The system has not fabricated or marked those answers complete.</p></td></tr></table></td></tr>` : "";
+
   const additionalDocsHtml = hasExtraDocs ? `<tr><td style="padding:14px 24px;border-top:1px solid #e5e7eb;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:14px 18px;"><tr><td><p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.08em;">Additional Documents Requested</p><p style="margin:0 0 8px;font-size:13px;color:#78350f;">This patient has requested the following additional documentation:</p><ul style="margin:0 0 8px;padding-left:16px;">${extraDocs.map((doc) => `<li style="font-size:13px;color:#78350f;font-weight:600;margin-bottom:4px;">${doc}</li>`).join("")}</ul>${opts.additionalDocs?.otherDescription ? `<p style="margin:8px 0 0;font-size:12px;color:#92400e;font-style:italic;background:#fde68a;padding:8px 12px;border-radius:6px;">Patient note: "${opts.additionalDocs.otherDescription}"</p>` : ""}<p style="margin:8px 0 0;font-size:12px;color:#92400e;">Please prepare all requested documents alongside the ${letterTypeLabel} for this patient.</p></td></tr></table></td></tr>` : "";
 
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 20px;"><tr><td align="center"><table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;"><tr><td style="background:${HEADER_BG};padding:28px 32px;"><img src="${LOGO_URL}" alt="PawTenant" width="160" style="display:block;margin:0 auto 12px;height:auto;" /><p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;text-align:center;">New Case Assigned</p><p style="margin:6px 0 0;font-size:13px;color:${HEADER_SUB};text-align:center;">PawTenant — ${portalLabel}</p></td></tr><tr><td style="padding:28px 32px;"><p style="margin:0 0 16px;font-size:15px;color:#374151;">Hi <strong>${opts.providerName.split(" ")[0]}</strong>,</p><p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">A new ${letterTypeLabel} evaluation case has just been assigned to you. Click below to open it directly in your portal.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:10px;margin-bottom:24px;"><tr><td style="padding:20px 24px;"><p style="margin:0 0 12px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Case Details</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;width:130px;">Order ID</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${opts.confirmationId}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Letter Type</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">${letterTypeLabel}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Patient Name</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${opts.patientFirstName} ${opts.patientLastName}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Patient Email</td><td style="padding:5px 0;font-size:13px;color:#111827;">${opts.patientEmail}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Patient Phone</td><td style="padding:5px 0;font-size:13px;color:#111827;">${opts.patientPhone || "—"}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">State</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${opts.patientState}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Documents Needed</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">${letterTypeLabel}${hasExtraDocs ? ` + ${extraDocs.join(", ")}` : ""}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Status</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">Pending Your Review</td></tr></table></td></tr></table><table cellpadding="0" cellspacing="0" style="margin-bottom:16px;"><tr><td style="background:${ACCENT};border-radius:8px;"><a href="${opts.portalUrl}" style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Assigned Order &rarr;</a></td></tr></table><p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">Please complete your review and upload all required documents within the agreed timeframe.</p></td></tr>${additionalDocsHtml}<tr><td style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:16px 32px;"><p style="margin:0;font-size:12px;color:#9ca3af;">PawTenant &mdash; Provider Notification &mdash; Do not reply to this email.</p></td></tr></table></td></tr></table></body></html>`.trim();
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 20px;"><tr><td align="center"><table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;"><tr><td style="background:${HEADER_BG};padding:28px 32px;"><img src="${LOGO_URL}" alt="PawTenant" width="160" style="display:block;margin:0 auto 12px;height:auto;" /><p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;text-align:center;">New Case Assigned</p><p style="margin:6px 0 0;font-size:13px;color:${HEADER_SUB};text-align:center;">PawTenant — ${portalLabel}</p></td></tr><tr><td style="padding:28px 32px;"><p style="margin:0 0 16px;font-size:15px;color:#374151;">Hi <strong>${opts.providerName.split(" ")[0]}</strong>,</p><p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">A new ${letterTypeLabel} evaluation case has just been assigned to you. Click below to open it directly in your portal.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:10px;margin-bottom:24px;"><tr><td style="padding:20px 24px;"><p style="margin:0 0 12px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Case Details</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;width:130px;">Order ID</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${opts.confirmationId}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Letter Type</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">${letterTypeLabel}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Patient Name</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${opts.patientFirstName} ${opts.patientLastName}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Patient Email</td><td style="padding:5px 0;font-size:13px;color:#111827;">${opts.patientEmail}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Patient Phone</td><td style="padding:5px 0;font-size:13px;color:#111827;">${opts.patientPhone || "—"}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">State</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${opts.patientState}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Documents Needed</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">${letterTypeLabel}${hasExtraDocs ? ` + ${extraDocs.join(", ")}` : ""}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Status</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">Pending Your Review</td></tr></table></td></tr></table><table cellpadding="0" cellspacing="0" style="margin-bottom:16px;"><tr><td style="background:${ACCENT};border-radius:8px;"><a href="${opts.portalUrl}" style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Assigned Order &rarr;</a></td></tr></table><p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">Please complete your review and upload all required documents within the agreed timeframe.</p></td></tr>${incompletePsdHtml}${additionalDocsHtml}<tr><td style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:16px 32px;"><p style="margin:0;font-size:12px;color:#9ca3af;">PawTenant &mdash; Provider Notification &mdash; Do not reply to this email.</p></td></tr></table></td></tr></table></body></html>`.trim();
 
   return sendViaResend({
     to: opts.providerEmail,
@@ -114,6 +117,7 @@ Deno.serve(async (req: Request) => {
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const normalizedEmail = doctorEmail.toLowerCase().trim();
+  let incompletePsdOverride: { answered: number; requiredTotal: number; missingCount: number } | null = null;
 
   // ── PSD completion gate ────────────────────────────────────────────────────
   // PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001.
@@ -131,6 +135,18 @@ Deno.serve(async (req: Request) => {
     const gateOrderId = (gateOrder as { id?: string } | null)?.id ?? null;
     const gate = await checkPsdAssessmentComplete(supabase, gateOrderId);
     if (!gate.allowed) {
+      const { data: override } = gateOrderId
+        ? await supabase.from("psd_incomplete_assignment_overrides")
+            .select("order_id").eq("order_id", gateOrderId).is("revoked_at", null).maybeSingle()
+        : { data: null };
+      if (override) {
+        incompletePsdOverride = {
+          answered: gate.answered,
+          requiredTotal: gate.requiredTotal,
+          missingCount: gate.missingCount,
+        };
+        console.warn(`[assign-doctor] OWNER OVERRIDE ${confirmationId}: ${gate.answered}/${gate.requiredTotal} answers`);
+      } else {
       console.warn(
         `[assign-doctor] BLOCKED assignment of ${confirmationId}: ${gate.answered}/${gate.requiredTotal} required PSD answers`,
       );
@@ -143,6 +159,7 @@ Deno.serve(async (req: Request) => {
         // Question IDs only — never answer values.
         missing: gate.missing,
       }, 409);
+      }
     }
   }
 
@@ -263,6 +280,7 @@ Deno.serve(async (req: Request) => {
       provider_email: normalizedEmail,
       previous_provider_email: previousDoctorEmail,
       assigned_at: now,
+      incomplete_psd_override: incompletePsdOverride,
     },
   }).select("id").maybeSingle();
 
@@ -371,6 +389,7 @@ Deno.serve(async (req: Request) => {
     providerEmail: normalizedEmail, providerName: doctorName, patientFirstName: order.first_name ?? "Patient",
     patientLastName: order.last_name ?? "", patientEmail: order.email ?? "", patientPhone: order.phone ?? "",
     patientState: order.state ?? "Unknown", confirmationId, portalUrl, additionalDocs, isPSD,
+    incompletePsd: incompletePsdOverride,
   });
 
   const customerEmailSent = await sendCustomerAssignedEmail({
@@ -461,5 +480,8 @@ Deno.serve(async (req: Request) => {
     emailSent, customerEmailSent, additionalDocsIncluded: !!(additionalDocs?.types?.length),
     earningsRecord: { action: earningsAction, rateApplied: doctorRate, rateSet: doctorRate != null },
     portalUrl,
+    warning: incompletePsdOverride
+      ? `Owner-approved incomplete PSD assignment: ${incompletePsdOverride.answered}/${incompletePsdOverride.requiredTotal} answers; provider follow-up required.`
+      : undefined,
   });
 });
