@@ -6,6 +6,7 @@ import { fireMicrosoftPurchase } from "@/lib/microsoftUet";
 import { linkSessionToOrder, markPaid, getSessionId } from "@/lib/visitorSession";
 import { trackPaymentSuccess, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
 import { setEnhancedConversionUserData } from "@/lib/googleEnhancedConversions";
+import { DELIVERY_PROMISE_COMPACT, DELIVERY_PROMISE_LONG } from "@/lib/deliveryPromise";
 
 interface ThankYouState {
   firstName?: string;
@@ -458,7 +459,6 @@ export default function AssessmentThankYouPage() {
     .trim();
   const email = resolvedState.email || "";
   const planType = resolvedState.planType || "One-Time Purchase";
-  const deliverySpeed = resolvedState.deliverySpeed || "2-3days";
 
   // Provider is shown ONLY when a real provider has been assigned to the order
   // (doctor_name is set after a provider picks it up). Customers do not choose a
@@ -498,17 +498,15 @@ export default function AssessmentThankYouPage() {
   const price = urlAmountParsed ?? resolvedState.price ?? 90;
   const priceStr = formatUSD(price);
 
-  // Derive labels from the canonical delivery_speed / plan_type. Handle every
-  // stored variant ("24hours", "24h", "priority", "2-3days", "standard").
-  const isPriority = /^24/.test(deliverySpeed) || deliverySpeed === "priority";
+  // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: the retired Standard /
+  // Priority split is gone. There is ONE one-time plan and ONE delivery
+  // promise, so no label is derived from the stored delivery_speed.
   const isSubscription = planType.toLowerCase().includes("subscription");
-  const speedLabel = isPriority ? "Priority" : "Standard";
   const pricingPlan = isSubscription
     ? (priceKnown ? `Annual Subscription (${priceStr})` : "Annual Subscription")
-    : (priceKnown ? `${speedLabel} (${priceStr})` : speedLabel);
+    : (priceKnown ? `One-Time (${priceStr})` : "One-Time");
 
-  const deliveryLabel = isPriority ? "Within 24 Hours" : "Within 2–3 Business Days";
-  const deliveryShort = isPriority ? "24 hours" : "2–3 business days";
+  const deliveryLabel = DELIVERY_PROMISE_COMPACT;
 
   const shareUrl = "https://pawtenant.com/assessment";
   const shareText = "I just got my ESA letter through PawTenant — fast, easy, and totally legit. If you have an emotional support animal, check them out!";
@@ -693,7 +691,7 @@ export default function AssessmentThankYouPage() {
     {
       step: "03",
       icon: "ri-file-text-line",
-      title: `ESA Letter Delivered — ${deliveryLabel}`,
+      title: "ESA Letter Delivered — Typically Within 24 Hours",
       desc: `Your official, HIPAA-compliant ESA letter will be emailed to ${email || "you"} and is ready to present to any landlord or housing provider.`,
       done: false,
     },
@@ -739,8 +737,8 @@ export default function AssessmentThankYouPage() {
             You&apos;re All Set, {firstName}!
           </h1>
           <p className="text-gray-500 text-sm sm:text-base max-w-md mx-auto leading-relaxed">
-            Payment received. Your evaluation is now underway and your ESA letter will be delivered in{" "}
-            <strong className="text-gray-700">{deliveryShort}</strong>.
+            Payment received. Your evaluation is now underway.{" "}
+            <strong className="text-gray-700">{DELIVERY_PROMISE_LONG}</strong>
           </p>
         </div>
 

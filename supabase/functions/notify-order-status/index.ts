@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
+import { DELIVERY_TURNAROUND_CLAUSE } from "../_shared/deliveryPromise.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -185,7 +186,8 @@ function buildUnderReviewEmail(opts: { firstName: string; confirmationId: string
       ["Order ID", escapeHtml(opts.confirmationId), ACCENT],
       ["Assigned Provider", providerName, ACCENT],
       ["Status", '<span style="color:#d97706;font-weight:700;">Under Review</span>'],
-      ["Expected Delivery", "within 2&ndash;3 business days"],
+      // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: one promise for every order.
+      ["Expected Delivery", DELIVERY_TURNAROUND_CLAUSE],
     ])}
     ${stepsCard("What Happens Next", [
       "Your provider reviews your assessment answers and pet information",

@@ -22,7 +22,7 @@ export const blogPostsVerification = [
     sections: [
       {
         heading: "The 5 steps to an ESA letter online",
-        content: "Choose a provider that uses state-licensed clinicians, complete a short intake, meet a licensed mental health professional for a real evaluation, receive your letter (often within 24–72 hours), and submit it to your landlord as a written reasonable-accommodation request under the Fair Housing Act. Avoid sites that promise instant letters or sell ESA registrations — those carry no legal weight, and approval is never guaranteed.",
+        content: "Choose a provider that uses state-licensed clinicians, complete a short intake, meet a licensed mental health professional for a real evaluation, receive your letter (typically within 24 hours after provider review), and submit it to your landlord as a written reasonable-accommodation request under the Fair Housing Act. Avoid sites that promise instant letters or sell ESA registrations — those carry no legal weight, and approval is never guaranteed.",
       },
     ],
     tags: ["ESA letter online", "how to get an ESA letter", "licensed provider", "Fair Housing Act"],

@@ -6,6 +6,7 @@ import { fireMicrosoftPurchase } from "@/lib/microsoftUet";
 import { linkSessionToOrder, markPaid, getSessionId } from "@/lib/visitorSession";
 import { trackPaymentSuccess, trackRecoveryConversionIfFlagged } from "@/lib/trackEvent";
 import { setEnhancedConversionUserData } from "@/lib/googleEnhancedConversions";
+import { DELIVERY_PROMISE_COMPACT, DELIVERY_PROMISE_LONG } from "@/lib/deliveryPromise";
 
 interface ThankYouState {
   firstName?: string;
@@ -225,7 +226,6 @@ export default function PSDAssessmentThankYouPage() {
     .trim();
   const email = resolvedState.email || "";
   const planType = resolvedState.planType || "One-Time Purchase";
-  const deliverySpeed = resolvedState.deliverySpeed || "24h";
 
   // Amount paid: DB order price → URL ?amount= → session → base default.
   // ?amount= is stamped by create-checkout-session with the real charged
@@ -246,18 +246,14 @@ export default function PSDAssessmentThankYouPage() {
 
   // Labels derived from the canonical delivery_speed / plan_type. Handles every
   // stored variant ("24h", "24hours", "priority", "2-3days", "standard").
-  const isPriority = /^24/.test(deliverySpeed) || deliverySpeed === "priority";
   const isSubscription = planType.toLowerCase().includes("subscription");
-  const speedLabel = isPriority ? "Priority" : "Standard";
+  // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: the retired Standard /
+  // Priority split is gone. Most PSD leads were stamped "priority"; none of
+  // that may reach the customer as a different promise.
   const pricingPlan = isSubscription
     ? (priceKnown ? `Annual Subscription (${priceStr})` : "Annual Subscription")
-    : (priceKnown ? `${speedLabel} (${priceStr})` : speedLabel);
-  const deliveryLabel = isSubscription
-    ? "Annual Subscription"
-    : isPriority
-      ? "Within 24 Hours"
-      : "Within 2–3 Business Days";
-  const deliveryShort = isPriority ? "24 hours" : "2–3 business days";
+    : (priceKnown ? `One-Time (${priceStr})` : "One-Time");
+  const deliveryLabel = isSubscription ? "Annual Subscription" : DELIVERY_PROMISE_COMPACT;
 
   // ── 2026-05-20 KLARNA-PHANTOM-ORDER-ID-FIX (PSD parity with ESA) ─────────
   // Same fix as src/pages/assessment-thankyou/page.tsx: prefer URL
@@ -429,7 +425,7 @@ export default function PSDAssessmentThankYouPage() {
     {
       step: "03",
       icon: "ri-service-line",
-      title: `PSD Letter Delivered — ${deliveryLabel}`,
+      title: "PSD Letter Delivered — Typically Within 24 Hours",
       desc: `Your PSD documentation will be emailed to ${email || "you"} once your licensed provider completes the evaluation.`,
       done: false,
     },
@@ -484,8 +480,8 @@ export default function PSDAssessmentThankYouPage() {
             You&apos;re All Set, {firstName}!
           </h1>
           <p className="text-gray-500 text-sm sm:text-base max-w-md mx-auto leading-relaxed">
-            Payment received. Your PSD evaluation is now underway. Your documentation will be delivered{" "}
-            <strong className="text-gray-700">{deliveryShort}</strong>.
+            Payment received. Your PSD evaluation is now underway.{" "}
+            <strong className="text-gray-700">{DELIVERY_PROMISE_LONG}</strong>
           </p>
         </div>
 

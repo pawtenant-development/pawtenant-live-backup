@@ -741,7 +741,7 @@ export const ESA_STATE_META: Record<string, SEOEntry> = {
   "new-hampshire": {
     title: "ESA Letter New Hampshire | Fast & Legitimate | PawTenant",
     description:
-      "Need an ESA letter in New Hampshire? PawTenant connects you with a licensed NH LMHP for a proper evaluation. Receive ESA letter within 24–48 hours.",
+      "Need an ESA letter in New Hampshire? PawTenant connects you with a licensed NH LMHP for a proper evaluation. Letters are typically delivered within 24 hours after provider review.",
   },
   "new-jersey": {
     title: "ESA Letter New Jersey | Verify Your Provider | PawTenant",
@@ -826,7 +826,7 @@ export const ESA_STATE_META: Record<string, SEOEntry> = {
   virginia: {
     title: "ESA Letter Virginia | Licensed Therapists | PawTenant",
     description:
-      "Need an ESA letter in Virginia? PawTenant connects you with a licensed VA LMHP. Receive valid, FHA-compliant ESA documentation within 24–48 hours.",
+      "Need an ESA letter in Virginia? PawTenant connects you with a licensed VA LMHP. Valid, FHA-compliant ESA documentation is typically delivered within 24 hours after provider review.",
   },
   washington: {
     title: "ESA Letter Washington State | Licensed LMHP | PawTenant",

@@ -261,7 +261,7 @@ export default function BlogHowToGetEsaLetterOnlinePage() {
             </p>
             <ul className="space-y-2 text-sm text-gray-700 leading-relaxed">
               <li><strong className="text-gray-900">Who qualifies:</strong> anxiety, depression, PTSD, ADHD, bipolar, phobias, OCD and similar conditions that substantially limit daily life</li>
-              <li><strong className="text-gray-900">The process:</strong> intake form &rarr; licensed-provider evaluation &rarr; letter, often within 24&ndash;72 hours</li>
+              <li><strong className="text-gray-900">The process:</strong> intake form &rarr; licensed-provider evaluation &rarr; letter, typically within 24 hours after provider review</li>
               <li><strong className="text-gray-900">Cost:</strong> $115/year or $129 one-time at PawTenant ($99&ndash;$199 is the typical industry range)</li>
               <li><strong className="text-gray-900">What protects you:</strong> a signed letter from a state-licensed provider — never a registry, certificate, or ID card</li>
               <li><strong className="text-gray-900">Housing:</strong> under the FHA a landlord must <em>consider</em> a valid accommodation request; an approved ESA is generally exempt from pet fees (state law varies)</li>

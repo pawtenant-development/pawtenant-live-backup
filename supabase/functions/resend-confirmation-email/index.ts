@@ -2,6 +2,7 @@ import Stripe from "https://esm.sh/stripe@14.21.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 import { renderOrderConfirmationContent } from "../_shared/orderConfirmationLayout.ts";
+import { DELIVERY_PROMISE_LABEL, deliveryPromiseLabel } from "../_shared/deliveryPromise.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -209,9 +210,7 @@ function buildConfirmationEmail(opts: {
   couponCode?: string | null; couponDiscount?: number | null;
 }) {
   const name = escapeHtml(opts.firstName || "there");
-  const deliveryLabel = opts.deliverySpeed === "priority"
-    ? "Priority &mdash; Within 24 Hours"
-    : "Standard &mdash; 2&ndash;3 Business Days";
+  const deliveryLabel = deliveryPromiseLabel(opts.deliverySpeed);
 
   const couponValue = opts.couponCode
     ? `<span style="background:#f0faf7;color:${ACCENT};padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;">${escapeHtml(opts.couponCode)}</span>${opts.couponDiscount ? ` <span style="color:#059669;font-weight:700;">(-$${opts.couponDiscount}.00 saved)</span>` : ""}`
@@ -304,9 +303,7 @@ Deno.serve(async (req: Request) => {
   const formattedPrice = `$${priceInDollars.toFixed(2)}`;
   const planType = (order.plan_type as string) || "One-Time Purchase";
   const deliverySpeed = (order.delivery_speed as string) || "";
-  const deliveryLabel = deliverySpeed === "priority"
-    ? "Priority — Within 24 Hours"
-    : "Standard — 2-3 Business Days";
+  const deliveryLabel = DELIVERY_PROMISE_LABEL;
   const stateValue = (order.state as string) || "";
   const firstName = (order.first_name as string) || "";
 

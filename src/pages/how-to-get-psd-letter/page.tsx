@@ -22,7 +22,7 @@ const steps = [
     number: "03",
     icon: "ri-shield-check-line",
     title: "Receive Your PSD Letter",
-    desc: "If you qualify, your licensed professional issues a signed psychiatric service dog letter on official letterhead — delivered digitally within 24–48 hours, ready to use.",
+    desc: "If you qualify, your licensed professional issues a signed psychiatric service dog letter on official letterhead — delivered digitally, typically within 24 hours after provider review.",
   },
 ];
 
@@ -77,7 +77,7 @@ const faqs = [
   },
   {
     q: "How long does it take to get a psychiatric service dog letter?",
-    a: "Most evaluations through PawTenant are completed within 24–48 hours. After completing your free assessment and telehealth consultation with a licensed professional, your letter is typically delivered digitally the same or next business day if you qualify.",
+    a: "After completing your free assessment and telehealth consultation with a licensed professional, your letter is typically delivered within 24 hours after provider review, if you qualify. Approval is never guaranteed — it depends on the licensed provider's clinical judgement.",
   },
   {
     q: "Can a landlord reject a psychiatric service dog?",
@@ -167,7 +167,7 @@ export default function HowToGetPSDLetterPage() {
               </div>
               <div className="flex items-center gap-2 text-white/75 text-xs">
                 <div className="w-4 h-4 flex items-center justify-center"><i className="ri-check-line text-orange-400"></i></div>
-                Delivered in 24–48 hours
+                Typically delivered within 24 hours
               </div>
             </div>
           </div>
@@ -379,7 +379,7 @@ export default function HowToGetPSDLetterPage() {
                 {[
                   { icon: "ri-user-star-line", title: "Board-Licensed Professionals Only", desc: "Every evaluation is conducted by a licensed psychologist, psychiatrist, therapist, or LCSW — never an algorithm or non-licensed staff." },
                   { icon: "ri-shield-check-line", title: "HIPAA-Compliant & Confidential", desc: "All consultations and records are fully HIPAA compliant. Your mental health information is never shared or sold." },
-                  { icon: "ri-time-line", title: "24–48 Hour Turnaround", desc: "Most PSD letter evaluations are completed and letters delivered within one to two business days of your consultation." },
+                  { icon: "ri-time-line", title: "24-Hour Turnaround", desc: "If you qualify after clinical review, your letter is typically delivered within 24 hours." },
                   { icon: "ri-refresh-line", title: "No-Risk Guarantee", desc: "If your letter is ever questioned, our licensed professionals will provide supporting documentation at no additional charge." },
                   { icon: "ri-map-pin-2-line", title: "Valid in All 50 States", desc: "Our network of licensed professionals covers every state, so your psychiatric service dog letter is valid nationwide." },
                 ].map((point) => (
@@ -538,7 +538,7 @@ export default function HowToGetPSDLetterPage() {
             <i className="ri-stethoscope-line"></i>
             Start Free Assessment
           </Link>
-          <p className="text-white/60 text-xs mt-4">No commitment · Confidential · Results in 24–48 hours</p>
+          <p className="text-white/60 text-xs mt-4">No commitment · Confidential · Typically within 24 hours after provider review</p>
         </div>
       </section>
 

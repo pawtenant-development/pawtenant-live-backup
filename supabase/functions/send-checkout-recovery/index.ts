@@ -140,13 +140,13 @@ function buildRecoveryEmail(
   const esaBenefits = [
     "Licensed mental health providers in your state",
     "Legally recognized under the Fair Housing Act",
-    "Documents delivered within 24 hours (priority) or 2&ndash;3 days",
+    "Documents typically delivered within 24 hours after provider review",
     "100% money-back guarantee if not approved",
   ];
   const psdBenefits = [
     "Licensed healthcare providers evaluate your PSD eligibility",
     "Full ADA public access rights for your psychiatric service dog",
-    "Letter delivered within 24 hours (priority) or 2&ndash;3 days",
+    "Letter typically delivered within 24 hours after provider review",
     "100% money-back guarantee if not approved",
   ];
   const benefits = isPsd ? psdBenefits : esaBenefits;

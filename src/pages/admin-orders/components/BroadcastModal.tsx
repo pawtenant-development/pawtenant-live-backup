@@ -170,7 +170,7 @@ Don't miss your spot — complete your payment now.`,
 
 Your ESA letter may be approaching its annual renewal date. Most landlords and housing providers require an up-to-date letter from a licensed professional.
 
-Renewing is quick and easy — our licensed providers are standing by to complete your evaluation within 24-48 hours.
+Renewing is quick and easy — if you qualify after clinical review, your letter is typically delivered within 24 hours.
 
 Don't let your ESA protections lapse. Renew today and keep your housing rights secure.`,
     ctaLabel: "Renew My ESA Letter",
@@ -320,7 +320,7 @@ const SMS_TEMPLATES = [
     id: "renewal",
     label: "ESA Renewal",
     group: "Existing Customers",
-    text: "Hi {name}! Your ESA letter may need renewal soon. Renew today at pawtenant.com/renew-esa-letter — our licensed providers complete it within 24-48hrs.",
+    text: "Hi {name}! Your ESA letter may need renewal soon. Renew today at pawtenant.com/renew-esa-letter — letters are typically delivered within 24 hrs after provider review.",
   },
   {
     id: "order_confirmed",

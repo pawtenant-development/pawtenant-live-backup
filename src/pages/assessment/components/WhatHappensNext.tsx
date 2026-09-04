@@ -23,7 +23,9 @@ const TIMELINE = [
     step: "03",
     icon: "ri-mail-send-line",
     title: "ESA Letter Emailed to You",
-    subtitle: "24 hrs or 2–3 business days",
+    // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: the retired two-speed
+    // offer is gone — one promise, hedged, conditioned on provider review.
+    subtitle: "Typically within 24 hrs",
     desc: "Your official, HIPAA-compliant ESA letter arrives in your inbox — ready to download, print, or forward directly to your landlord.",
     color: "text-emerald-600",
     bgColor: "bg-emerald-100",

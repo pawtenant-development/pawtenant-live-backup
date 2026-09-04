@@ -10,6 +10,7 @@ import { reserveEmailSend, finalizeEmailSend } from "../_shared/reserveEmailSend
 import { resolveAuditActor, maskEmail } from "../_shared/auditActor.ts";
 import { sendEmailViaResend } from "../_shared/resendClient.ts";
 import { renderOrderConfirmationContent } from "../_shared/orderConfirmationLayout.ts";
+import { DELIVERY_PROMISE_LABEL } from "../_shared/deliveryPromise.ts";
 import { issueResumeLink } from "../_shared/resumeLink.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -140,10 +141,9 @@ Deno.serve(async (req: Request) => {
           const firstName = (o.first_name as string) || "";
           const stateValue = (o.state as string) || "";
           const planType = (o.plan_type as string) || "One-Time Purchase";
-          const deliverySpeed = (o.delivery_speed as string) || "";
-          const deliveryLabel = deliverySpeed === "priority"
-            ? "Priority — Within 24 Hours"
-            : "Standard — 2-3 Business Days";
+          // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: the {{delivery}}
+          // merge field feeds every DB-backed customer template.
+          const deliveryLabel = DELIVERY_PROMISE_LABEL;
           const priceNum = (o.price as number) ?? 0;
           const formattedPrice = `$${Number(priceNum).toFixed(2)}`;
           hydratedFromOrder.name = firstName || "there";

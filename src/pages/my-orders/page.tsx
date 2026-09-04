@@ -17,6 +17,7 @@ import CustomerPortalHeader from "./components/CustomerPortalHeader";
 import OrderSwitcher from "./components/OrderSwitcher";
 import SelectedOrderHeader from "./components/SelectedOrderHeader";
 import { isAnnual as isAnnualOrder } from "./components/orderDisplay";
+import { DELIVERY_PROMISE_LONG } from "../../lib/deliveryPromise";
 import OrderLifecycle from "./components/OrderLifecycle";
 import UnpaidBookingCard from "./components/UnpaidBookingCard";
 import LockedFeaturePreviews from "./components/LockedFeaturePreviews";
@@ -355,15 +356,13 @@ function OrderCard({
                     <>
                       <strong>Your payment was received — your case is being queued for provider assignment.</strong>
                       {" "}A licensed {isPSDOrder(order) ? "healthcare" : "mental health"} provider will be assigned to your case{" "}
-                      {order.delivery_speed === "24hours" || order.delivery_speed === "24h"
-                        ? "within a few hours."
-                        : "within 1 business day."
-                      }
-                      {" "}Once assigned, your {isPSDOrder(order) ? "PSD" : "ESA"} letter will be ready{" "}
-                      {order.delivery_speed === "24hours" || order.delivery_speed === "24h"
-                        ? "within 24 hours."
-                        : "within 2–3 business days."
-                      }
+                      shortly.
+                      {/* CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: neither the
+                          assignment estimate nor the delivery promise may branch on
+                          the stored delivery_speed — most ESA orders carry NULL and
+                          many PSD orders carry "priority", so a branch here quoted
+                          the retired 2–3-day window to real customers. */}
+                      {" "}{DELIVERY_PROMISE_LONG}
                       {" "}You'll receive an email notification when your provider is assigned.
                     </>
                   )

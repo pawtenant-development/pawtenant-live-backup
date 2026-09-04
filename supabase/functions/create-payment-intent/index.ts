@@ -13,6 +13,7 @@ import {
   COMBO_ANNUAL_CENTS,
 } from "../_shared/pricingMatrix.ts";
 import { resolveTrustedQuote, issueTrustedQuote } from "../_shared/priceQuote.ts";
+import { canonicalDeliverySpeed } from "../_shared/deliveryPromise.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -435,7 +436,9 @@ Deno.serve(async (req: Request) => {
   if (petCount === null) {
     return json({ error: "petCount must be 1, 2 or 3" }, 400);
   }
-  const deliverySpeed = (body.deliverySpeed as string) ?? "2-3days";
+  // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: the SERVER owns the stored
+  // delivery value. Any client-supplied legacy option is discarded here.
+  const deliverySpeed = canonicalDeliverySpeed(body.deliverySpeed);
   const email = (body.email as string) ?? "";
   // ESA sends confirmationId at the top level; the PSD checkout nests it under
   // `metadata.confirmationId`. Read both so the legacy-resume price lock (and
@@ -603,7 +606,7 @@ Deno.serve(async (req: Request) => {
     if (pc === null) {
       return json({ error: "petCount must be 1, 2 or 3" }, 400);
     }
-    const ds = (body.deliverySpeed as string) ?? "2-3days";
+    const ds = canonicalDeliverySpeed(body.deliverySpeed);
     const cc = (body.couponCode as string) ?? "";
 
     if (!piId) return json({ error: "paymentIntentId is required for update_amount" }, 400);

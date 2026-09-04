@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkPsdAssessmentComplete } from "../_shared/psdCompletionGate.ts";
+import { DELIVERY_TURNAROUND_CLAUSE } from "../_shared/deliveryPromise.ts";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
 import { notifyProviderAdditionalDoc } from "../_shared/notifyProviderAdditionalDoc.ts";
 import { resolveAuditActor } from "../_shared/auditActor.ts";
@@ -79,8 +80,11 @@ async function sendCustomerAssignedEmail(opts: {
   customerEmail: string; customerFirstName: string; confirmationId: string;
   providerName: string; deliverySpeed: string | null; portalUrl: string; isPSD?: boolean;
 }): Promise<boolean> {
-  const is24h = opts.deliverySpeed === "24hours" || opts.deliverySpeed === "24h";
-  const turnaroundLabel = is24h ? "within 24 hours" : "within 2–3 business days";
+  // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: this branch told every
+  // customer whose order carried NULL / "" / "priority" / "2-3days" that their
+  // letter would take 2–3 business days. One promise now; the stored speed
+  // stays on the options object for logging parity but cannot change it.
+  const turnaroundLabel = DELIVERY_TURNAROUND_CLAUSE;
   const firstName = opts.customerFirstName || "there";
   const letterTypeLabel = opts.isPSD ? "PSD" : "ESA";
 

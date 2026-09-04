@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { CANONICAL_DELIVERY_SPEED } from "../../lib/deliveryPromise";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import PSDAssessmentNavbar from "./components/PSDAssessmentNavbar";
 import PSDStep1, { PSDStep1Data, psdRequiredProgress } from "./components/PSDStep1";
@@ -663,7 +664,10 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
             lastName: step2Data.lastName,
             phone: step2Data.phone,
             state: step2Data.state,
-            deliverySpeed: "priority",
+            // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: this line is why PSD
+            // orders carry "priority". The server normalizes it now; the client
+            // stops minting the legacy value at source too.
+            deliverySpeed: CANONICAL_DELIVERY_SPEED,
             assessmentAnswers: assessmentPayload,
             letterType: "psd",
             status: "lead",

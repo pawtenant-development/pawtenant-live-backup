@@ -6,6 +6,7 @@
 // + title typography — CUSTOMER-PORTAL-DOCUMENTS-IA-HOUSING-VISIBILITY-001).
 
 import CustomerPortalSection from "./CustomerPortalSection";
+import { DELIVERY_PROMISE_COMPACT } from "../../../lib/deliveryPromise";
 
 export interface OverviewOrder {
   confirmation_id: string;
@@ -78,9 +79,10 @@ export default function OrderOverviewCard({ order }: { order: OverviewOrder }) {
     {
       icon: "ri-timer-flash-line",
       label: "Delivery",
-      value: order.delivery_speed === "24hours" || order.delivery_speed === "24h"
-        ? "Within 24 hrs"
-        : "2–3 business days",
+      // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: one promise for every
+      // order. delivery_speed is a historical purchase attribute and must never
+      // reach a customer-facing estimate — see lib/deliveryPromise.
+      value: DELIVERY_PROMISE_COMPACT,
     },
   ];
 

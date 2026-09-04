@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { clientIp, consumeRateLimit, RESUME_SUBJECT_LIMITS } from "../_shared/rateLimit.ts";
+import { canonicalDeliverySpeed, DELIVERY_PROMISE_LABEL } from "../_shared/deliveryPromise.ts";
 
 /** sha256 hex — used only to keep a confirmation reference out of the limiter. */
 async function sha256Hex(input: string): Promise<string> {
@@ -445,7 +446,7 @@ function buildUnpaidLeadHtml(opts: {
     ["Phone", opts.phone || "—"],
     ["State", opts.state || "—"],
     ["Service", opts.letterType === "psd" ? "PSD Letter" : "ESA Letter"],
-    ["Delivery", opts.deliverySpeed === "2-3days" ? "Standard (2-3 days)" : "Priority (24h)"],
+    ["Delivery", DELIVERY_PROMISE_LABEL],
     ["Status", "UNPAID — Assessment Completed"],
     ["Time", opts.timestamp],
   ];
@@ -748,7 +749,14 @@ serve(async (req) => {
       if (body.lastName !== undefined) upsertPayload.last_name = body.lastName;
       if (body.phone !== undefined) upsertPayload.phone = normalizedPhone || body.phone;
       if (body.state !== undefined) upsertPayload.state = body.state;
-      if (body.deliverySpeed !== undefined) upsertPayload.delivery_speed = body.deliverySpeed;
+      // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: one promise for every order.
+      // This is the ONLY writer of orders.delivery_speed. A NEW order is always
+      // stamped canonical — including when the caller omits the key, which used
+      // to leave delivery_speed NULL. An EXISTING order is only restamped when
+      // the caller supplies a value, so no historical row is rewritten.
+      if (isNewOrder || body.deliverySpeed !== undefined) {
+        upsertPayload.delivery_speed = canonicalDeliverySpeed(body.deliverySpeed);
+      }
       if (body.letterType !== undefined) upsertPayload.letter_type = body.letterType;
       // ORDER-RESUME-CLIENT-PAID-AT-HARDENING-001: a client may only set a
       // NON-paid status. The checkout used to send status:"processing" with the
@@ -1101,7 +1109,7 @@ serve(async (req) => {
             const phoneData = normalizedPhone || body.phone || "";
             const stateData = body.state || "";
             const letterTypeData = body.letterType || "esa";
-            const deliveryData = body.deliverySpeed || "2-3days";
+            const deliveryData = canonicalDeliverySpeed(body.deliverySpeed);
             const timestamp =
               new Date().toLocaleString("en-US", {
                 timeZone: "America/New_York",

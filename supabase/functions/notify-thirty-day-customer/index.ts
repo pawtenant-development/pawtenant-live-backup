@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { DELIVERY_TURNAROUND_CLAUSE } from "../_shared/deliveryPromise.ts";
 
 // Calm customer notice that the 30-day official-letter review has started.
 // Called by public.reopen_due_official_letter_orders() (pg_net) once per order.
@@ -81,7 +82,7 @@ serve(async (req) => {
               <p style="margin:0 0 18px;font-size:14px;color:#374151;line-height:1.6;">
                 Good news &mdash; your case is now moving into official letter review. Our licensed
                 provider will review your file and complete your updated document
-                <strong>within 2 business days</strong>.
+                <strong>${DELIVERY_TURNAROUND_CLAUSE}</strong>.
               </p>
               <p style="margin:0 0 22px;font-size:14px;color:#374151;line-height:1.6;">
                 There is nothing you need to do right now. We&rsquo;ll email you as soon as your

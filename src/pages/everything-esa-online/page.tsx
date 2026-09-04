@@ -28,7 +28,7 @@ const COMPANIONSHIP_IMG = "/assets/lifestyle/senior-with-pet-home.jpg";
 const heroBenefits = [
   "Evaluated by a state-licensed mental health professional",
   "Housing-focused ESA letters under the Fair Housing Act",
-  "Issued in 24–48 hours after evaluation",
+  "Typically issued within 24 hours after provider review",
 ];
 
 const overviewPoints = [
@@ -186,8 +186,8 @@ const whyPawTenant = [
   },
   {
     icon: "ri-time-line",
-    title: "24–48 Hour Turnaround",
-    desc: "After your telehealth evaluation, eligible letters are typically issued within one to two business days.",
+    title: "24-Hour Turnaround",
+    desc: "If you qualify after clinical review, your letter is typically delivered within 24 hours.",
   },
   {
     icon: "ri-refresh-line",
@@ -221,7 +221,7 @@ const faqs = [
   },
   {
     q: "How long does the online process take?",
-    a: "The intake assessment usually takes about 5–10 minutes. After that, a licensed clinician reaches out to schedule the telehealth evaluation. Letters for eligible clients are typically issued within 24–48 hours after the evaluation.",
+    a: "The intake assessment usually takes about 5–10 minutes. After that, a licensed clinician reaches out to schedule the telehealth evaluation. If you qualify after clinical review, your letter is typically delivered within 24 hours.",
   },
   {
     q: "How long is an ESA letter valid?",
@@ -394,7 +394,7 @@ export default function EverythingEsaOnlinePage() {
             {/* Calm trust pill mirroring the homepage hero badge. */}
             <div className="inline-flex items-center gap-2.5 bg-white/10 border border-white/20 backdrop-blur-sm px-4 py-2.5 rounded-full mb-7">
               <i className="ri-stethoscope-line text-orange-400 text-sm"></i>
-              <span className="text-white text-xs font-semibold whitespace-nowrap">Licensed clinicians · housing-focused · 24–48 hr delivery</span>
+              <span className="text-white text-xs font-semibold whitespace-nowrap">Licensed clinicians · housing-focused · typically within 24 hrs</span>
             </div>
 
             {/* CTA pair. Mobile: single full-width primary. Desktop: primary
@@ -1097,7 +1097,7 @@ export default function EverythingEsaOnlinePage() {
           <ul className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-8 sm:mb-9 max-w-xl mx-auto">
             {[
               { icon: "ri-stethoscope-line", title: "Licensed Review", body: "State-licensed clinicians only" },
-              { icon: "ri-time-line", title: "24–48 Hours", body: "After your telehealth evaluation" },
+              { icon: "ri-time-line", title: "Typically 24 Hours", body: "After provider review, if you qualify" },
               { icon: "ri-shield-check-line", title: "Money-Back", body: "If you don't qualify, full refund" },
             ].map((p) => (
               <li key={p.title} className="bg-white/10 border border-white/15 rounded-xl px-3 py-3 backdrop-blur-sm flex sm:flex-col items-center sm:items-center gap-2.5 sm:gap-2 text-left sm:text-center">

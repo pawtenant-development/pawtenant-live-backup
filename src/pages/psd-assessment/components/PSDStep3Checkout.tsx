@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { CANONICAL_DELIVERY_SPEED } from "../../../lib/deliveryPromise";
 import { Link, useNavigate } from "react-router-dom";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
@@ -77,7 +78,8 @@ const PAYMENT_SECTION_ID = "step3-payment-section";
 type PSDPlan = "onetime" | "subscription";
 type PayTabType = "card" | "klarna";
 
-const PSD_ONETIME_DELIVERY = "24h";
+// CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: the one canonical value.
+const PSD_ONETIME_DELIVERY = CANONICAL_DELIVERY_SPEED;
 
 function getPSDPlanPrice(key: PSDPlan, petCount: number, packageKey: PackageKey = "psd_standard"): number {
   // Standard: 1 dog $129 one-time / $115 first year; 2 or 3 dogs $149 / $135 — fixed

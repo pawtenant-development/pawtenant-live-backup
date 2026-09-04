@@ -10,6 +10,7 @@ import {
   COMBO_ANNUAL_CENTS,
 } from "../_shared/pricingMatrix.ts";
 import { resolveTrustedQuote, issueTrustedQuote } from "../_shared/priceQuote.ts";
+import { canonicalDeliverySpeed, psdOneTimeDeliveryDescriptor } from "../_shared/deliveryPromise.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -140,15 +141,18 @@ function getPSDOneTimeAmountCents(petCount: number, _deliverySpeed: string): num
 
 function buildPSDOneTimeKlarnaLineItem(petCount: number, deliverySpeed: string) {
   const tier = petCount >= 3 ? 3 : petCount === 2 ? 2 : 1;
-  const isPriority = deliverySpeed !== "2-3days";
-  const speedLabel = isPriority ? "Priority (24-hour)" : "Standard (2-3 day)";
   const dogsLabel = tier === 1 ? "1 Dog" : `${tier} Dogs`;
+  // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: the Standard (2-3 day) /
+  // Priority (24-hour) split is retired, so the customer-visible Stripe and
+  // Klarna line item no longer names a delivery speed. Only the NAME and the
+  // DESCRIPTION change — unit_amount still comes from
+  // getPSDOneTimeAmountCents(), which is untouched, so LIVE pricing is intact.
   return {
     price_data: {
       currency: "usd",
       product_data: {
-        name: `PSD Letter — ${dogsLabel}, ${speedLabel}`,
-        description: `Psychiatric Service Dog letter for ${dogsLabel.toLowerCase()} — ${speedLabel} delivery. ADA-compliant.`,
+        name: `PSD Letter — ${dogsLabel} (One-Time)`,
+        description: `Psychiatric Service Dog letter for ${dogsLabel.toLowerCase()} — ${psdOneTimeDeliveryDescriptor()}. Reviewed by a licensed provider; issued only if clinically appropriate. ADA-compliant.`,
       },
       unit_amount: getPSDOneTimeAmountCents(petCount, deliverySpeed),
     },
@@ -306,7 +310,9 @@ Deno.serve(async (req: Request) => {
   if (petCount === null) {
     return json({ error: "petCount must be 1, 2 or 3" }, 400);
   }
-  const deliverySpeed  = (body.deliverySpeed  as string) ?? "2-3days";
+  // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: server-owned canonical value;
+  // a client-supplied legacy option never reaches the order or the line item.
+  const deliverySpeed  = canonicalDeliverySpeed(body.deliverySpeed);
   const email          = (body.email          as string) ?? "";
   const firstName      = (body.firstName      as string) ?? "";
   const lastName       = (body.lastName       as string) ?? "";

@@ -1,0 +1,71 @@
+{
+  "_note": "CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001 (LIVE) — scan scope for scripts/check-customer-delivery-24h-promise.mjs. Narrowing `roots`, emptying `requiredCoverage`, or widening `allowlist` is itself a guard failure: every requiredCoverage path must be visited by the scan, and every allowlist entry must name one concrete file AND one concrete phrase.",
+  "roots": [
+    {
+      "dir": "src",
+      "exts": [
+        ".ts",
+        ".tsx"
+      ]
+    },
+    {
+      "dir": "supabase/functions",
+      "exts": [
+        ".ts"
+      ]
+    }
+  ],
+  "excludeDirs": [
+    "node_modules",
+    "supabase/migrations"
+  ],
+  "requiredCoverage": [
+    "src/pages/my-orders/page.tsx",
+    "src/pages/my-orders/components/OrderOverviewCard.tsx",
+    "src/pages/assessment-thankyou/page.tsx",
+    "src/pages/psd-assessment-thankyou/page.tsx",
+    "src/pages/assessment/components/WhatHappensNext.tsx",
+    "src/pages/faqs/page.tsx",
+    "src/pages/how-to-get-psd-letter/page.tsx",
+    "src/pages/psychiatric-service-dog-letter-online/page.tsx",
+    "src/pages/everything-esa-online/page.tsx",
+    "src/pages/state-esa/page.tsx",
+    "src/pages/lp-esa-housing/page.tsx",
+    "src/pages/esa-letter-cost/page.tsx",
+    "src/pages/psd-letter-cost/page.tsx",
+    "src/pages/home/components/TrustedLetters.tsx",
+    "src/pages/admin-orders/components/BroadcastModal.tsx",
+    "src/pages/admin-orders/components/CommunicationsTemplatesPanel.tsx",
+    "src/config/seoConfig.ts",
+    "src/mocks/states.ts",
+    "supabase/functions/create-payment-intent/index.ts",
+    "supabase/functions/create-checkout-session/index.ts",
+    "supabase/functions/assign-doctor/index.ts",
+    "supabase/functions/notify-order-status/index.ts",
+    "supabase/functions/notify-thirty-day-customer/index.ts",
+    "supabase/functions/resend-confirmation-email/index.ts",
+    "supabase/functions/send-templated-email/index.ts",
+    "supabase/functions/get-resume-order/index.ts",
+    "supabase/functions/stripe-webhook/index.ts",
+    "supabase/functions/_shared/aiSupport/knowledgeBase.ts",
+    "supabase/functions/send-checkout-recovery/index.ts",
+    "src/mocks/blogPosts.ts",
+    "src/mocks/blogPostsVerification.ts",
+    "src/pages/blog-how-to-get-an-esa-letter-online/page.tsx",
+    "src/pages/psd-assessment/components/PSDStep3Checkout.tsx",
+    "src/lib/deliveryPromise.ts",
+    "supabase/functions/_shared/deliveryPromise.ts"
+  ],
+  "allowlist": [
+    {
+      "file": "src/mocks/blogPosts.ts",
+      "phrase": "many online services promise delivery within 24–48 hours",
+      "reason": "Third-party market statement about OTHER online services in an educational blog post — not a PawTenant delivery promise."
+    },
+    {
+      "file": "src/lib/deliveryPromise.ts",
+      "phrase": "LEGACY_DELIVERY_SPEEDS",
+      "reason": "The canonical compatibility reader must ENUMERATE the legacy stored delivery_speed values so the guard and the tests can iterate them. This is a data enumeration inside the helper that erases them, never customer-facing copy."
+    }
+  ]
+}

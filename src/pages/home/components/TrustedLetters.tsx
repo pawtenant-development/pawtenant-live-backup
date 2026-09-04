@@ -48,7 +48,7 @@ const sections: Array<{
     tone: "orange",
     icon: "ri-smartphone-line",
     title: "Confidential Online Evaluation",
-    desc: "The entire process happens privately online — no waiting rooms, no in-person visits. Complete your assessment from home and, if you qualify, your licensed provider issues your letter — typically within one business day.",
+    desc: "The entire process happens privately online — no waiting rooms, no in-person visits. Complete your assessment from home and, if you qualify, your licensed provider issues your letter — typically within 24 hours after provider review.",
     bullets: [
       "100% online — complete from anywhere",
       "Quick 5-minute confidential assessment",
