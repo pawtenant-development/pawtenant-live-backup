@@ -1,6 +1,6 @@
 # GOOGLE-ADS-PRIMARY-PURCHASE-CHANNEL-GATE-001-LIVE-PROMOTION
 
-**Status:** see the closeout section at the bottom (updated after deployment and verification).
+**Status:** ✅ **COMPLETE on LIVE — 2026-09-04.** LIVE `c46450e6` → `76597eb2` (code) → closeout docs commit; fn v87 → **v88**; Vercel `dpl_CVsnbxP42dSSSnydJ6m4iDUS8cAt` (`pawtenant-production-ee58vnvzp`, git `76597eb2`, ref `main`) READY and owning `pawtenant.com` + `www.pawtenant.com`.
 **Source (TEST):** `aa34a84` (acquisition-channel eligibility gate) + `17820e3` (invocation authorization closure) — ported together, surgically, onto LIVE `origin/main` `c46450e6`. No other TEST commit (`809375a`, `d1a05d9`, ESA Housing work, 24-hour delivery) is included.
 **LIVE base:** `c46450e6752eb7a8620387f99c0be45df9cb3ed0` (customer-portal letter-view recovery). Every later LIVE fix is preserved untouched.
 **Edge function:** `sync-google-ads-conversions` LIVE **v87 → v88**, `verify_jwt=true` before and after.
@@ -109,6 +109,63 @@ Current upload state: uploaded 595 (`gclid_plus_hashed_email` 325, `hashed_email
 
 ---
 
-## Closeout (deployment + LIVE verification)
+## Closeout (deployment + LIVE verification, 2026-09-04)
 
-_Filled in by the closeout commit after deployment._
+### Deployment
+| Item | Before | After |
+|---|---|---|
+| LIVE git `main` | `c46450e6` | `76597eb2` (+ closeout docs commit) |
+| `sync-google-ads-conversions` | v87, `verify_jwt=true` | **v88, `verify_jwt=true`** — deployed via `supabase functions deploy` (no `--no-verify-jwt`); re-downloaded and diffed: `index.ts`, `channelGate.ts`, `invocationAuth.ts` all **0 diff lines** vs the commit |
+| Vercel production | `dpl_EnNiqX87Zt5tQ2dxyM6uujGe1Yqi` (hh0e5mkiq) | `dpl_CVsnbxP42dSSSnydJ6m4iDUS8cAt` (ee58vnvzp), `source: git`, sha `76597eb2`, READY, aliases `pawtenant.com`, `www.pawtenant.com` |
+| Served bundle | — | `page-Ct8hAZEQ.js` carries `skipped_non_google_channel` and the session-required helper message |
+
+No migration, no Supabase secret, no other function, no Google Ads setting, no Stripe change.
+
+### Authorization matrix (deployed v88, executed against LIVE)
+| Caller / mode | Result |
+|---|---|
+| no `Authorization` at all (9 modes) | 401 gateway `UNAUTHORIZED_NO_AUTH_HEADER` |
+| `apikey` only, no bearer | 401 gateway |
+| **public anon key** as bearer — backfill, single, retry_failed, retry_gclid_upgraded, test_auth, test_upload, list_conversion_actions, inspect_conversion_action, apply_refund_adjustments, missing mode (default backfill) | **401 `not_an_authenticated_session`** for every one |
+| anon + `forceUpload:true` (backfill and non-dry single) | 401 `not_an_authenticated_session` |
+| anon + unknown mode `wipe` | 403 `unknown_mode` |
+| forged bearer | 401 gateway `UNAUTHORIZED_LEGACY_JWT` |
+| bogus / empty `x-cron-secret`, no bearer | 401 (secret unprovisioned ⇒ branch disabled) |
+| bogus `x-cron-secret` + anon bearer | 401 `not_an_authenticated_session` |
+| **real admin session** (the owner's signed-in Chrome, `role=authenticated`, `sub` present) — single dry-run, test_auth (via the UI button) | 200, function log `invocation authorized: mode=single caller=admin_user` |
+| admin → `apply_refund_adjustments` | 403 `mode_not_permitted_for_admin` |
+| admin → `inspect_conversion_action` | 403 `mode_not_permitted_for_admin` |
+| admin → unknown mode `wipe` | 403 `unknown_mode` |
+| admin → `single` without `confirmationId` | 400 (explicit refusal; previously fell into a 100-order backfill) |
+| customer / provider session | **not executed on LIVE** — creating a QA auth user was blocked (public signup disabled; direct `auth.users` insert refused by policy) and no customer/provider session was safely available. Covered by the executed guard matrix on the real module (403 `not_admin`) and the TEST deployment matrix. |
+| service-role bearer | **not executed on LIVE** (no service key exposed to this session). The only internal caller is `stripe-webhook`, which posts the same injected `SUPABASE_SERVICE_ROLE_KEY` (string-equal branch); the first real payment after deploy will log `caller=internal_service`. |
+
+Function logs for the whole window: every refused call logged `invocation refused: mode=… reason=…` and nothing else — no order read, no gate line, no OAuth error, no upload line.
+
+### Channel matrix (admin session, `mode:"single"`, `dryRun:true` unless stated — real LIVE orders)
+| Order | First-touch channel | Result |
+|---|---|---|
+| `PT-MS6LGP6W` | direct | skipped `skipped_non_google_channel` / `non_google_channel:direct` |
+| `PT-PSD606D99CZ` | organic_search | skipped / `non_google_channel:organic_search` |
+| `PT-MPOEAJON` | chatgpt.com (AI referral) | skipped / `non_google_channel:chatgpt.com` |
+| `PT-MP4K5WD4` | facebook_ads (via embedded `attribution_json.first_touch`) | skipped / `non_google_channel:facebook_ads` |
+| `PT-MQH60P8B` | social_organic | skipped / `non_google_channel:social_organic` |
+| `PT-MQK5TPE7` | social_organic + Google click id | **conflict** `skipped_attribution_conflict` / `non_google_channel_with_google_click_id` |
+| `PT-PSDJKSCEDDL` | google_ads + proven gclid | **eligible** — dry-run `success:true`, method `gclid_plus_hashed_email`, timestamp `paid_at`, no token requested (dry run) |
+| `PT-MS6LGP6W` + `forceUpload:true` | direct | still skipped (`forceUpload:true` echoed, gate unchanged) |
+| Google organic (`utm_source=google`, non-paid medium) | 0 such orders exist on LIVE | covered by the executed guard matrix (excluded) |
+| `PT-MRR96IQR` — **one real (non-dry) single call**, pending organic_search order paid 2026-07-22 | status NULL → `skipped_non_google_channel`, error `non_google_channel:organic_search`, method `excluded`; `google_ads_uploaded_at` **NULL**, `google_ads_last_attempt_at` **NULL** — the only LIVE data change of this task (rollback: set the three columns back to NULL) |
+
+Side-effect audit after all calls: `audit_logs` google_ads rows 264 → 264; `google_ads_conversion_uploads` 201 → 201; `communications` 15,273 → 15,273; orders with `google_ads_last_attempt_at` in the window 0; `google_ads_uploaded_at` unchanged everywhere; every dry-run sample row byte-identical before/after. Zero conversion uploads, zero Google Ads writes, zero customer/provider communications.
+
+### Admin UI QA (pawtenant.com, the owner's admin session, new bundle)
+- Analytics → Detailed Data & Export → Advanced sync tools → **Google Ads Sync** loads; chips `All · Uploaded (471) · Failed (2) · Pending (8) · Not Google Ads (1) · Unattributable (0)`; the `PT-MRR96IQR` row shows the **Not Google Ads** pill with Method / Match / Uploaded at / Last attempt all `—`, action = "View error" only (no retry offered).
+- **Session JWT proven**: `window.fetch` instrumented; clicking **Test Auth** sent `authKind=session(role=authenticated)`, HTTP 200, "Auth OK ✓ · Customer 2480853323 · API v24 · MCC 7629508384". The old bundle sent `anon(role=anon)`.
+- **Sync Health reconciles**: "Conversion backfill" card = **35 pending Google** = SQL (`uploaded_at IS NULL AND (status IS NULL OR status NOT IN (skipped_website_tag, skipped_non_google_channel, skipped_attribution_conflict))`) = 35. The pre-fix bare `.neq` would have shown 19 (NULL-status orders dropped).
+- **Responsive**: 1440 (native) plus 390 and 768 via a same-origin iframe of `/admin-orders?tab=analytics` with the panel open — `documentElement.scrollWidth == clientWidth` at both widths (no page-level horizontal overflow); the sync panel and its row table have no element outside an intentional x-scroller. Pre-existing, out of scope: at 390 the Analytics date-range strip (`Today … Custom`, `AnalyticsTab.tsx`, frozen) extends to 598px and is clipped by its container — unchanged by this task.
+- Console: 0 errors/exceptions across the session. Network: no failed request attributable to the task (tracking began mid-session).
+
+### Not done / honest gaps
+- Customer, provider and service-role rows of the LIVE authorization matrix were not executed on LIVE (see table) — proven offline by the guard on the real module.
+- Historical non-Google uploads (264) were **not** retracted, restated or modified.
+- No backfill, retry_failed, retry_gclid_upgraded or refund adjustment was triggered; no manual conversion upload was performed.
