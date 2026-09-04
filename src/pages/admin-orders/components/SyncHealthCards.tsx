@@ -175,7 +175,20 @@ export default function SyncHealthCards() {
           .not("payment_intent_id", "is", null)
           .in("status", ["processing", "completed"])
           .is("google_ads_uploaded_at", null)
-          .neq("google_ads_upload_status", "skipped_website_tag"),
+          // GOOGLE-ADS-PRIMARY-PURCHASE-CHANNEL-GATE-001: an order the channel
+          // gate excluded is DECIDED, not pending — it will never be uploaded, so
+          // counting it as backlog would keep this card permanently "behind".
+          //
+          // NULL-safe by construction: a bare .neq() renders as
+          // `status <> 'x'`, which is NULL (not TRUE) for a never-attempted
+          // order and silently dropped every one of them from this count. The
+          // is.null branch keeps them in.
+          .or([
+            "google_ads_upload_status.is.null",
+            "and(google_ads_upload_status.neq.skipped_website_tag",
+            "google_ads_upload_status.neq.skipped_non_google_channel",
+            "google_ads_upload_status.neq.skipped_attribution_conflict)",
+          ].join(",")),
         supabase.from("orders")
           .select("id", { count: "exact", head: true })
           .not("payment_intent_id", "is", null)

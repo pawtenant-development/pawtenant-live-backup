@@ -49,6 +49,10 @@ const ENTRIES = [
   "supabase/functions/create-additional-pet-request/index.ts",
   "supabase/functions/provider-additional-pet-decision/index.ts",
   "supabase/functions/stripe-webhook/index.ts",
+  // GOOGLE-ADS-PRIMARY-PURCHASE-CHANNEL-GATE-001: the uploader now imports
+  // ./channelGate.ts and ./invocationAuth.ts. A broken import here would
+  // BOOT_ERROR the conversion uploader, so its module graph must parse and link.
+  "supabase/functions/sync-google-ads-conversions/index.ts",
 ];
 
 /** Treat every remote specifier as external — we check the LOCAL graph. */

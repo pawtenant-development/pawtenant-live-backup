@@ -1,6 +1,7 @@
 // GoogleAdsSyncPanel — Google Ads conversion upload status, retry, and manual trigger
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { adminFunctionHeadersOrThrow } from "@/lib/adminFunctionAuth";
 import GoogleOAuthPanel from "./GoogleOAuthPanel";
 
 interface OrderRow {
@@ -21,7 +22,6 @@ interface OrderRow {
 }
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
-const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
 function fmt(ts: string | null) {
   if (!ts) return "—";
@@ -48,8 +48,16 @@ const STATUS_STYLE: Record<string, { label: string; color: string; icon: string 
   failed:                      { label: "Failed",            color: "bg-red-100 text-red-600",         icon: "ri-error-warning-fill" },
   unattributable:              { label: "Unattributable",    color: "bg-gray-100 text-gray-500",       icon: "ri-question-line" },
   refunded_pending_adjustment: { label: "Refunded",          color: "bg-orange-100 text-orange-600",   icon: "ri-refund-2-line" },
+  // GOOGLE-ADS-PRIMARY-PURCHASE-CHANNEL-GATE-001 — terminal, deliberate states.
+  // The Primary backend purchase action drives bidding, so only canonically
+  // Google Ads purchases are uploaded. These are NOT failures and NOT backlog.
+  skipped_non_google_channel:  { label: "Not Google Ads",    color: "bg-slate-100 text-slate-600",     icon: "ri-shield-cross-line" },
+  skipped_attribution_conflict:{ label: "Attribution conflict", color: "bg-amber-100 text-amber-700",  icon: "ri-alert-line" },
   pending:                     { label: "Pending",           color: "bg-sky-100 text-sky-600",         icon: "ri-time-line" },
 };
+
+// Statuses the channel gate writes. Excluded from "pending" everywhere.
+const CHANNEL_GATE_SKIPPED = ["skipped_non_google_channel", "skipped_attribution_conflict"];
 
 interface ConversionAction {
   id: string;
@@ -72,7 +80,7 @@ export default function GoogleAdsSyncPanel() {
   const [activeTab, setActiveTab] = useState<"conversions" | "oauth">("conversions");
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<"all" | "uploaded" | "failed" | "unattributable" | "pending">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "uploaded" | "failed" | "unattributable" | "pending" | "channel_excluded">("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [globalActionLoading, setGlobalActionLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -110,6 +118,7 @@ export default function GoogleAdsSyncPanel() {
     unattributable: orders.filter((o) => o.google_ads_upload_status === "unattributable").length,
     pending: orders.filter((o) => !o.google_ads_upload_status).length,
     refunded: orders.filter((o) => o.google_ads_upload_status === "refunded_pending_adjustment").length,
+    channelExcluded: orders.filter((o) => CHANNEL_GATE_SKIPPED.includes(o.google_ads_upload_status ?? "")).length,
   };
 
   const uploadRate = stats.total > 0
@@ -120,6 +129,7 @@ export default function GoogleAdsSyncPanel() {
   const filtered = orders.filter((o) => {
     if (statusFilter === "all") return true;
     if (statusFilter === "pending") return !o.google_ads_upload_status;
+    if (statusFilter === "channel_excluded") return CHANNEL_GATE_SKIPPED.includes(o.google_ads_upload_status ?? "");
     return o.google_ads_upload_status === statusFilter;
   });
 
@@ -132,11 +142,7 @@ export default function GoogleAdsSyncPanel() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-ads-conversions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
+        headers: await adminFunctionHeadersOrThrow(),
         body: JSON.stringify({ mode: "single", confirmationId }),
       });
       const data = await res.json() as { ok: boolean; result?: { success: boolean; error?: string; skipped?: boolean }; error?: string };
@@ -161,11 +167,7 @@ export default function GoogleAdsSyncPanel() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-ads-conversions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
+        headers: await adminFunctionHeadersOrThrow(),
         body: JSON.stringify({ mode: "retry_failed" }),
       });
       const data = await res.json() as { ok: boolean; succeeded?: number; failed?: number; processed?: number; message?: string; firstError?: string };
@@ -192,11 +194,7 @@ export default function GoogleAdsSyncPanel() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-ads-conversions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
+        headers: await adminFunctionHeadersOrThrow(),
         body: JSON.stringify({ mode: "backfill" }),
       });
       const data = await res.json() as { ok: boolean; uploaded?: number; skipped?: number; failed?: number; processed?: number; message?: string; firstError?: string };
@@ -225,11 +223,7 @@ export default function GoogleAdsSyncPanel() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-ads-conversions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
+        headers: await adminFunctionHeadersOrThrow(),
         body: JSON.stringify({ mode: "test_auth" }),
       });
       const data = await res.json() as {
@@ -259,11 +253,7 @@ export default function GoogleAdsSyncPanel() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-ads-conversions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
+        headers: await adminFunctionHeadersOrThrow(),
         body: JSON.stringify({ mode: "test_upload" }),
       });
       const data = await res.json() as {
@@ -288,11 +278,7 @@ export default function GoogleAdsSyncPanel() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-ads-conversions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
+        headers: await adminFunctionHeadersOrThrow(),
         body: JSON.stringify({ mode: "retry_gclid_upgraded" }),
       });
       const data = await res.json() as {
@@ -330,11 +316,7 @@ export default function GoogleAdsSyncPanel() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-ads-conversions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
+        headers: await adminFunctionHeadersOrThrow(),
         body: JSON.stringify({ mode: "list_conversion_actions" }),
       });
       const data = await res.json() as {
@@ -372,11 +354,7 @@ export default function GoogleAdsSyncPanel() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-ads-conversions`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
+        headers: await adminFunctionHeadersOrThrow(),
         body: JSON.stringify({ mode: "backfill", dryRun: true }),
       });
       const data = await res.json() as { ok: boolean; processed?: number; results?: Array<{ confirmationId: string; method: string; quality: string }> };
@@ -726,6 +704,7 @@ export default function GoogleAdsSyncPanel() {
           { key: "uploaded", label: `Uploaded (${stats.uploaded})` },
           { key: "failed", label: `Failed (${stats.failed})` },
           { key: "pending", label: `Pending (${stats.pending})` },
+          { key: "channel_excluded", label: `Not Google Ads (${stats.channelExcluded})` },
           { key: "unattributable", label: `Unattributable (${stats.unattributable})` },
         ] as const).map((f) => (
           <button

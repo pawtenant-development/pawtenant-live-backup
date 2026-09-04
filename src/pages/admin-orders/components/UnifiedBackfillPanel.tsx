@@ -1,8 +1,8 @@
 import { useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { adminFunctionHeadersOrThrow } from "@/lib/adminFunctionAuth";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
-const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 
 type SourceSystem = "all" | "new_site" | "wordpress_legacy";
 type Platform = "meta" | "google";
@@ -100,7 +100,7 @@ export default function UnifiedBackfillPanel() {
   const callGoogle = useCallback(async (mode: string, extra: Record<string, unknown> = {}) => {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/sync-google-ads-conversions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+      headers: await adminFunctionHeadersOrThrow(),
       body: JSON.stringify({ mode, ...getFilters(), ...extra }),
     });
     return res.json();
