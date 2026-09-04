@@ -89,6 +89,22 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
     setBusy(null);
   };
 
+  // CUSTOMER-PORTAL-LETTER-VIEW-RECOVERY-001 — downloading is not the same as
+  // viewing, especially on iPhone where a download may disappear into Files.
+  // Open the best customer-facing artifact in a popup-safe tab: prefer the
+  // QR-verified copy, then the provider original when no verified copy exists.
+  const viewTarget = doc.verificationDownload ?? doc.originalDownload;
+  const view = async () => {
+    if (!viewTarget) return;
+    setErr("");
+    setBusy("view");
+    const r = await openSecureDocument(viewTarget.documentId, {
+      variant: viewTarget.variant,
+    });
+    if (!r.ok) setErr(r.error ?? "Couldn't open this document. Please try again.");
+    setBusy(null);
+  };
+
   const dateLine = doc.date ? `${doc.dateVerb} ${formatDeliverableDate(doc.date)}` : doc.dateVerb;
   const dualDownloads = doc.originalDownload || doc.verificationDownload;
 
@@ -121,12 +137,24 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
       </div>
 
       {dualDownloads ? (
-        // The two required choices, in the owner-mandated DOM and visual order:
-        // 1. Download Original  2. Download QR-verified copy.
-        // The generic "Open"/"Download" pair is deliberately GONE from this card —
-        // it was the ambiguity being fixed. A variant with no genuine stored file
-        // renders no button at all rather than aliasing the other one.
+        // View the best customer-facing artifact first, then preserve the two
+        // explicit download choices in their required order: original, verified.
+        // A variant with no genuine stored file renders no button rather than
+        // aliasing the other one.
         <div className="flex flex-wrap items-stretch gap-2 mt-2.5">
+          {viewTarget && (
+            <button
+              type="button"
+              onClick={view}
+              disabled={busy !== null}
+              className={BTN_PRIMARY}
+            >
+              {busy === "view"
+                ? <i className="ri-loader-4-line animate-spin"></i>
+                : <i className="ri-eye-line"></i>}
+              {doc.kind === "esa_letter" || doc.kind === "psd_letter" ? "View letter" : "View document"}
+            </button>
+          )}
           {doc.originalDownload && (
             <button
               type="button"

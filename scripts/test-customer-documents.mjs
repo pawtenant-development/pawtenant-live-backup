@@ -376,5 +376,26 @@ const pair = (doc_type, over = {}) => ({
     d?.isLegacyDirect === true && !d?.originalDownload && !d?.verificationDownload);
 }
 
+// R9 — LIVE legacy shape: the real letter was stored as doc_type="other" and
+// orders.signed_letter_url points at that exact private-bucket object using a
+// broken public URL. The row must become the main letter so the UI can re-sign
+// it by document id; it must not also render as Additional Documentation.
+{
+  const legacyUrl = "https://x.supabase.co/storage/v1/object/public/provider-letters/PT-LEGACY/actual-letter.pdf";
+  const legacyRow = {
+    id: uid(), label: "Legacy letter", doc_type: "other", file_url: legacyUrl,
+    processed_file_url: null, footer_injected: false,
+    uploaded_at: "2026-06-01T10:00:00Z", customer_visible: true,
+  };
+  const r = resolveCustomerDocuments(delivered({
+    confirmation_id: "PT-LEGACY", signed_letter_url: `${legacyUrl}?token=stale`,
+    documents: [legacyRow],
+  }));
+  const d = byKind(r, "esa_letter");
+  check("R9 exact matched legacy other-row becomes the secure main letter",
+    r.deliverables.length === 1 && d?.id === legacyRow.id && !!d?.originalDownload && !d?.isLegacyDirect,
+    `got ${JSON.stringify(r.deliverables)}`);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

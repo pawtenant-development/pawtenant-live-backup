@@ -356,8 +356,25 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
   // tells the customer exactly what the file is without guessing.
   const letterDocs = docs.filter((d) => LETTER_DOC_TYPES.includes(d.doc_type));
 
+  // CUSTOMER-PORTAL-LETTER-VIEW-RECOVERY-001 — five delivered legacy orders
+  // stored their actual ESA/PSD letter as doc_type="other" while
+  // orders.signed_letter_url points at that row's exact storage object. The old
+  // fallback opened the stored URL directly; those rows use a public URL shape
+  // against a private bucket, so customers received "Bucket not found" even
+  // though the file exists. Promote ONLY an exact object-identity match to the
+  // main letter. This avoids filename/label guessing and gives the row a
+  // document id so every View/Download goes through fresh authorized signing.
+  const signedLetterKey = storageObjectKey(order.signed_letter_url);
+  const legacyMainDoc = letterDocs.length === 0 && signedLetterKey
+    ? docs.find((d) =>
+        PROVIDER_ISSUED_OTHER.includes(d.doc_type) &&
+        (storageObjectKey(d.file_url) === signedLetterKey ||
+          storageObjectKey(d.processed_file_url) === signedLetterKey))
+    : undefined;
+  const resolvedLetterDocs = legacyMainDoc ? [legacyMainDoc] : letterDocs;
+
   if (delivered) {
-    letterDocs.forEach((doc, index) => {
+    resolvedLetterDocs.forEach((doc, index) => {
       const isMain = index === 0;
       const title = isMain ? mainLetterTitle : "Additional Documentation";
       deliverables.push({
@@ -379,11 +396,11 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
       });
     });
 
-    // Legacy delivered order with NO order_documents row at all (5 such orders on
-    // LIVE). There is exactly one stored pointer and nothing that distinguishes an
+    // Legacy delivered order with NO matching order_documents row. There is one
+    // stored pointer and nothing that distinguishes an
     // original from a stamped copy, so neither labelled button can be offered
     // honestly — the card falls back to its single direct action.
-    if (letterDocs.length === 0 && order.signed_letter_url) {
+    if (resolvedLetterDocs.length === 0 && order.signed_letter_url) {
       deliverables.push({
         kind: mainLetterKind,
         title: mainLetterTitle,
@@ -401,7 +418,9 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
     // Care") that were previously unrenderable. They carry no reliable
     // verification artifact, so they use the plain Open/Download pair.
     docs
-      .filter((d) => PROVIDER_ISSUED_OTHER.includes(d.doc_type))
+      .filter((d) =>
+        PROVIDER_ISSUED_OTHER.includes(d.doc_type) &&
+        d.id !== legacyMainDoc?.id)
       .forEach((doc) => {
         deliverables.push({
           id: doc.id,

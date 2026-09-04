@@ -348,6 +348,25 @@ async function runChecks() {
       new Set(shown).size === shown.length, `got ${JSON.stringify(shown)}`);
   }
 
+  // ── B8 — old production rows classified a real delivered letter as "other"
+  // and stored the same private-bucket object in orders.signed_letter_url using
+  // a public URL shape. Exact object identity must recover the secure row.
+  {
+    const url = "https://x.supabase.co/storage/v1/object/public/provider-letters/PT-LEGACY/letter.pdf";
+    const legacy = letterRow({ doc_type: "other", file_url: url, processed_file_url: null });
+    const r = resolveCustomerDocuments(order({
+      confirmation_id: "PT-LEGACY",
+      letter_type: "esa",
+      signed_letter_url: `${url}?token=expired`,
+      documents: [legacy],
+    }));
+    add("B8 exact legacy other-row is recovered as one secure main letter",
+      r.deliverables.length === 1 && r.deliverables[0]?.id === legacy.id &&
+      r.deliverables[0]?.kind === "esa_letter" && !!r.deliverables[0]?.originalDownload &&
+      !r.deliverables[0]?.isLegacyDirect,
+      `got ${JSON.stringify(r.deliverables)}`);
+  }
+
   // ── S1 — every portal document fetch selects the shared column list and is
   // scoped to the customer's own orders. A fetch that drops the order predicate
   // would leak another customer's documents; one that hand-rolls its column list
@@ -382,12 +401,18 @@ async function runChecks() {
 
   // ── S2 — the card never injects HTML and never renders a raw storage URL.
   {
-    const code = stripCommentsAndStrings(read(FILES.docsCard));
+    const source = read(FILES.docsCard);
+    const code = stripCommentsAndStrings(source);
     add("S2 the documents card never uses dangerouslySetInnerHTML",
       !/dangerouslySetInnerHTML/.test(code), "dangerouslySetInnerHTML found in MyDocumentsCard");
     add("S2 the documents card never renders a raw storage URL",
       !/\b(file_url|processed_file_url)\b/.test(code),
       "MyDocumentsCard must go through the signed-URL helper, never a stored URL");
+    add("S2 letter cards provide a secure View letter action",
+      /const viewTarget = doc\.verificationDownload \?\? doc\.originalDownload;/.test(source) &&
+      /openSecureDocument\(viewTarget\.documentId/.test(source) &&
+      source.includes('"View letter"'),
+      "View letter must use the secure signed-document path");
   }
 
   // ── S3 — the linked-order chip delegates to the CANONICAL classifier.
@@ -471,6 +496,13 @@ const PLANTS = [
     expect: "B7 same-kind cards are distinguishable when their stored labels differ",
   },
   {
+    name: "leave an exact legacy other-row on the broken direct-URL fallback",
+    file: "resolver",
+    find: "const resolvedLetterDocs = legacyMainDoc ? [legacyMainDoc] : letterDocs;",
+    replace: "const resolvedLetterDocs = letterDocs;",
+    expect: "B8 exact legacy other-row is recovered as one secure main letter",
+  },
+  {
     name: "leak PawTenant portal delivery into a partner-managed order",
     file: "resolver",
     find: '  if ((order.order_origin ?? "") !== "partner") return false;',
@@ -512,6 +544,13 @@ const PLANTS = [
     find: "const dateLine =",
     replace: "const rawHref = (doc as unknown as { file_url?: string }).file_url;\n  const dateLine =",
     expect: "S2 the documents card never renders a raw storage URL",
+  },
+  {
+    name: "remove the secure View letter target",
+    file: "docsCard",
+    find: "const viewTarget = doc.verificationDownload ?? doc.originalDownload;",
+    replace: "const viewTarget = undefined;",
+    expect: "S2 letter cards provide a secure View letter action",
   },
   {
     name: "hard-code Under Review for every paid order",
