@@ -113,14 +113,14 @@ export function buildEsaPlanCards(ctaHref = "/assessment"): PlanCard[] {
   ];
 }
 
-/** PSD 3-card plan set (1 dog · annual · 2–3 dogs). `ctaHref` routes every card
+/** PSD 3-card plan set (up to 2 dogs · annual · exactly 3 dogs). `ctaHref` routes every card
  *  to the PSD assessment. PSD/dog terminology only — never ESA/animal. */
 export function buildPsdPlanCards(ctaHref = "/psd-assessment"): PlanCard[] {
   return [
     {
       name: "PSD Letter",
-      scope: "For 1 dog",
-      price: getPsdOneTimeTotal(1), // $129
+      scope: "For up to 2 dogs",
+      price: getPsdOneTimeTotal(1), // $129 (same for 2 dogs)
       priceSuffix: "one-time",
       features: [
         "Licensed provider evaluation",
@@ -152,13 +152,13 @@ export function buildPsdPlanCards(ctaHref = "/psd-assessment"): PlanCard[] {
       ctaHref,
     },
     {
-      name: "Multi-Dog PSD Letter",
-      scope: "For 2 or 3 dogs",
-      price: getPsdOneTimeTotal(2), // $149 one-time fixed total
+      name: "Three-Dog PSD Letter",
+      scope: "For exactly 3 dogs",
+      price: getPsdOneTimeTotal(3), // $149 one-time fixed total
       priceSuffix: "one-time · fixed total",
-      subNote: `Prefer annual for multiple dogs? $${getPsdAnnualTotal(2)} first year, then $${getPsdRenewalTotal(2)}/year.`, // $135 → $115
+      subNote: `Prefer annual for 3 dogs? $${getPsdAnnualTotal(3)} first year, then $${getPsdRenewalTotal(3)}/year.`, // $135 → $115
       features: [
-        "One evaluation covering up to 3 dogs*",
+        "One evaluation covering 3 dogs*",
         "Signed PSD documentation letter",
         "Scan-to-verify QR code on the letter",
         "Housing & travel documentation support",

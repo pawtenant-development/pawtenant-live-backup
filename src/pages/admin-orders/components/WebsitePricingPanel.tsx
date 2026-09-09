@@ -91,8 +91,8 @@ const CANONICAL_REFERENCE: { group: string; note?: string; rows: { label: string
     { label: "2 or 3 pets (fixed total)", dollars: RENEWAL_PRICING.multi, suffix: "/year" },
   ]},
   { group: "PSD — One-Time", rows: [
-    { label: "1 dog", dollars: PSD_PRICING.oneTime, suffix: "one-time" },
-    { label: "2 or 3 dogs (fixed total)", dollars: PSD_PRICING.oneTimeMultiDogTotal, suffix: "one-time" },
+    { label: "1 or 2 dogs", dollars: PSD_PRICING.oneTime, suffix: "one-time" },
+    { label: "3 dogs (fixed total)", dollars: PSD_PRICING.oneTimeMultiDogTotal, suffix: "one-time" },
   ]},
   { group: "PSD — Subscription · First Year", rows: [
     { label: "1 dog", dollars: PSD_PRICING.annual, suffix: "first year" },

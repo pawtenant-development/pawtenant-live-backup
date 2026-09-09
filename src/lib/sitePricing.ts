@@ -86,9 +86,9 @@ export const PRICING_FALLBACKS: SitePricingRow[] = [
   fb(PRICING_KEYS.esaMultiPet, "ESA Letter — 3 Pets (fixed total)", "esa", ESA_PRICING.oneTimeMultiPetTotal * 100, 11),
   fb(PRICING_KEYS.esaSubscriptionAnnual, "ESA Annual Subscription (single pet)", "subscription", ESA_PRICING.subscription * 100, 12),
   fb(PRICING_KEYS.esaSubscriptionMulti, "ESA Annual — 2 or 3 Pets (fixed total/yr)", "subscription", ESA_PRICING.subscriptionMultiPetTotal * 100, 13),
-  fb(PRICING_KEYS.psdStandard, "PSD Letter — Standard (1 dog)", "psd", PSD_PRICING.oneTime * 100, 20),
-  fb(PRICING_KEYS.psdPriority, "PSD Letter — Priority 24h (1 dog)", "psd", PSD_PRICING.oneTime * 100, 21),
-  fb(PRICING_KEYS.psdMultiDog, "PSD Letter — 2 or 3 Dogs (fixed total)", "psd", PSD_PRICING.oneTimeMultiDogTotal * 100, 22),
+  fb(PRICING_KEYS.psdStandard, "PSD Letter — Standard (up to 2 dogs)", "psd", PSD_PRICING.oneTime * 100, 20),
+  fb(PRICING_KEYS.psdPriority, "PSD Letter — Priority 24h (up to 2 dogs)", "psd", PSD_PRICING.oneTime * 100, 21),
+  fb(PRICING_KEYS.psdMultiDog, "PSD Letter — 3 Dogs (fixed total)", "psd", PSD_PRICING.oneTimeMultiDogTotal * 100, 22),
   fb(PRICING_KEYS.psdAnnual, "PSD Annual Subscription (1 dog)", "psd", PSD_PRICING.annual * 100, 23),
   fb(PRICING_KEYS.psdAnnualMulti, "PSD Annual — 2 or 3 Dogs (fixed total/yr)", "psd", PSD_PRICING.annualMultiDogTotal * 100, 24),
   // psd_consultation RETIRED 2026-07 — no active $79 consultation. Historical

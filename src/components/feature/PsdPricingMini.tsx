@@ -9,7 +9,7 @@ import { useSitePricing } from "@/hooks/useSitePricing";
  * Mirrors the EsaPricingMini visual language but with PSD pricing and a CTA to
  * /psd-assessment (the PSD intake), not /assessment (ESA intake). Pricing
  * matches the current PSD offer so every surface stays consistent:
- *   One-time: $129 for 1 dog / $149 fixed total for 2–3 dogs.
+ *   One-time: $129 for up to 2 dogs / $149 fixed total for exactly 3 dogs.
  *   Annual:   $115 first year for 1 dog / $135 first year for 2–3 dogs (renews $100 / $115).
  * Same benefits on both plans. Same-day PDF delivery is included/available —
  * NOT a separate paid priority tier. No Standard/Priority split.
@@ -47,11 +47,11 @@ const PSD_BASE_FEATURES = [
 const PLANS = [
   {
     name: "PSD Letter",
-    speed: "One-time — from $129 for 1 dog",
+    speed: "One-time — $129 for up to 2 dogs",
     price: "$129",
     priceKey: "psd_standard",
-    suffix: " for 1 dog",
-    note: "$149 total for 2–3 dogs",
+    suffix: " for up to 2 dogs",
+    note: "3 dogs: $149 fixed total",
     annualPill: false,
     highlight: true,
     features: [...PSD_BASE_FEATURES, "Refund if you don't qualify"],

@@ -8,7 +8,7 @@
  *
  * FINAL structure (owner-approved 2026-07, phased subscriptions):
  *   ESA one-time:          1–2 pets $129 · exactly 3 pets $149 fixed total
- *   PSD one-time:          1 dog $129 · 2–3 dogs $149 fixed total
+ *   PSD one-time:          1–2 dogs $129 · exactly 3 dogs $149 fixed total
  *   ESA/PSD subscription:  FIRST YEAR  1 → $115 · 2–3 → $135 fixed total
  *                          RENEWAL yr2+ 1 → $100 · 2–3 → $115 fixed total
  *   ESA/PSD + RA Combo:    one-time $179 · annual $159 FLAT (no year-two drop)
@@ -69,6 +69,19 @@ export function esaOneTimeTier(petCount: unknown): Tier | null {
   if (typeof petCount !== "number" || !Number.isInteger(petCount)) return null;
   if (petCount < 1 || petCount > 3) return null;
   return petCount <= 2 ? "single" : "multi";
+}
+
+/** PSD Standard one-time: 1–2 dogs $129; exactly 3 dogs $149. */
+export function psdOneTimeTier(dogCount: unknown): Tier | null {
+  if (typeof dogCount !== "number" || !Number.isInteger(dogCount)) return null;
+  if (dogCount < 1 || dogCount > 3) return null;
+  return dogCount <= 2 ? "single" : "multi";
+}
+
+/** Display-only fallback for transient empty form state. Charge paths reject invalid counts. */
+function oneTimeTierClamped(count: number): Tier {
+  const n = Math.max(1, Math.min(3, Math.floor(Number(count) || 1)));
+  return n <= 2 ? "single" : "multi";
 }
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -183,7 +196,8 @@ export function getEsaOneTimeTotal(petCount: number): number {
   return STANDARD_MATRIX.oneTime[tier];
 }
 export function getPsdOneTimeTotal(dogCount: number): number {
-  return STANDARD_MATRIX.oneTime[petTier(dogCount)];
+  const tier = psdOneTimeTier(dogCount) ?? oneTimeTierClamped(dogCount);
+  return STANDARD_MATRIX.oneTime[tier];
 }
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -290,13 +304,15 @@ export function quotePackage(
   const amountDueToday = plan === "annual" ? firstYearPrice : oneTimePrice;
   // Public coupons apply to one-time purchases only.
   const discountAmount = plan === "one_time" ? Math.max(0, Math.min(couponDiscount, amountDueToday)) : 0;
-  // ESA-TWO-PET-129-PRICING-001: report the tier that actually priced
-  // amountDueToday. ESA Standard one-time tiers at 2 (esaOneTimeTier); every
-  // other package/plan still tiers at 2-3 (petTier).
-  const pricedTier =
-    plan === "one_time" && packageKey === "esa_standard" && !isCombo
-      ? (esaOneTimeTier(petCount) ?? petTier(petCount))
-      : petTier(petCount);
+  // Report the tier that actually priced amountDueToday.
+  let pricedTier: Tier;
+  if (plan === "one_time" && packageKey === "esa_standard" && !isCombo) {
+    pricedTier = esaOneTimeTier(petCount) ?? petTier(petCount);
+  } else if (plan === "one_time" && packageKey === "psd_standard" && !isCombo) {
+    pricedTier = psdOneTimeTier(petCount) ?? oneTimeTierClamped(petCount);
+  } else {
+    pricedTier = petTier(petCount);
+  }
   return {
     packageKey,
     plan,

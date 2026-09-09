@@ -41,9 +41,8 @@ export function petTier(petCount: number): Tier {
 // ESA Standard ONE-TIME tier rule: up to TWO pets bill at the single rate
 // ($129); the multi rate ($149) is reserved for EXACTLY three pets.
 //
-// This deliberately differs from petTier(): PSD one-time, every subscription
-// first-year amount and every renewal still tier at two. Scope to the ESA
-// Standard one-time package ONLY — never reuse for PSD or any subscription.
+// This deliberately differs from the legacy petTier(). Scope to the ESA
+// Standard one-time package only; PSD one-time has its own strict rule below.
 //
 // Valid counts are the integers 1, 2 and 3. Anything else (0, 4+, decimals,
 // negatives, NaN) is INVALID and yields null — the caller must REJECT, never
@@ -52,6 +51,14 @@ export function esaOneTimeTier(petCount: unknown): Tier | null {
   if (typeof petCount !== "number" || !Number.isInteger(petCount)) return null;
   if (petCount < 1 || petCount > 3) return null;
   return petCount <= 2 ? "single" : "multi";
+}
+
+// PSD Standard ONE-TIME tier rule: up to TWO dogs bill at $129; exactly three
+// bill at the fixed $149 total. Invalid counts are rejected, never clamped.
+export function psdOneTimeTier(dogCount: unknown): Tier | null {
+  if (typeof dogCount !== "number" || !Number.isInteger(dogCount)) return null;
+  if (dogCount < 1 || dogCount > 3) return null;
+  return dogCount <= 2 ? "single" : "multi";
 }
 
 /** ESA Standard one-time amount in CENTS. Throws on an invalid pet count. */
@@ -65,9 +72,20 @@ export function esaOneTimeCents(petCount: number): number {
   return STANDARD_MATRIX.oneTime[tier] * 100;
 }
 
+/** PSD Standard one-time amount in CENTS. Throws on an invalid dog count. */
+export function psdOneTimeCents(dogCount: number): number {
+  const tier = psdOneTimeTier(dogCount);
+  if (tier === null) {
+    throw new RangeError(
+      `psdOneTimeCents: PSD Standard one-time covers 1-3 dogs; got ${String(dogCount)}`,
+    );
+  }
+  return STANDARD_MATRIX.oneTime[tier] * 100;
+}
+
 // ── Amount getters (cents) ──────────────────────────────────────────────────
-/** One-time cents on the LEGACY 1 / 2-3 tiering. PSD one-time only — ESA
- *  Standard one-time must use esaOneTimeCents() (1-2 -> $129, 3 -> $149). */
+/** One-time cents on the legacy 1 / 2-3 tiering. Retained for compatibility;
+ * standard ESA/PSD charge paths use their strict product-specific helpers. */
 export function oneTimeCents(petCount: number): number {
   return STANDARD_MATRIX.oneTime[petTier(petCount)] * 100;
 }

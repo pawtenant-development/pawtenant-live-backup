@@ -464,7 +464,7 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
           <div className="mb-5 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
             <i className="ri-information-line text-amber-500 text-sm flex-shrink-0 mt-0.5"></i>
             <p className="text-xs text-amber-800">
-              <span className="font-bold">Have more than one Psychiatric Service Dog?</span> Click <span className="font-bold">&quot;Add Another Dog&quot;</span> above — 2 or 3 dogs are covered at one fixed total. Additional dogs may be requested after submission. Additional charges and provider re-evaluation may apply. Approval is not automatic.
+              <span className="font-bold">Have more than one Psychiatric Service Dog?</span> Click <span className="font-bold">&quot;Add Another Dog&quot;</span> above — up to 2 dogs are covered at the same price, and 3 dogs at one fixed total. Additional dogs may be requested after submission. Additional charges and provider re-evaluation may apply. Approval is not automatic.
             </p>
           </div>
         )}

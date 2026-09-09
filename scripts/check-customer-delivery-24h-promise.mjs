@@ -236,29 +236,22 @@ async function runBehaviour(root) {
     }
   }
 
-  // 5 · Pricing is UNCHANGED by this task — pinned to the AUTHORITATIVE LIVE
-  //     matrix, which is NOT the TEST one.
+  // 5 · Pricing is pinned to the current owner-approved LIVE matrix.
   //
   //     LIVE ESA one-time (esaOneTimeCents, ESA-TWO-PET-129-PRICING-001):
   //         1 pet $129 · 2 pets $129 · exactly 3 pets $149
-  //     LIVE PSD one-time (oneTimeCents via the legacy petTier):
-  //         1 dog $129 · 2 dogs $149 · 3 dogs $149
-  //
-  //     TEST additionally tiers PSD at two dogs ($129 for 1-2) under
-  //     ESA-HOUSING-FABLE-51-CRO-TEST-003. That change is NOT promoted, so
-  //     asserting the TEST numbers here would be asserting a price LIVE does
-  //     not charge. These assertions therefore pin LIVE's real amounts and will
-  //     fail if this delivery task ever moves one of them.
+  //     LIVE PSD one-time (psdOneTimeCents):
+  //         1 dog $129 · 2 dogs $129 · exactly 3 dogs $149
   eq("5. LIVE ESA 1 pet is 12900 cents (server)", sPrice.esaOneTimeCents(1), 12900);
   eq("5. LIVE ESA 2 pets is 12900 cents (server)", sPrice.esaOneTimeCents(2), 12900);
   eq("5. LIVE ESA 3 pets is 14900 cents (server)", sPrice.esaOneTimeCents(3), 14900);
-  eq("5. LIVE PSD 1 dog is 12900 cents (server)", sPrice.oneTimeCents(1), 12900);
-  eq("5. LIVE PSD 2 dogs is 14900 cents (server)", sPrice.oneTimeCents(2), 14900);
-  eq("5. LIVE PSD 3 dogs is 14900 cents (server)", sPrice.oneTimeCents(3), 14900);
+  eq("5. LIVE PSD 1 dog is 12900 cents (server)", sPrice.psdOneTimeCents(1), 12900);
+  eq("5. LIVE PSD 2 dogs is 12900 cents (server)", sPrice.psdOneTimeCents(2), 12900);
+  eq("5. LIVE PSD 3 dogs is 14900 cents (server)", sPrice.psdOneTimeCents(3), 14900);
   eq("5. LIVE PSD 1 dog is $129 (client)", cPrice.getPsdOneTimeTotal(1), 129);
-  eq("5. LIVE PSD 2 dogs is $149 (client)", cPrice.getPsdOneTimeTotal(2), 149);
+  eq("5. LIVE PSD 2 dogs is $129 (client)", cPrice.getPsdOneTimeTotal(2), 129);
   eq("5. LIVE PSD 3 dogs is $149 (client)", cPrice.getPsdOneTimeTotal(3), 149);
-  eq("5. client and server agree on the PSD one-time amount", cPrice.getPsdOneTimeTotal(2) * 100, sPrice.oneTimeCents(2));
+  eq("5. client and server agree on the PSD one-time amount", cPrice.getPsdOneTimeTotal(2) * 100, sPrice.psdOneTimeCents(2));
 
   // 0 and 4+ are rejected at the REQUEST layer on LIVE (parsePetCount), because
   // LIVE's petTier() clamps for display rather than throwing. Assert the layer

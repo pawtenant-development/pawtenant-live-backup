@@ -207,11 +207,13 @@ async function main() {
   check("10. the pricing change adds no UPDATE against orders", () =>
     !/update\s+public\.orders/i.test(mig) || "migration updates public.orders");
 
-  // ── 11 · Unrelated product prices unchanged ──────────────────────────────
+  // ── 11 · PSD one-time follows the owner-approved 1–2 / 3 rule ───────────
   eq("11. PSD one-time 1 dog still $129", client.getPsdOneTimeTotal(1), 129);
-  eq("11. PSD one-time 2 dogs still $149", client.getPsdOneTimeTotal(2), 149);
+  eq("11. PSD one-time 2 dogs is $129", client.getPsdOneTimeTotal(2), 129);
   eq("11. PSD one-time 3 dogs still $149", client.getPsdOneTimeTotal(3), 149);
-  eq("11. PSD one-time 2 dogs still 14900 cents (server)", server.oneTimeCents(2), 14900);
+  eq("11. PSD one-time 2 dogs is 12900 cents (server)", server.psdOneTimeCents(2), 12900);
+  eq("11. PSD one-time 3 dogs is 14900 cents (server)", server.psdOneTimeCents(3), 14900);
+  rejects("11. PSD one-time 4 dogs rejected (server)", () => server.psdOneTimeCents(4));
   eq("11. ESA annual first year 1 pet still $115", client.getEsaAnnualTotal(1), 115);
   eq("11. ESA annual first year 2 pets still $135", client.getEsaAnnualTotal(2), 135);
   eq("11. ESA annual first year 3 pets still $135", client.getEsaAnnualTotal(3), 135);
@@ -221,7 +223,8 @@ async function main() {
   eq("11. RA combo annual still $159", client.getBundleAnnualTotal(), 159);
   eq("11. RA combo renewal still $159 (no year-two drop)", client.getBundleRenewalTotal(), 159);
   eq("11. ESA + RA bundle 2 pets still flat $179", client.getPackageTotal("esa_ra_bundle", "one_time", 2), 179);
-  eq("11. PSD standard 2 dogs via package resolver still $149", client.getPackageTotal("psd_standard", "one_time", 2), 149);
+  eq("11. PSD standard 2 dogs via package resolver is $129", client.getPackageTotal("psd_standard", "one_time", 2), 129);
+  eq("11. PSD standard 3 dogs via package resolver is $149", client.getPackageTotal("psd_standard", "one_time", 3), 149);
   eq("11. Additional Documentation add-on still $50", client.ADDITIONAL_DOC_PRICING.addon, 50);
   eq("11. legacy petTier still tiers 2 pets as multi", client.petTier(2), "multi");
 

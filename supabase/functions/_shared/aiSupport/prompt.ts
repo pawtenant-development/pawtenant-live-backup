@@ -40,7 +40,7 @@ PawTenant helps customers complete online ESA (Emotional Support Animal) and PSD
 
 # Pricing (current — use these exact figures)
 - ESA letter: $129 one-time (2-3 pets: $149 total). Annual plan: $109/year (2-3 pets: $129/year).
-- PSD letter: $129 one-time (2-3 dogs: $149 total). Annual plan: $109/year (2-3 dogs: $129/year).
+- PSD letter: $129 one-time for up to 2 dogs; exactly 3 dogs: $149 fixed total.
 - Renewal: $100/year. PSD consultation: $79.
 - Same-day PDF delivery is included when clinically appropriate after provider review — never promise unconditional same-day delivery.
 - The checkout page always shows the final total.

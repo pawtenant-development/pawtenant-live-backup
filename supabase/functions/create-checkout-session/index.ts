@@ -3,8 +3,8 @@ import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { packageEntitlementPatch } from "../_shared/packageEntitlement.ts";
 import {
-  oneTimeCents,
   esaOneTimeCents,
+  psdOneTimeCents,
   firstYearPriceId,
   COMBO_ONE_TIME_CENTS,
   COMBO_ANNUAL_CENTS,
@@ -101,7 +101,7 @@ function buildESASubscriptionLineItems(
 // getESAOneTimeAmount in create-payment-intent so card, Klarna and QR always
 // charge identical totals. 1 pet = $129; 2 or 3 pets = $149 fixed total.
 // ESA-TWO-PET-129-PRICING-001: 1-2 pets = $129; exactly 3 pets = $149 fixed
-// total. Deliberately NOT oneTimeCents(), which still tiers PSD at 2-3 dogs.
+// total. Uses the strict ESA helper so invalid counts are rejected.
 function getESAOneTimeAmountCents(petCount: number): number {
   return esaOneTimeCents(petCount);
 }
@@ -133,10 +133,10 @@ function getPSDPriceId(petCount: number, _deliverySpeed: string, _planType: stri
 // ─── PSD ONE-TIME inline amount (cents) — same table as create-payment-intent ──
 // Inline `price_data` lets Stripe create the product on-the-fly and matches
 // the inline-card amount exactly (no dashboard price drift).
-// 2026-07 FINAL: 1 dog = $129; 2 or 3 dogs = $149 fixed total (both delivery
+// LIVE PSD 1-2 DOG $129: 1 or 2 dogs = $129; exactly 3 dogs = $149 fixed total (both delivery
 // speeds). Mirrors getPSDOneTimeAmount in create-payment-intent/index.ts.
 function getPSDOneTimeAmountCents(petCount: number, _deliverySpeed: string): number {
-  return oneTimeCents(petCount);
+  return psdOneTimeCents(petCount);
 }
 
 function buildPSDOneTimeKlarnaLineItem(petCount: number, deliverySpeed: string) {

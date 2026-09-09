@@ -4,8 +4,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkPsdAssessmentComplete } from "../_shared/psdCompletionGate.ts";
 import { packageEntitlementPatch } from "../_shared/packageEntitlement.ts";
 import {
-  oneTimeCents,
   esaOneTimeCents,
+  psdOneTimeCents,
   firstYearCents,
   renewalCents,
   firstYearPriceId,
@@ -88,7 +88,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 // ─── FINAL pricing structure (2026-07, phased subscriptions) ─────────────────
-// One-time (both products): 1 pet/dog = $129; 2 or 3 = $149 FIXED TOTAL.
+// One-time (both products): 1-2 pets/dogs = $129; exactly 3 = $149 FIXED TOTAL.
 // Subscription FIRST YEAR:  1 pet/dog = $115; 2 or 3 = $135 FIXED TOTAL.
 // Subscription RENEWAL yr2+: 1 pet/dog = $100; 2 or 3 = $115 (phase 2 schedule).
 // Amounts + Stripe Price IDs come from _shared/pricingMatrix.ts (single server
@@ -97,7 +97,7 @@ function json(body: unknown, status = 200): Response {
 // the webhook attaches the renewal phase after the first invoice is paid.
 
 // ESA-TWO-PET-129-PRICING-001: 1-2 pets -> $129, exactly 3 pets -> $149.
-// Deliberately NOT oneTimeCents(), which still tiers PSD at 2-3 dogs.
+// Uses the product-specific strict helper; invalid counts are rejected.
 function getESAOneTimeAmount(petCount: number): number {
   return esaOneTimeCents(petCount);
 }
@@ -108,7 +108,7 @@ function getESAAnnualAmount(petCount: number): number {
 
 // One-time PSD letter (both delivery speeds).
 function getPSDOneTimeAmount(petCount: number, _deliverySpeed: string): number {
-  return oneTimeCents(petCount);
+  return psdOneTimeCents(petCount);
 }
 
 function getPSDAnnualAmount(petCount: number): number {

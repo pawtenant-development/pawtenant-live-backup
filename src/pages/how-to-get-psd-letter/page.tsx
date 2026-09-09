@@ -413,11 +413,11 @@ export default function HowToGetPSDLetterPage() {
             {[
               {
                 name: "PSD Letter",
-                speed: "One-time — from $129 for 1 dog",
+                speed: "One-time — $129 for up to 2 dogs",
                 price: "$129",
                 priceKey: "psd_standard",
                 priceSuffix: "",
-                note: "$149 total for 2–3 dogs",
+                note: "3 dogs: $149 fixed total · no per-dog add-ons",
                 annualPill: false,
                 highlight: true,
                 features: [
@@ -485,7 +485,7 @@ export default function HowToGetPSDLetterPage() {
                     <>
                       <div className="flex items-end gap-1">
                         <p className="text-4xl font-extrabold text-gray-900">{getPrice(plan.priceKey, plan.price)}{plan.priceSuffix}</p>
-                        <p className="text-sm text-gray-400 mb-1">/ 1 dog</p>
+                        <p className="text-sm text-gray-400 mb-1">/ up to 2 dogs</p>
                       </div>
                       <p className="text-xs text-gray-400 mt-1">{plan.note}</p>
                     </>

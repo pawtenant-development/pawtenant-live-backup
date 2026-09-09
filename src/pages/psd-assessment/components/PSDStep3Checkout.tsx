@@ -82,7 +82,7 @@ type PayTabType = "card" | "klarna";
 const PSD_ONETIME_DELIVERY = CANONICAL_DELIVERY_SPEED;
 
 function getPSDPlanPrice(key: PSDPlan, petCount: number, packageKey: PackageKey = "psd_standard"): number {
-  // Standard: 1 dog $129 one-time / $115 first year; 2 or 3 dogs $149 / $135 — fixed
+  // Standard one-time: 1–2 dogs $129; exactly 3 dogs $149 fixed total.
   // totals. RA bundle (psd_ra_bundle): flat $179 one-time / $159 annual (1–3 dogs).
   // Mirrors create-payment-intent amount logic.
   return getPackageTotal(packageKey, key === "subscription" ? "annual" : "one_time", petCount);
