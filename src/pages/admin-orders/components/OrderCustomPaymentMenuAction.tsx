@@ -21,13 +21,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { supabase, getAdminToken } from "../../../lib/supabaseClient";
+import { supabase, getAdminUserToken } from "../../../lib/supabaseClient";
 import OrderCustomPaymentPanel, { money } from "./OrderCustomPaymentPanel";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
-// Mirrors the server bounds. The server is authoritative — this only spares the
-// operator a round trip for an obviously wrong figure.
 const MIN_CENTS = 100;
 const MAX_CENTS = 200_000;
 
@@ -65,10 +63,7 @@ export default function OrderCustomPaymentMenuAction({
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Bumped after a successful create so the embedded panel reloads.
   const [refreshKey, setRefreshKey] = useState(0);
-  // Synchronous guard: `busy` state updates async, so five fast clicks can all
-  // observe busy === false. The server is durably idempotent regardless.
   const busyRef = useRef(false);
 
   const loadOrder = useCallback(async () => {
@@ -88,8 +83,6 @@ export default function OrderCustomPaymentMenuAction({
 
     const dollars = Number(amount);
     if (!Number.isFinite(dollars) || dollars <= 0) { setMsg("Enter an amount greater than zero."); return; }
-    // Dollars → integer cents once, here, with an explicit round. Passing a
-    // float to Stripe is how 42.5 becomes 4249.999999.
     const cents = Math.round(dollars * 100);
     if (cents < MIN_CENTS) { setMsg(`Minimum charge is ${money(MIN_CENTS)}.`); return; }
     if (cents > MAX_CENTS) { setMsg(`Maximum charge is ${money(MAX_CENTS)}.`); return; }
@@ -98,7 +91,14 @@ export default function OrderCustomPaymentMenuAction({
     busyRef.current = true;
     setBusy(true);
     try {
-      const token = await getAdminToken();
+      // This endpoint authorises the caller with auth.getUser(token). Never send
+      // the public anon key as a fallback: doing so turns an expired admin session
+      // into a confusing server-side 401 and makes the More-menu action look broken.
+      const token = await getAdminUserToken();
+      if (!token) {
+        setMsg("Your admin session has expired. Sign in again, then retry this payment request.");
+        return;
+      }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/create-custom-payment-request`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -108,7 +108,6 @@ export default function OrderCustomPaymentMenuAction({
           amountCents: cents,
           customerDescription: description.trim(),
           internalNote: note.trim() || undefined,
-          // One token per create the operator initiated.
           operationToken: crypto.randomUUID(),
         }),
       });
@@ -119,9 +118,10 @@ export default function OrderCustomPaymentMenuAction({
       setRefreshKey((k) => k + 1);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Network error");
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
     }
-    busyRef.current = false;
-    setBusy(false);
   }
 
   const customerName = [order?.first_name, order?.last_name].filter(Boolean).join(" ") || "—";
@@ -149,7 +149,6 @@ export default function OrderCustomPaymentMenuAction({
             </div>
 
             <div className="p-4 sm:p-5 space-y-4">
-              {/* Context — so the operator can see exactly which order they are charging */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-gray-50 border border-gray-200 rounded-xl p-3">
                 {[
                   ["Order", confirmationId ?? "—"],
@@ -219,7 +218,6 @@ export default function OrderCustomPaymentMenuAction({
                 {busy ? <><i className="ri-loader-4-line animate-spin"></i>Working…</> : <><i className="ri-bill-line"></i>Create Payment Request</>}
               </button>
 
-              {/* Existing requests — same renderer the Payments tab uses. */}
               <div className="border-t border-gray-200 pt-3">
                 <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Requests on this order</p>
                 <OrderCustomPaymentPanel
