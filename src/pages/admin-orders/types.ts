@@ -140,6 +140,12 @@ export interface Order {
   last_meaningful_activity_type?: string | null;
   official_letter_reopened_at?: string | null;
   official_letter_final_completed_at?: string | null;
+  // ── ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 ──────────────────────
+  // Written ONLY by public.admin_force_complete_order(). The flag is the
+  // canonical, audited "completed while the customer had nothing to open"
+  // condition — it suppresses the delivery email and every delivered claim.
+  admin_force_completed_at?: string | null;
+  completed_without_customer_document?: boolean | null;
   coupon_code?: string | null;
   coupon_discount?: number | null;
   // Legacy-resume pricing (2026-07): how the checkout amount was chosen.

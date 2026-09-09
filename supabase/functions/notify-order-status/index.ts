@@ -299,9 +299,40 @@ Deno.serve(async (req: Request) => {
   }
 
   const { data: order, error: orderErr } = await supabase
-    .from("orders").select("id, confirmation_id, email, first_name, last_name, doctor_name, patient_notification_sent_at, email_log")
+    .from("orders").select("id, confirmation_id, email, first_name, last_name, doctor_name, patient_notification_sent_at, email_log, completed_without_customer_document, signed_letter_url")
     .eq("confirmation_id", confirmationId).maybeSingle();
   if (orderErr || !order) return jsonResp({ error: `Order not found: ${confirmationId}` }, 404);
+
+  // ── ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 §DOCUMENT SEMANTICS ─────
+  // The completion email says "Your ESA documents are ready!" and tells the
+  // customer to "Download your signed ESA letter from your portal". An admin
+  // force-complete can legitimately complete an order that has NO
+  // customer-visible document, and sending this email for such an order would
+  // be a false delivery claim followed by an empty portal.
+  //
+  // This is a SERVER-side refusal, not a UI decision: the admin client already
+  // withholds the call, and this makes the same rule true for every caller.
+  // It re-reads document presence live rather than trusting the stored flag
+  // alone, so an order that later receives its letter recovers on its own.
+  if (newStatus === "completed" && order.completed_without_customer_document === true) {
+    const { count: liveDocs } = await supabase
+      .from("order_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("order_id", order.id)
+      .eq("customer_visible", true)
+      .is("superseded_by_document_id", null)
+      .in("review_status", ["approved", "not_applicable"]);
+    const hasDoc = (liveDocs ?? 0) > 0 || !!(order.signed_letter_url ?? "").trim();
+    if (!hasDoc) {
+      return jsonResp({
+        ok: true,
+        sent: false,
+        skipped: true,
+        reason: "completed_without_customer_document",
+        message: "Completion email withheld — this order has no customer-visible document, so it must not be told its documents are ready.",
+      });
+    }
+  }
 
   // For "completed" status: respect the provider-path email_log guard (letter_ready
   // was already sent by notify-patient-letter) unless force is set. The DB-level

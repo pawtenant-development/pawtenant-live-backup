@@ -494,6 +494,29 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
   };
 }
 
+/**
+ * ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — "does this customer have
+ * anything at all to open?"
+ *
+ * An admin may complete an order that has no customer-visible document (a
+ * provider who never uploaded, an order closed out by support). The portal must
+ * then stop CLAIMING delivery: no "your documents are ready", no "letter
+ * delivered" step, no card that leads nowhere. Every such surface asks this
+ * rather than reading `doctor_status === "patient_notified"`, which after an
+ * override no longer implies a document.
+ *
+ * Deliberately LIVE: it re-resolves the documents the customer actually has, so
+ * an order that later receives its letter starts telling the truth again with no
+ * flag to clear. The stored `completed_without_customer_document` column is the
+ * audited record of the override; this is the current fact.
+ *
+ * Mirrors public.order_has_customer_visible_document() on the server, which is
+ * what actually withholds the delivery email.
+ */
+export function hasCustomerDeliverable(order: ResolverOrder): boolean {
+  return resolveCustomerDocuments(order).deliverables.length > 0;
+}
+
 /** Short human date, e.g. "Jul 12, 2026". */
 export function formatDeliverableDate(iso: string | undefined): string {
   if (!iso) return "";

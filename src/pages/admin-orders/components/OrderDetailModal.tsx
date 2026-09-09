@@ -10,6 +10,7 @@ import {
   refundDisposition,
   refundDispositionLabel,
 } from "@/lib/orderClassification";
+import { isOfficialLetter30DayEligible } from "../../../lib/serviceFamily";
 import OrderNotesPanel from "./OrderNotesPanel";
 import ApprovalRequestModal from "./ApprovalRequestModal";
 import CommunicationTab from "./CommunicationTab";
@@ -83,6 +84,29 @@ import {
   buildPrintHTML,
 } from "./assessmentUtils";
 
+/**
+ * ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — the shape returned by
+ * public.admin_force_complete_preview(). Every consequence the confirmation
+ * dialog shows comes from HERE, computed server-side by the same functions the
+ * transition itself uses, so the dialog can never promise something different
+ * from what happens.
+ */
+interface ForceCompletePreview {
+  current_status: string | null;
+  current_doctor_status: string | null;
+  resulting_status: string;
+  resulting_doctor_status: string;
+  already_completed: boolean;
+  has_provider: boolean;
+  provider_name: string | null;
+  has_customer_document: boolean;
+  will_notify_customer: boolean;
+  provider_earning_action: string;
+  existing_provider_earnings: number;
+  service_family: string;
+  thirty_day_eligible: boolean;
+}
+
 interface Order {
   id: string;
   confirmation_id: string;
@@ -92,6 +116,11 @@ interface Order {
   phone: string | null;
   state: string | null;
   selected_provider: string | null;
+  // ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — written ONLY by
+  // public.admin_force_complete_order(). The audited "completed while the
+  // customer had nothing to open" condition; every delivery claim consults it.
+  completed_without_customer_document?: boolean | null;
+  admin_force_completed_at?: string | null;
   plan_type: string | null;
   delivery_speed: string | null;
   price: number | null;
@@ -1512,6 +1541,107 @@ export default function OrderDetailModal({
     setTimeout(() => setStatusMsg(""), 6000);
   };
 
+  // ── ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 · Force Complete ────────
+  // An authenticated admin can move ANY order to the canonical Completed state,
+  // whatever its current status and whether or not a provider file exists. The
+  // control is never disabled; the SERVER decides. The preview is read from
+  // admin_force_complete_preview() rather than derived here, so the consequences
+  // shown in the dialog are the same facts the transition will act on.
+  const [showForceComplete, setShowForceComplete] = useState(false);
+  const [forceCompleteReason, setForceCompleteReason] = useState("");
+  const [forceCompleteBusy, setForceCompleteBusy] = useState(false);
+  const [forceCompleteError, setForceCompleteError] = useState("");
+  const [forceCompletePreview, setForceCompletePreview] = useState<ForceCompletePreview | null>(null);
+
+  // Opening the dialog READS; it changes nothing. The preview RPC is
+  // is_admin_staff()-gated, so a non-admin cannot even see the consequences.
+  const openForceComplete = async () => {
+    setForceCompleteReason("");
+    setForceCompleteError("");
+    setForceCompletePreview(null);
+    setShowForceComplete(true);
+    setForceCompleteBusy(true);
+    const { data, error } = await supabase.rpc("admin_force_complete_preview", {
+      p_order_id: order.id,
+    });
+    if (error) setForceCompleteError(error.message.replace(/^.*?:\s*/, ""));
+    else setForceCompletePreview(data as ForceCompletePreview);
+    setForceCompleteBusy(false);
+  };
+
+  // Mirrors validate_reopen_reason() so the button state matches what the server
+  // will accept. The server remains the authority — this only avoids a pointless
+  // round trip.
+  const trimmedForceReason = forceCompleteReason.trim();
+  const forceReasonValid =
+    trimmedForceReason.length >= 5
+    && trimmedForceReason.length <= 1000
+    && !/<[a-zA-Z/!]/.test(trimmedForceReason);
+
+  const confirmForceComplete = async () => {
+    if (!forceReasonValid) return;
+    setForceCompleteBusy(true);
+    setForceCompleteError("");
+    // The expected pair is the optimistic-concurrency token: `orders` has no
+    // updated_at by design, so the server compares the lifecycle values this
+    // dialog was opened against and refuses cleanly if they moved.
+    const { data, error } = await supabase.rpc("admin_force_complete_order", {
+      p_order_id: order.id,
+      p_reason: trimmedForceReason,
+      p_expected_status: order.status ?? "",
+      p_expected_doctor_status: order.doctor_status ?? "",
+    });
+    if (error) {
+      setForceCompleteError(error.message.replace(/^.*?:\s*/, ""));
+      setForceCompleteBusy(false);
+      return;
+    }
+    const r = (data ?? {}) as {
+      transitioned?: boolean; reason?: string; message?: string;
+      status?: string; doctor_status?: string;
+      has_customer_document?: boolean; notify_customer?: boolean;
+      completed_without_customer_document?: boolean;
+    };
+    if (!r.transitioned) {
+      // A stated refusal, not a failure. 'already_completed' is the idempotent
+      // path — nothing was written, so nothing is re-sent either.
+      setForceCompleteError(r.message ?? "No change was made.");
+      setForceCompleteBusy(false);
+      return;
+    }
+    updateOrderField({
+      status: r.status ?? "completed",
+      doctor_status: r.doctor_status ?? "patient_notified",
+      completed_without_customer_document: !!r.completed_without_customer_document,
+    } as Partial<Order>);
+
+    // DOCUMENT SEMANTICS. The completion email tells the customer their
+    // documents are ready. It is sent ONLY when the server confirmed a
+    // customer-visible document exists. notify-order-status refuses it
+    // independently, so this is defence in depth, not the only gate.
+    if (r.notify_customer) {
+      try {
+        const token = await getAdminToken();
+        fetch(`${supabaseUrl}/functions/v1/notify-order-status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ confirmationId: order.confirmation_id, newStatus: "completed" }),
+        }).catch(() => {});
+      } catch {
+        // Status email is best-effort; the transition already happened.
+      }
+    }
+
+    setStatusMsg(
+      r.notify_customer
+        ? "Order marked Completed — customer notified"
+        : "Order marked Completed — no customer document, so no delivery email was sent",
+    );
+    setShowForceComplete(false);
+    setForceCompleteBusy(false);
+    setTimeout(() => setStatusMsg(""), 8000);
+  };
+
   const handleGhlRefire = async () => {
     setGhlFiring(true);
     setGhlMsg("");
@@ -2700,9 +2830,12 @@ export default function OrderDetailModal({
   const [showRefundApproval, setShowRefundApproval] = useState(false);
   const [showDeleteApproval, setShowDeleteApproval] = useState(false);
 
-  // States requiring 30-day official letter reissue
-  const THIRTY_DAY_STATES = ["CA", "AR", "IA", "LA", "MT"];
-  const isThirtyDayState = THIRTY_DAY_STATES.includes(order.state ?? "");
+  // 30-day official letter reissue eligibility.
+  // ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001: the state list alone is NOT
+  // the rule. The rule is ESA-ONLY, so this now asks the shared predicate, which
+  // mirrors public.is_official_letter_30_day_eligible() — product AND state.
+  // A PSD order in CA is excluded here exactly as it is excluded in the cron.
+  const isThirtyDayState = isOfficialLetter30DayEligible(order);
   const isCompletedOrder = order.status === "completed" && order.doctor_status === "patient_notified";
 
   const handleThirtyDayReissue = async () => {
@@ -3555,6 +3688,30 @@ export default function OrderDetailModal({
                       <i className="ri-external-link-line text-[10px] text-gray-400"></i>
                     </button>
 
+                    {/* ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — the admin
+                        completion override. Deliberately OUTSIDE the paid gate
+                        below and never disabled: an admin must be able to
+                        complete an unpaid lead, a paid/unassigned order, an
+                        under-review order with no provider file, a payment-failed,
+                        cancelled or refunded order. The dialog states the exact
+                        consequences and the server enforces authorization —
+                        this menu item is convenience, not permission. */}
+                    <div className="border-t border-gray-100 my-1" role="separator"></div>
+                    <p className="px-3 pt-1 pb-0.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Completion</p>
+                    <button
+                      type="button"
+                      onClick={() => { setShowHeaderMore(false); openForceComplete(); }}
+                      role="menuitem"
+                      title="Mark this order Delivered / Completed — available for any status"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 cursor-pointer transition-colors"
+                    >
+                      <i className="ri-checkbox-circle-line"></i>
+                      <span className="flex-1 text-left">Mark Delivered / Completed</span>
+                      {order.doctor_status === "patient_notified" && (
+                        <span className="text-[10px] text-gray-400 font-normal normal-case">already completed</span>
+                      )}
+                    </button>
+
                     {/* Re-alignment to Revision 4: Status & Lifecycle actions
                         moved from body Admin Actions card into header More
                         menu. Same handlers and confirmation modals that the
@@ -3582,46 +3739,8 @@ export default function OrderDetailModal({
                             <span className="flex-1 text-left">Mark Under Review</span>
                           </button>
                         )}
-                        {/* 30-DAY-OFFICIAL-LETTER (2026-06-18, LIVE mirror of TEST
-                            3ced905): "Mark as Completed" for a paid order that is
-                            currently Under Review. Strictly gated — the surrounding
-                            block already requires a paid order (payment_intent_id),
-                            and this item only appears when the status is exactly
-                            'under-review', so it never shows for unpaid, pending,
-                            processing, cancelled, refunded, archived or
-                            already-completed orders. Completing a CA / 30-day-state
-                            order is tracked by the DB trigger handle_official_letter_
-                            completion(); the official-letter reopen is handled by the
-                            scheduled reopen_due_official_letter_orders() job. */}
-                        {order.status === "under-review" && !isOperationallyCancelled && (
-                          <button
-                            type="button"
-                            onClick={() => { setShowHeaderMore(false); handleSetStatus("completed"); }}
-                            disabled={statusUpdating}
-                            role="menuitem"
-                            title="Mark this under-review order as completed"
-                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <i className="ri-check-double-line"></i>
-                            <span className="flex-1 text-left">Mark as Completed</span>
-                          </button>
-                        )}
-                        {order.status !== "refunded" && !isOperationallyCancelled && order.status !== "archived" && (
-                          <button
-                            type="button"
-                            onClick={() => { setShowHeaderMore(false); handleSetStatus("completed", "patient_notified"); }}
-                            disabled={statusUpdating || !hasProviderDocs || order.doctor_status === "patient_notified"}
-                            role="menuitem"
-                            title={!hasProviderDocs ? "Provider letter required first" : undefined}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <i className="ri-checkbox-circle-line"></i>
-                            <span className="flex-1 text-left">{order.doctor_status === "patient_notified" ? "Already Delivered" : "Mark Delivered"}</span>
-                            {!hasProviderDocs && order.doctor_status !== "patient_notified" && (
-                              <span className="text-[10px] text-gray-400 font-normal normal-case">letter needed</span>
-                            )}
-                          </button>
-                        )}
+                        {/* The two legacy completion items were replaced by the
+                            single, server-authorized force-complete action above. */}
                         {/* OPS-REOPEN-COMPLETED / THIRTY-DAY-STATE-REVIEW (LIVE
                             mirror 2026-07-10 of TEST ab256b6): "Mark Under Review"
                             for completed/delivered orders. Hidden for under-review,
@@ -4517,7 +4636,13 @@ export default function OrderDetailModal({
                     <div>
                       <p className="text-sm font-extrabold text-emerald-800">Order Completed — Assignment Locked</p>
                       <p className="text-xs text-emerald-700 mt-0.5">
-                        This order is complete and the letter was delivered. Provider reassignment is disabled for completed orders.
+                        {/* ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — an admin can
+                            complete an order with NO customer-visible document, so
+                            "the letter was delivered" is no longer true of every
+                            completed order. Say which one this is. */}
+                        {order.completed_without_customer_document
+                          ? "This order was completed by an admin with no customer-visible document, so nothing was delivered to the customer. Provider reassignment is disabled for completed orders."
+                          : "This order is complete and the letter was delivered. Provider reassignment is disabled for completed orders."}
                         {order.doctor_name && (
                           <span className="block mt-1">Completed by: <strong>{order.doctor_name}</strong></span>
                         )}
@@ -4703,6 +4828,21 @@ export default function OrderDetailModal({
                         >
                           <i className="ri-bank-card-line"></i>Go to Payments Tab — Send Recovery / Retry Link
                         </button>
+                        {/* ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — "all
+                            case management actions are locked" was true of this
+                            panel too, so an unpaid lead could never be closed
+                            out. The completion override is admin-only and is
+                            available here as well; it does not touch payment. */}
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            disabled={forceCompleteBusy}
+                            onClick={openForceComplete}
+                            className="whitespace-nowrap inline-flex items-center gap-1.5 px-3 py-2 border border-emerald-200 text-emerald-700 bg-white text-xs font-bold rounded-lg hover:bg-emerald-50 cursor-pointer transition-colors disabled:opacity-60"
+                          >
+                            <i className="ri-checkbox-circle-line"></i>Mark Delivered / Completed
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -4754,45 +4894,27 @@ export default function OrderDetailModal({
                     {/* Group 2: Provider-completion-gated actions */}
                     <div>
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-                        <i className="ri-lock-2-line"></i>
+                        <i className="ri-checkbox-circle-line"></i>
                         Delivery Actions
-                        {!hasProviderDocs && <span className="text-gray-300 font-normal normal-case tracking-normal ml-1">— needs provider letter first</span>}
+                        {!hasProviderDocs && <span className="text-amber-600 font-normal normal-case tracking-normal ml-1">— no provider letter on file</span>}
                       </p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {/* Mark Delivered — only when provider has docs */}
-                        {(() => {
-                          const canDeliver = hasProviderDocs;
-                          const alreadyDone = order.doctor_status === "patient_notified";
-                          return (
-                            <div className="relative group">
-                              <button
-                                type="button"
-                                disabled={statusUpdating || (!canDeliver && !alreadyDone)}
-                                onClick={() => handleSetStatus("completed", "patient_notified")}
-                                className={`whitespace-nowrap flex items-center gap-2 px-3 py-2.5 border rounded-lg text-sm font-semibold transition-colors ${
-                                  alreadyDone
-                                    ? "bg-gray-100 border-gray-300 text-gray-500 cursor-default"
-                                    : canDeliver
-                                      ? "border-emerald-200 text-emerald-700 hover:bg-emerald-50 cursor-pointer"
-                                      : "border-gray-200 text-gray-300 cursor-not-allowed opacity-60"
-                                } disabled:opacity-60`}
-                              >
-                                <i className="ri-checkbox-circle-line"></i>Mark Delivered
-                                {!canDeliver && !alreadyDone && <i className="ri-lock-2-line text-xs ml-auto"></i>}
-                              </button>
-                              {!canDeliver && !alreadyDone && (
-                                <div className="absolute bottom-full left-0 mb-2 z-50 hidden group-hover:block pointer-events-none">
-                                  <div className="bg-gray-900 text-white text-xs font-semibold px-3 py-2 rounded-lg max-w-[220px] leading-relaxed shadow-lg">
-                                    <i className="ri-lock-2-line mr-1"></i>Provider must upload completed letter first
-                                    <div className="absolute top-full left-4 border-4 border-transparent border-t-gray-900"></div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-
+                        <button
+                          type="button"
+                          disabled={forceCompleteBusy}
+                          onClick={openForceComplete}
+                          className="whitespace-nowrap flex items-center gap-2 px-3 py-2.5 border rounded-lg text-sm font-semibold transition-colors border-emerald-200 text-emerald-700 hover:bg-emerald-50 cursor-pointer disabled:opacity-60"
+                        >
+                          <i className="ri-checkbox-circle-line"></i>
+                          {order.doctor_status === "patient_notified" ? "Completed — Review" : "Mark Delivered / Completed"}
+                        </button>
                       </div>
+                      {!hasProviderDocs && order.doctor_status !== "patient_notified" && (
+                        <p className="text-[11px] text-amber-700 mt-2 flex items-start gap-1">
+                          <i className="ri-error-warning-line flex-shrink-0 mt-0.5"></i>
+                          <span>No provider letter is on file. You can still complete this order — the customer will NOT be told their documents are ready.</span>
+                        </p>
+                      )}
                     </div>
 
                     {(statusMsg || emailMsg || confirmResendMsg || resetMsg || portalResetMsg) && (
@@ -6833,7 +6955,158 @@ export default function OrderDetailModal({
           </div>
         </div>
       )}
-      {/* ADDON-DOC-INVOICE (2026-06-16, LIVE mirror): isolated mount. */}
+      {/* ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — the completion override
+          confirmation. Every consequence shown here is read from
+          admin_force_complete_preview() on the server, so the dialog and the
+          transition can never describe different outcomes. Mobile-first: the
+          panel scrolls internally (max-h-[85vh]) and the footer buttons wrap, so
+          nothing is clipped at 390px. */}
+      {showForceComplete && (
+        <div
+          className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-3 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="force-complete-title"
+        >
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <h3 id="force-complete-title" className="text-sm font-bold text-gray-800">Mark Order Delivered / Completed</h3>
+              <p className="text-xs text-gray-500 mt-1 break-words">Order {order.confirmation_id}</p>
+            </div>
+
+            <div className="px-5 py-4 space-y-3 overflow-y-auto">
+              {forceCompleteBusy && !forceCompletePreview && (
+                <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                  <i className="ri-loader-4-line animate-spin"></i>Checking this order…
+                </p>
+              )}
+
+              {forceCompletePreview && (
+                <>
+                  {/* THE MISSING-DOCUMENT WARNING — first, and unmissable. */}
+                  {!forceCompletePreview.has_customer_document && (
+                    <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl border-2 border-amber-300 bg-amber-50">
+                      <i className="ri-error-warning-fill text-amber-600 text-base mt-0.5 flex-shrink-0"></i>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-amber-900">No customer-visible document exists</p>
+                        <p className="text-[11px] text-amber-800 leading-relaxed mt-0.5">
+                          Completing now will NOT create a letter. The customer will not be told their
+                          documents are ready, and their portal will show the order as complete with
+                          nothing to download. This is recorded on the order.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <dl className="rounded-xl border border-gray-200 divide-y divide-gray-100 text-xs">
+                    <div className="flex items-start justify-between gap-3 px-3 py-2">
+                      <dt className="text-gray-500 flex-shrink-0">Current status</dt>
+                      <dd className="font-semibold text-gray-800 text-right break-words">
+                        {forceCompletePreview.current_status ?? "—"}
+                        <span className="text-gray-400 font-normal"> / {forceCompletePreview.current_doctor_status ?? "—"}</span>
+                      </dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 px-3 py-2">
+                      <dt className="text-gray-500 flex-shrink-0">Resulting status</dt>
+                      <dd className="font-semibold text-emerald-700 text-right break-words">
+                        {forceCompletePreview.resulting_status}
+                        <span className="text-emerald-600/70 font-normal"> / {forceCompletePreview.resulting_doctor_status}</span>
+                      </dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 px-3 py-2">
+                      <dt className="text-gray-500 flex-shrink-0">Provider assigned</dt>
+                      <dd className="font-semibold text-gray-800 text-right break-words">
+                        {forceCompletePreview.has_provider
+                          ? (forceCompletePreview.provider_name || "Yes")
+                          : "No provider assigned"}
+                      </dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 px-3 py-2">
+                      <dt className="text-gray-500 flex-shrink-0">Customer document</dt>
+                      <dd className={`font-semibold text-right break-words ${forceCompletePreview.has_customer_document ? "text-gray-800" : "text-amber-700"}`}>
+                        {forceCompletePreview.has_customer_document ? "Exists" : "None"}
+                      </dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 px-3 py-2">
+                      <dt className="text-gray-500 flex-shrink-0">Customer notification</dt>
+                      <dd className="font-semibold text-gray-800 text-right break-words">
+                        {forceCompletePreview.will_notify_customer
+                          ? "Completion email will be sent"
+                          : "No email — nothing to deliver"}
+                      </dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 px-3 py-2">
+                      <dt className="text-gray-500 flex-shrink-0">Provider earnings</dt>
+                      <dd className="font-semibold text-gray-800 text-right break-words">
+                        {forceCompletePreview.has_provider
+                          ? `No new earning created · ${forceCompletePreview.existing_provider_earnings} existing preserved`
+                          : "None — no provider on this order"}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {forceCompletePreview.already_completed && (
+                    <div className="flex items-start gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-[11px] font-semibold text-gray-600">
+                      <i className="ri-information-line mt-0.5"></i>
+                      <span>This order is already Completed. Submitting again changes nothing and sends nothing.</span>
+                    </div>
+                  )}
+
+                  <label htmlFor="force-complete-reason" className="block text-xs font-bold text-gray-700">
+                    Why are you completing this order? <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    id="force-complete-reason"
+                    value={forceCompleteReason}
+                    onChange={(e) => { setForceCompleteReason(e.target.value); setForceCompleteError(""); }}
+                    rows={3}
+                    autoFocus
+                    maxLength={1000}
+                    placeholder="e.g. Provider unreachable; letter delivered by support over email."
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#3b6ea5]/30 focus:border-[#3b6ea5] resize-y"
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] text-gray-500">Recorded in the order audit trail with your name.</p>
+                    <span className={`text-[11px] font-semibold flex-shrink-0 ${trimmedForceReason.length > 1000 ? "text-red-600" : "text-gray-400"}`}>
+                      {trimmedForceReason.length}/1000
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {forceCompleteError && (
+                <div className="flex items-start gap-2 px-3 py-2 rounded-xl border border-red-200 bg-red-50 text-xs font-semibold text-red-700">
+                  <i className="ri-error-warning-line mt-0.5 flex-shrink-0"></i>
+                  <span className="break-words">{forceCompleteError}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 flex flex-wrap items-center justify-end gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowForceComplete(false)}
+                disabled={forceCompleteBusy}
+                className="px-4 py-2 border border-gray-200 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-50 cursor-pointer transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmForceComplete}
+                disabled={forceCompleteBusy || !forceReasonValid || !forceCompletePreview}
+                title={!forceReasonValid ? "Enter a reason of at least 5 characters (plain text)" : undefined}
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 cursor-pointer transition-colors disabled:opacity-50"
+              >
+                {forceCompleteBusy
+                  ? <><i className="ri-loader-4-line animate-spin"></i>Working…</>
+                  : <><i className="ri-checkbox-circle-line"></i>Confirm &amp; Complete</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+     {/* ADDON-DOC-INVOICE (2026-06-16, LIVE mirror): isolated mount. */}
       {showAddonInvoice && (
         <AdditionalDocInvoiceModal
           order={{

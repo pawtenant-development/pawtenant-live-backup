@@ -53,6 +53,9 @@ const ENTRIES = [
   // ./channelGate.ts and ./invocationAuth.ts. A broken import here would
   // BOOT_ERROR the conversion uploader, so its module graph must parse and link.
   "supabase/functions/sync-google-ads-conversions/index.ts",
+  "supabase/functions/notify-order-status/index.ts",
+  "supabase/functions/notify-thirty-day-customer/index.ts",
+  "supabase/functions/notify-thirty-day-reissue/index.ts",
 ];
 
 /** Treat every remote specifier as external — we check the LOCAL graph. */

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { DELIVERY_TURNAROUND_CLAUSE } from "../_shared/deliveryPromise.ts";
+import { classifyServiceFamily, SERVICE_FAMILY_COLUMNS } from "../_shared/serviceFamily.ts";
 
 // Calm customer notice that the 30-day official-letter review has started.
 // Called by public.reopen_due_official_letter_orders() (pg_net) once per order.
@@ -30,11 +31,24 @@ serve(async (req) => {
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, confirmation_id, first_name, last_name, email")
+      .select(`id, confirmation_id, first_name, last_name, email, ${SERVICE_FAMILY_COLUMNS}`)
       .eq("confirmation_id", confirmationId).maybeSingle();
 
     if (orderError || !order) {
       return new Response(JSON.stringify({ ok: false, error: "Order not found" }), { status: 404, headers: { ...CORS, "Content-Type": "application/json" } });
+    }
+
+    // ── ESA-ONLY GATE (fail closed) ─────────────────────────────────────────
+    // Returned as a SUCCESS with sent:false so the pg_net caller does not treat
+    // the refusal as a delivery failure and retry it. "unknown" is refused too.
+    {
+      const family = classifyServiceFamily(order);
+      if (family !== "esa") {
+        return new Response(
+          JSON.stringify({ ok: true, sent: false, skipped: "not_an_esa_order", serviceFamily: family }),
+          { status: 200, headers: { ...CORS, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     if (!order.email) {

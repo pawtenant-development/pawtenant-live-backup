@@ -241,6 +241,10 @@ const ORDERS_LIST_COLUMNS =
   // required by the under_review_entered / pending_delivery_entered date bases.
   "last_under_review_entered_at,last_pending_delivery_entered_at,last_cancelled_at," +
   "official_letter_reopened_at,official_letter_final_completed_at," +
+  // ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — the admin force-complete
+  // override's audit stamp, and the flag that tells every surface this order was
+  // completed with NO customer-visible document (so nothing may claim delivery).
+  "admin_force_completed_at,completed_without_customer_document," +
   // Phase K2 — first / last touch attribution snapshots (jsonb) from the
   // analytics_phase1 migration. These carry referrer, landing_url, channel,
   // and the full UTM / click-id set so the acquisition classifier can detect

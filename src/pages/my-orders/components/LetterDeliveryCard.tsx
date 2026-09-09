@@ -10,7 +10,13 @@
 import CustomerPortalSection from "./CustomerPortalSection";
 
 import { isRefundTerminal, isOperationallyCancelled } from "@/lib/orderClassification";
-export interface DeliveryOrder {
+// ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — an admin can complete an order
+// that has no customer-visible document. `patient_notified` therefore no longer
+// implies "there is a letter", so this card asks the resolver instead of hiding
+// itself and leaving the customer with an order marked complete and no
+// explanation anywhere on the page.
+import { hasCustomerDeliverable, type ResolverOrder } from "@/lib/customerDocuments";
+export interface DeliveryOrder extends ResolverOrder {
   letter_type?: string | null;
   confirmation_id: string;
   doctor_status?: string | null;
@@ -22,8 +28,41 @@ function isPSD(order: DeliveryOrder): boolean {
 }
 
 export default function LetterDeliveryCard({ order }: { order: DeliveryOrder }) {
-  // Once delivered, DocumentsSection owns the real download buttons.
-  if (order.doctor_status === "patient_notified") return null;
+  const hasDeliverable = hasCustomerDeliverable(order);
+
+  // Once delivered AND there is genuinely something to download, DocumentsSection
+  // owns the real download buttons and this card steps aside.
+  if (order.doctor_status === "patient_notified" && hasDeliverable) return null;
+
+  // Completed with NOTHING to open. Say so plainly rather than claiming delivery
+  // or silently rendering nothing. No download button is offered, because there
+  // is no file — a disabled "unlocks when ready" placeholder would be a second
+  // untrue promise.
+  if (order.doctor_status === "patient_notified" && !hasDeliverable) {
+    return (
+      <CustomerPortalSection
+        title="Your order is complete"
+        icon="ri-customer-service-2-line"
+        tone="blue"
+        prominent
+        headerRight={
+          // Short by design. CustomerPortalSection truncates its title, and at
+          // 390px a longer badge pushed "Your order is complete" to "Your order
+          // is co…" — on the one card whose whole job is to be understood.
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-[#B45309]">
+            <i className="ri-error-warning-line"></i>No document
+          </span>
+        }
+      >
+        <p className="text-[13px] text-[#5F6B7A] leading-relaxed">
+          Your order has been marked complete by our team, but there is
+          <span className="font-semibold text-[#172033]"> no document in your portal yet</span>.
+          If you were expecting a letter here, please contact our support team and we will sort it
+          out for you straight away.
+        </p>
+      </CustomerPortalSection>
+    );
+  }
   // No pre-delivery placeholder for cancelled/fully-refunded/unpaid states.
   // PARTIAL-REFUND-TERMINAL-STATE-CONSUMER-FIX-001: a PARTIAL refund keeps the
   // letter coming, so the customer must keep this card. The old bare

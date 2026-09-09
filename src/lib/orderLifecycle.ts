@@ -44,6 +44,12 @@ import {
   type ClassifiableOrder,
 } from "./orderClassification";
 import { businessWallClockToUtc } from "./businessTime";
+// ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — the 30-day official-letter
+// markers only mean anything on an ESA order. A non-ESA row carrying a stale
+// `official_letter_reopened_at` from before the rule was scoped must not be
+// projected as if it were in a 30-day cycle. Mirrored EXACTLY in the SQL
+// `public.order_workflow_state()`, so the two classifiers stay identical.
+import { thirtyDayMarkersApply, type ServiceFamilyFields } from "./serviceFamily";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Meaningful business events — the server-controlled vocabulary
@@ -152,7 +158,7 @@ export function lifecycleEventIcon(v: string | null | undefined): string {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Structural shape needed for lifecycle date reasoning. */
-export interface LifecycleOrder extends ClassifiableOrder {
+export interface LifecycleOrder extends ClassifiableOrder, ServiceFamilyFields {
   created_at?: string | null;
   paid_at?: string | null;
   last_payment_at?: string | null;
@@ -469,7 +475,8 @@ export function orderWorkflowState(o: LifecycleOrder): WorkflowState {
   if (!o.payment_intent_id || o.status === "lead") return "lead";
   if (o.doctor_status === "patient_notified") return "completed";
   if (o.doctor_status === "pending_admin_approval") return "pending_delivery";
-  if (o.official_letter_reopened_at && !o.official_letter_final_completed_at) return "reopened";
+  // ESA-ONLY: the 30-day reopen marker is believed only on an ESA order.
+  if (thirtyDayMarkersApply(o) && o.official_letter_reopened_at && !o.official_letter_final_completed_at) return "reopened";
   if (o.doctor_user_id || o.doctor_email) return "under_review";
   return "paid_unassigned";
 }
@@ -567,7 +574,8 @@ export function workflowReason(o: LifecycleOrder): string | null {
   // pending_delivery, so the 30-day context would otherwise be lost from the
   // label. Keep surfacing it — the employee still needs to know WHY this letter
   // exists while they approve it.
-  if (w === "pending_delivery" && o.official_letter_reopened_at && !o.official_letter_final_completed_at) {
+  if (w === "pending_delivery" && thirtyDayMarkersApply(o)
+      && o.official_letter_reopened_at && !o.official_letter_final_completed_at) {
     return "Official 30-day letter submitted — awaiting approval";
   }
   if (w === "under_review" && o.last_reopened_at) return "Reopened for review";
@@ -601,7 +609,8 @@ export function lastCompletedIso(o: LifecycleOrder): string | null {
 
 /** A reopen is a WORKLOAD event, never a sale. */
 export function isReopenedOrder(o: LifecycleOrder): boolean {
-  return !!(o.last_reopened_at ?? o.official_letter_reopened_at);
+  // A generic reopen counts for any product; the 30-day marker only for ESA.
+  return !!(o.last_reopened_at ?? (thirtyDayMarkersApply(o) ? o.official_letter_reopened_at : null));
 }
 
 /** Relative "3h ago" style label for any lifecycle instant. */

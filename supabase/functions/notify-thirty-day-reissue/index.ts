@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { classifyServiceFamily, SERVICE_FAMILY_COLUMNS } from "../_shared/serviceFamily.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -44,11 +45,26 @@ serve(async (req) => {
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, confirmation_id, first_name, last_name, email, state, doctor_email, doctor_name, doctor_user_id")
+      .select(`id, confirmation_id, first_name, last_name, email, state, doctor_email, doctor_name, doctor_user_id, ${SERVICE_FAMILY_COLUMNS}`)
       .eq("confirmation_id", confirmationId).maybeSingle();
 
     if (orderError || !order) {
       return new Response(JSON.stringify({ ok: false, error: "Order not found" }), { status: 404, headers: { ...CORS, "Content-Type": "application/json" } });
+    }
+
+    // ── ESA-ONLY GATE for the 30-day variant (fail closed) ──────────────────
+    // A PSD provider must never be asked for an "official 30-day letter". The
+    // manual_reopen variant is untouched — that email is the generic employee
+    // reopen notice and is correct for every product. "unknown" is refused too.
+    if (!isManualReopen && classifyServiceFamily(order) !== "esa") {
+      return new Response(
+        JSON.stringify({
+          ok: true, sent: false, emailSent: false,
+          skipped: "not_an_esa_order",
+          serviceFamily: classifyServiceFamily(order),
+        }),
+        { status: 200, headers: { ...CORS, "Content-Type": "application/json" } },
+      );
     }
 
     if (!order.doctor_email) {

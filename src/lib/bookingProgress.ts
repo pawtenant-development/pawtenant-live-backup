@@ -112,11 +112,19 @@ export interface LifecycleStep {
 
 /** The prominent 4-step customer lifecycle. Customer-safe wording only — never
  *  exposes provider rejection, reassignment, queue/automation names, or payouts. */
-export function resolveLifecycle(o: BookingOrderLike): LifecycleStep[] {
+export function resolveLifecycle(
+  o: BookingOrderLike,
+  // ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — an admin can complete an
+  // order with no customer-visible document, so a delivered order no longer
+  // guarantees "your documents are ready in your portal". Callers that know the
+  // answer pass it; omitting it keeps the previous behaviour exactly.
+  opts?: { hasCustomerDocument?: boolean },
+): LifecycleStep[] {
   const paid = isPaidOrder(o);
   const assigned = paid && hasProvider(o);
   const evaluating = assigned && isUnderEvaluation(o);
   const delivered = paid && isDelivered(o);
+  const deliveredWithoutDocument = delivered && opts?.hasCustomerDocument === false;
 
   const bookState: StepState = paid ? "done" : "active";
   const assignState: StepState = !paid ? "locked" : assigned ? "done" : "active";
@@ -134,8 +142,13 @@ export function resolveLifecycle(o: BookingOrderLike): LifecycleStep[] {
       hint: evaluating ? "Your provider is reviewing your case." :
         delivered ? "Your evaluation is complete." :
         "Your provider begins your review after assignment." },
-    { key: "deliver", label: "Letter Delivered", icon: "ri-mail-check-line", state: deliverState,
-      hint: delivered ? "Your documents are ready in your portal." :
+    { key: "deliver",
+      // Never claim delivery of a document that is not there.
+      label: deliveredWithoutDocument ? "Order Completed" : "Letter Delivered",
+      icon: "ri-mail-check-line", state: deliverState,
+      hint: deliveredWithoutDocument
+        ? "Your order is complete. There is no document in your portal yet — please contact support and we'll sort it out."
+        : delivered ? "Your documents are ready in your portal." :
         "Your completed letter will appear here when it's ready." },
   ];
 }

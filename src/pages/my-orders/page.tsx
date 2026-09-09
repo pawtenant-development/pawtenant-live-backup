@@ -28,7 +28,7 @@ import { isUnpaidLead, isPaidOrder, isTerminalOrder } from "@/lib/bookingProgres
 import { isRefundTerminal, isOperationallyCancelled, isPartialRefund } from "@/lib/orderClassification";
 import { resolveAccountGreeting, type NameUserLike } from "@/lib/customerName";
 import { trackCustomerPortalViewed } from "@/lib/trackEvent";
-import { CUSTOMER_DOCUMENT_COLUMNS, type ResolverDoc } from "@/lib/customerDocuments";
+import { CUSTOMER_DOCUMENT_COLUMNS, hasCustomerDeliverable, type ResolverDoc } from "@/lib/customerDocuments";
 
 // CUSTOMER-PORTAL-ALL-DOCUMENT-VISIBILITY-001 — the portal's document rows are
 // exactly what the shared resolver consumes, so this extends ResolverDoc instead
@@ -411,7 +411,7 @@ function OrderCard({
         }
       />
 
-      {order.doctor_status === "patient_notified" && (
+      {order.doctor_status === "patient_notified" && hasCustomerDeliverable(order) && (
         <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-xs text-green-700 flex items-center gap-2">
           <i className="ri-checkbox-circle-fill flex-shrink-0"></i>
           {/* Delivery recipient is the ORDER's email — never the authenticated
