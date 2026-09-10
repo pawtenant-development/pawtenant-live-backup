@@ -74,6 +74,7 @@
 export type CustomerDocKind =
   | "esa_letter"
   | "psd_letter"
+  | "preliminary_document"
   | "additional_documentation"
   | "housing_completed"
   | "ra_document"
@@ -171,6 +172,7 @@ export interface CustomerDocuments {
    *  accommodation artifacts, then the customer's own uploads. */
   deliverables: CustomerDeliverable[];
   hasLetter: boolean;
+  hasPreliminary: boolean;
   hasHousingCompleted: boolean;
 }
 
@@ -331,7 +333,7 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
 
   // Partner-managed delivery: PawTenant's portal is not the delivery channel.
   if (partnerSuppressesPortal(order)) {
-    return { deliverables, hasLetter: false, hasHousingCompleted: false };
+    return { deliverables, hasLetter: false, hasPreliminary: false, hasHousingCompleted: false };
   }
 
   const docs = (order.documents ?? []).filter(isLiveCustomerRow).slice().sort(byUploadedAtAsc);
@@ -340,6 +342,20 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
   const mainLetterTitle = psd ? "Signed PSD Letter" : "Signed ESA Letter";
   const mainLetterKind: CustomerDocKind = psd ? "psd_letter" : "esa_letter";
   const delivered = letterDelivered(order);
+
+  docs
+    .filter((d) => d.doc_type === "preliminary_document")
+    .forEach((doc) => {
+      deliverables.push({
+        id: doc.id,
+        kind: "preliminary_document",
+        title: "Preliminary Document",
+        detail: "Follow-up consultation is required before a final ESA/PSD letter can be issued.",
+        icon: "ri-draft-line",
+        date: doc.uploaded_at,
+        dateVerb: "Added",
+      });
+    });
 
   // ── 1) Provider-issued letter-class rows ──────────────────────────────────
   // The EARLIEST live letter-class row is the order's main letter (it is the row
@@ -490,6 +506,7 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
   return {
     deliverables,
     hasLetter: deliverables.some((d) => d.kind === "esa_letter" || d.kind === "psd_letter"),
+    hasPreliminary: deliverables.some((d) => d.kind === "preliminary_document"),
     hasHousingCompleted: deliverables.some((d) => d.kind === "housing_completed"),
   };
 }
@@ -515,6 +532,14 @@ export function resolveCustomerDocuments(order: ResolverOrder): CustomerDocument
  */
 export function hasCustomerDeliverable(order: ResolverOrder): boolean {
   return resolveCustomerDocuments(order).deliverables.length > 0;
+}
+
+export function hasFinalCustomerDocument(order: ResolverOrder): boolean {
+  return resolveCustomerDocuments(order).hasLetter;
+}
+
+export function hasPreliminaryCustomerDocument(order: ResolverOrder): boolean {
+  return resolveCustomerDocuments(order).hasPreliminary;
 }
 
 /** Short human date, e.g. "Jul 12, 2026". */

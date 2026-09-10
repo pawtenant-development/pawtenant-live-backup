@@ -573,7 +573,7 @@ function runWiring(root) {
     // Each <button> that opens the override, and what it is disabled by. The
     // ONLY legitimate reason to disable it is a request already in flight —
     // never the order status, never the presence of a provider document.
-    const buttons = [...modal.matchAll(/<button[\s\S]{0,600}?openForceComplete[\s\S]{0,200}?>/g)].map((m) => m[0]);
+    const buttons = [...modal.matchAll(/<button(?:(?!<button)[\s\S]){0,900}?openForceComplete(?:(?!<button)[\s\S]){0,250}?>/g)].map((m) => m[0]);
     if (buttons.length < 2) return `expected at least 2 override entry points, found ${buttons.length}`;
     for (const b of buttons) {
       const d = b.match(/disabled=\{([^}]*)\}/);
@@ -715,15 +715,16 @@ function runWiring(root) {
   // ── Customer portal honesty ──
   const card = codeOnly(read(root, DELIVERY_CARD));
   check("E1. the delivery card asks whether a deliverable exists", () =>
-    /hasCustomerDeliverable\(order\)/.test(card)
-    || "LetterDeliveryCard still keys delivery purely on doctor_status");
+    /(?:hasCustomerDeliverable|resolveCustomerDocuments)\(order\)/.test(card)
+    || "LetterDeliveryCard does not consult the shared customer-document resolver");
   check("E1. the card only steps aside when there IS something to download", () =>
-    /patient_notified\s*""?\s*&& hasDeliverable\) return null/.test(card.replace(/\s+/g, " "))
-    || /&& hasDeliverable\) return null/.test(card)
-    || "the card returns null for a completed order even when nothing exists to open");
+    /patient_notified\s*""?\s*&& (?:hasDeliverable|hasLetter)\) return null/.test(card.replace(/\s+/g, " "))
+    || /&& (?:hasDeliverable|hasLetter)\) return null/.test(card)
+    || "the card returns null without a real final-document check");
   check("E1. the missing-document card offers no download control", () => {
     const raw = read(root, DELIVERY_CARD);
-    const seg = raw.slice(raw.indexOf("!hasDeliverable"), raw.indexOf("const letter ="));
+    const missingAt = Math.max(raw.indexOf("!hasDeliverable"), raw.indexOf("!hasLetter"));
+    const seg = raw.slice(missingAt, raw.indexOf("const letter ="));
     return !/<button/.test(seg)
       || "the missing-document card renders a button that cannot lead anywhere";
   });
@@ -739,15 +740,15 @@ function runWiring(root) {
   const portalPage = codeOnly(read(root, PORTAL_PAGE));
   check("E4. the documents-were-sent banner requires a real deliverable", () => {
     const at = portalPage.indexOf('doctor_status === "" && ');
-    const idx = portalPage.search(/doctor_status === ""\s*&&\s*hasCustomerDeliverable\(order\)/);
+    const idx = portalPage.search(/doctor_status === ""\s*&&\s*(?:hasCustomerDeliverable|hasFinalCustomerDocument)\(order\)/);
     if (idx >= 0) return true;
     // Locate whatever the banner IS gated on, to report it precisely.
     const m = portalPage.match(/\{\s*order\.doctor_status === ""[^&|]*(&&[^)]*)?\s*&&\s*\(/);
-    return `the banner is not gated on hasCustomerDeliverable(order)${m ? ` — found: ${m[0].trim().slice(0, 90)}` : ""}${at >= 0 ? "" : ""}`;
+    return `the banner is not gated on a shared document check${m ? ` — found: ${m[0].trim().slice(0, 90)}` : ""}${at >= 0 ? "" : ""}`;
   });
   check("E4. the portal page imports the shared deliverable check", () =>
-    /hasCustomerDeliverable/.test(portalPage)
-    || "my-orders/page.tsx does not use hasCustomerDeliverable — a delivery claim can drift again");
+    /(?:hasCustomerDeliverable|hasFinalCustomerDocument)/.test(portalPage)
+    || "my-orders/page.tsx does not use a shared customer-document check");
 
 }
 
@@ -912,7 +913,7 @@ const CONTROLS = [
     name: "N20 — the portal hides the completed-with-no-document case entirely",
     file: DELIVERY_CARD,
     apply: (s) => s.replace(
-      "  if (order.doctor_status === \"patient_notified\" && hasDeliverable) return null;",
+      "  if (order.doctor_status === \"patient_notified\" && hasLetter) return null;",
       "  if (order.doctor_status === \"patient_notified\") return null;"),
   },
   {
@@ -982,7 +983,7 @@ const CONTROLS = [
     name: "N32 — the portal claims documents were sent for a completion with none",
     file: PORTAL_PAGE,
     apply: (s) => s.replace(
-      '{order.doctor_status === "patient_notified" && hasCustomerDeliverable(order) && (',
+      '{order.doctor_status === "patient_notified" && hasFinalCustomerDocument(order) && (',
       '{order.doctor_status === "patient_notified" && ('),
   },
   {

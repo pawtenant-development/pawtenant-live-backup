@@ -28,7 +28,7 @@ import { isUnpaidLead, isPaidOrder, isTerminalOrder } from "@/lib/bookingProgres
 import { isRefundTerminal, isOperationallyCancelled, isPartialRefund } from "@/lib/orderClassification";
 import { resolveAccountGreeting, type NameUserLike } from "@/lib/customerName";
 import { trackCustomerPortalViewed } from "@/lib/trackEvent";
-import { CUSTOMER_DOCUMENT_COLUMNS, hasCustomerDeliverable, type ResolverDoc } from "@/lib/customerDocuments";
+import { CUSTOMER_DOCUMENT_COLUMNS, hasFinalCustomerDocument, type ResolverDoc } from "@/lib/customerDocuments";
 
 // CUSTOMER-PORTAL-ALL-DOCUMENT-VISIBILITY-001 — the portal's document rows are
 // exactly what the shared resolver consumes, so this extends ResolverDoc instead
@@ -411,7 +411,15 @@ function OrderCard({
         }
       />
 
-      {order.doctor_status === "patient_notified" && hasCustomerDeliverable(order) && (
+      {/* ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001-CLOSURE — this banner used
+          to key on `doctor_status === "patient_notified"` ALONE. An admin
+          force-complete sets exactly that with no document and no email, so the
+          banner told the customer their documents "were sent" and "are ready in
+          My Documents" while My Documents was empty — a false delivery claim AND
+          a false send claim on the same line. It now also requires a real
+          deliverable; when there is none, LetterDeliveryCard already explains the
+          situation honestly, so a second, contradicting card is not rendered. */}
+      {order.doctor_status === "patient_notified" && hasFinalCustomerDocument(order) && (
         <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-xs text-green-700 flex items-center gap-2">
           <i className="ri-checkbox-circle-fill flex-shrink-0"></i>
           {/* Delivery recipient is the ORDER's email — never the authenticated

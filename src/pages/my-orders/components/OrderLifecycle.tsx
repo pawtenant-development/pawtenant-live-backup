@@ -15,7 +15,7 @@ import CustomerPortalSection from "./CustomerPortalSection";
 // ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — the final step must not say
 // "Your documents are ready in your portal" for an order an admin completed
 // without a customer-visible document.
-import { hasCustomerDeliverable, type ResolverOrder } from "@/lib/customerDocuments";
+import { hasFinalCustomerDocument, type ResolverOrder } from "@/lib/customerDocuments";
 
 const DOT: Record<StepState, string> = {
   done: "bg-emerald-500 text-white ring-emerald-100",
@@ -34,7 +34,7 @@ const CONNECTOR: Record<StepState, string> = {
 };
 
 export default function OrderLifecycle({ order }: { order: BookingOrderLike & ResolverOrder }) {
-  const steps = resolveLifecycle(order, { hasCustomerDocument: hasCustomerDeliverable(order) });
+  const steps = resolveLifecycle(order, { hasCustomerDocument: hasFinalCustomerDocument(order) });
   const unpaid = isUnpaidLead(order);
 
   return (

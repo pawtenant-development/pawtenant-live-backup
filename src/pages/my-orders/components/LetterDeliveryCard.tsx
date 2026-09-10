@@ -15,7 +15,7 @@ import { isRefundTerminal, isOperationallyCancelled } from "@/lib/orderClassific
 // implies "there is a letter", so this card asks the resolver instead of hiding
 // itself and leaving the customer with an order marked complete and no
 // explanation anywhere on the page.
-import { hasCustomerDeliverable, type ResolverOrder } from "@/lib/customerDocuments";
+import { resolveCustomerDocuments, type ResolverOrder } from "@/lib/customerDocuments";
 export interface DeliveryOrder extends ResolverOrder {
   letter_type?: string | null;
   confirmation_id: string;
@@ -28,17 +28,34 @@ function isPSD(order: DeliveryOrder): boolean {
 }
 
 export default function LetterDeliveryCard({ order }: { order: DeliveryOrder }) {
-  const hasDeliverable = hasCustomerDeliverable(order);
+  const { hasLetter, hasPreliminary } = resolveCustomerDocuments(order);
 
-  // Once delivered AND there is genuinely something to download, DocumentsSection
-  // owns the real download buttons and this card steps aside.
-  if (order.doctor_status === "patient_notified" && hasDeliverable) return null;
+  if (hasPreliminary && !hasLetter) {
+    return (
+      <CustomerPortalSection
+        title="Follow-up consultation required"
+        icon="ri-calendar-check-line"
+        tone="blue"
+        prominent
+        headerRight={
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-[#B45309]">
+            <i className="ri-error-warning-line"></i>Action needed
+          </span>
+        }
+      >
+        <p className="text-[13px] text-[#5F6B7A] leading-relaxed">
+          A <span className="font-semibold text-[#172033]">preliminary document</span> is available
+          in My Documents. It is not your final ESA/PSD letter. Please contact PawTenant to schedule
+          or complete your follow-up consultation; after that review, your provider can issue the
+          final letter if you qualify.
+        </p>
+      </CustomerPortalSection>
+    );
+  }
 
-  // Completed with NOTHING to open. Say so plainly rather than claiming delivery
-  // or silently rendering nothing. No download button is offered, because there
-  // is no file — a disabled "unlocks when ready" placeholder would be a second
-  // untrue promise.
-  if (order.doctor_status === "patient_notified" && !hasDeliverable) {
+  if (order.doctor_status === "patient_notified" && hasLetter) return null;
+
+  if (order.doctor_status === "patient_notified" && !hasLetter) {
     return (
       <CustomerPortalSection
         title="Your order is complete"
@@ -46,19 +63,15 @@ export default function LetterDeliveryCard({ order }: { order: DeliveryOrder }) 
         tone="blue"
         prominent
         headerRight={
-          // Short by design. CustomerPortalSection truncates its title, and at
-          // 390px a longer badge pushed "Your order is complete" to "Your order
-          // is co…" — on the one card whose whole job is to be understood.
           <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-[#B45309]">
-            <i className="ri-error-warning-line"></i>No document
+            <i className="ri-error-warning-line"></i>No final letter
           </span>
         }
       >
         <p className="text-[13px] text-[#5F6B7A] leading-relaxed">
           Your order has been marked complete by our team, but there is
-          <span className="font-semibold text-[#172033]"> no document in your portal yet</span>.
-          If you were expecting a letter here, please contact our support team and we will sort it
-          out for you straight away.
+          <span className="font-semibold text-[#172033]"> no final ESA/PSD letter in your portal yet</span>.
+          If you were expecting a letter, please contact support so we can arrange the required follow-up.
         </p>
       </CustomerPortalSection>
     );

@@ -42,6 +42,7 @@ const ALLOWED_DOC_TYPES = new Set<string>([
   "housing_verification",
   "landlord_form",
   "signed_letter",
+  "preliminary_document",
   "other",
 ]);
 

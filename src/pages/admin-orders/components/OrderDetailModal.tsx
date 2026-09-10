@@ -435,6 +435,7 @@ const DOC_TYPE_OPTIONS = [
   { value: "housing_verification", label: "Housing Verification Letter" },
   { value: "landlord_form", label: "Landlord Form" },
   { value: "signed_letter", label: "Signed Letter" },
+  { value: "preliminary_document", label: "Preliminary Document — Follow-up Required" },
   { value: "other", label: "Other / Supporting Document" },
 ];
 
@@ -1261,6 +1262,7 @@ export default function OrderDetailModal({
   const [orderDocs, setOrderDocs] = useState<OrderDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [addDocForm, setAddDocForm] = useState({ url: "", label: "", docType: "other", notes: "" });
+  const [addDocFile, setAddDocFile] = useState<File | null>(null);
   const [savingDoc, setSavingDoc] = useState(false);
   const [addDocMsg, setAddDocMsg] = useState("");
   const [sendingAll, setSendingAll] = useState(false);
@@ -1976,33 +1978,74 @@ export default function OrderDetailModal({
   }, [section, loadOrderDocs]);
 
   const handleAddDoc = async () => {
-    if (!addDocForm.url.trim() || !addDocForm.label.trim()) {
-      setAddDocMsg("URL and label are required.");
-      setTimeout(() => setAddDocMsg(""), 3000);
+    const label = addDocForm.label.trim();
+    const url = addDocForm.url.trim();
+    if ((!addDocFile && !url) || !label) {
+      setAddDocMsg("Choose a file (or enter a URL) and add a label.");
+      setTimeout(() => setAddDocMsg(""), 5000);
       return;
     }
+
     setSavingDoc(true);
-    const { error } = await supabase.from("order_documents").insert({
-      order_id: order.id,
-      confirmation_id: order.confirmation_id,
-      label: addDocForm.label.trim(),
-      doc_type: addDocForm.docType,
-      file_url: addDocForm.url.trim(),
-      notes: addDocForm.notes.trim() || null,
-      uploaded_by: adminProfile.full_name,
-      sent_to_customer: false,
-      customer_visible: true,
-    });
-    setSavingDoc(false);
-    if (!error) {
-      setAddDocMsg("Document saved! It is now visible in the customer portal.");
-      setAddDocForm({ url: "", label: "", docType: "other", notes: "" });
-      setShowAddDocForm(false);
-      loadOrderDocs();
-    } else {
-      setAddDocMsg(`Save failed: ${error.message}`);
+    setAddDocMsg("");
+    let errorMessage = "";
+    try {
+      if (addDocFile) {
+        const token = await getAdminToken();
+        if (!token) throw new Error("Admin session expired — please sign in again.");
+
+        const form = new FormData();
+        form.append("file", addDocFile);
+        form.append("order_id", order.id);
+        form.append("confirmation_id", order.confirmation_id ?? "");
+        form.append("label", label);
+        form.append("doc_type", addDocForm.docType);
+        form.append("notes", addDocForm.notes.trim());
+        form.append("customer_visible", "true");
+
+        const response = await fetch(`${supabaseUrl}/functions/v1/admin-upload-document`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+        const result = await response.json().catch(() => ({})) as { ok?: boolean; error?: string };
+        if (!response.ok || !result.ok) throw new Error(result.error ?? "Upload failed");
+      } else {
+        const { error } = await supabase.from("order_documents").insert({
+          order_id: order.id,
+          confirmation_id: order.confirmation_id,
+          label,
+          doc_type: addDocForm.docType,
+          file_url: url,
+          notes: addDocForm.notes.trim() || null,
+          uploaded_by: adminProfile.full_name,
+          sent_to_customer: false,
+          customer_visible: true,
+        });
+        if (error) throw error;
+      }
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : "Unknown upload error";
     }
-    setTimeout(() => setAddDocMsg(""), 5000);
+    setSavingDoc(false);
+
+    if (errorMessage) {
+      setAddDocMsg(`Save failed: ${errorMessage}`);
+      setTimeout(() => setAddDocMsg(""), 8000);
+      return;
+    }
+
+    const preliminary = addDocForm.docType === "preliminary_document";
+    setAddDocMsg(preliminary
+      ? "Preliminary document uploaded. Send the follow-up request, then review and mark the order complete."
+      : "Document saved! It is now visible in the customer portal.");
+    setAddDocFile(null);
+    setAddDocForm(preliminary
+      ? { url: "", label: "Preliminary Document", docType: "preliminary_document", notes: "" }
+      : { url: "", label: "", docType: "other", notes: "" });
+    await loadOrderDocs();
+    if (!preliminary) setShowAddDocForm(false);
+    setTimeout(() => setAddDocMsg(""), 10000);
   };
 
   const handleSendAllToCustomer = async () => {
@@ -5566,11 +5609,23 @@ export default function OrderDetailModal({
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
                   <p className="text-xs font-bold text-gray-600 uppercase tracking-widest">Add New Document</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Upload File</label>
+                      <input
+                        key={addDocFile ? addDocFile.name : "empty"}
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,application/pdf,image/png,image/jpeg,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        onChange={(e) => setAddDocFile(e.target.files?.[0] ?? null)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white file:mr-3 file:px-3 file:py-1 file:rounded-md file:border-0 file:bg-[#dbeafe] file:text-[#2d5a8e] file:font-bold cursor-pointer"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1">PDF, image, DOC or DOCX · maximum 25 MB. The file is stored privately and opened through a signed link.</p>
+                    </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-500 mb-1">Document URL *</label>
+                      <label className="block text-xs font-bold text-gray-500 mb-1">Or Document URL</label>
                       <input type="url" value={addDocForm.url} onChange={(e) => setAddDocForm((f) => ({ ...f, url: e.target.value }))}
                         placeholder="https://storage.example.com/doc.pdf"
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
+                        disabled={!!addDocFile}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] disabled:bg-gray-100 disabled:text-gray-400" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-gray-500 mb-1">Document Label *</label>
@@ -5581,7 +5636,11 @@ export default function OrderDetailModal({
                     <div>
                       <label className="block text-xs font-bold text-gray-500 mb-1">Document Type</label>
                       <div className="relative">
-                        <select value={addDocForm.docType} onChange={(e) => setAddDocForm((f) => ({ ...f, docType: e.target.value }))}
+                        <select value={addDocForm.docType} onChange={(e) => setAddDocForm((f) => ({
+                          ...f,
+                          docType: e.target.value,
+                          label: e.target.value === "preliminary_document" && !f.label.trim() ? "Preliminary Document" : f.label,
+                        }))}
                           className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
                           {DOC_TYPE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                         </select>
@@ -5595,9 +5654,18 @@ export default function OrderDetailModal({
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5]" />
                     </div>
                   </div>
+                  {addDocForm.docType === "preliminary_document" && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                      <p className="font-bold flex items-center gap-1.5"><i className="ri-error-warning-line"></i>Customer-unresponsive workflow</p>
+                      <p className="mt-1 leading-relaxed">
+                        This file is shown as a preliminary document, not as an ESA/PSD letter. It does not trigger a
+                        “documents ready” email, does not count as final-letter delivery, and creates no provider earning.
+                      </p>
+                    </div>
+                  )}
                   {addDocMsg && (
-                    <p className={`text-xs flex items-center gap-1 ${addDocMsg.includes("saved") ? "text-[#3b6ea5]" : "text-red-500"}`}>
-                      <i className={addDocMsg.includes("saved") ? "ri-checkbox-circle-fill" : "ri-error-warning-line"}></i>{addDocMsg}
+                    <p className={`text-xs flex items-center gap-1 ${addDocMsg.includes("failed") || addDocMsg.includes("Choose") ? "text-red-500" : "text-[#3b6ea5]"}`}>
+                      <i className={addDocMsg.includes("failed") || addDocMsg.includes("Choose") ? "ri-error-warning-line" : "ri-checkbox-circle-fill"}></i>{addDocMsg}
                     </p>
                   )}
                   <div className="flex items-center gap-2">
@@ -5606,6 +5674,22 @@ export default function OrderDetailModal({
                         {savingDoc ? <><i className="ri-loader-4-line animate-spin"></i>Saving...</> : <><i className="ri-save-line"></i>Save Document</>}
                     </button>
                   </div>
+                  {addDocForm.docType === "preliminary_document" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <button type="button" onClick={() => void handleSendConsultationInvite()}
+                        disabled={consultInviteSending || !order.email || !orderDocs.some((doc) => doc.doc_type === "preliminary_document" && doc.customer_visible)}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 border border-orange-300 text-orange-700 bg-white hover:bg-orange-50 rounded-lg text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed">
+                        <i className={consultInviteSending ? "ri-loader-4-line animate-spin" : "ri-calendar-check-line"}></i>
+                        {consultInviteSending ? "Sending..." : "Send Follow-up Consultation Request"}
+                      </button>
+                      <button type="button" onClick={() => void openForceComplete()}
+                        disabled={forceCompleteBusy}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 bg-gray-900 text-white rounded-lg text-xs font-bold hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed">
+                        <i className="ri-checkbox-circle-line"></i>Review &amp; Mark Complete
+                      </button>
+                      {consultInviteMsg && <p className="sm:col-span-2 text-xs text-orange-700 font-semibold">{consultInviteMsg}</p>}
+                    </div>
+                  )}
                 </div>
               )}
 

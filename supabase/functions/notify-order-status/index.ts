@@ -320,6 +320,7 @@ Deno.serve(async (req: Request) => {
       .select("id", { count: "exact", head: true })
       .eq("order_id", order.id)
       .eq("customer_visible", true)
+      .neq("doc_type", "preliminary_document")
       .is("superseded_by_document_id", null)
       .in("review_status", ["approved", "not_applicable"]);
     const hasDoc = (liveDocs ?? 0) > 0 || !!(order.signed_letter_url ?? "").trim();
