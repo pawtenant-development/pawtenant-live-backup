@@ -24,6 +24,7 @@ import SubscriptionRenewalNotice from "../../../components/feature/SubscriptionR
 import CompactWhatHappensNext from "../../assessment/components/step3/CompactWhatHappensNext";
 import RefundReassurance from "../../assessment/components/step3/RefundReassurance";
 import SupportCard from "../../assessment/components/step3/SupportCard";
+import ResponsiveImage from "@/components/base/ResponsiveImage";
 
 const SUPABASE_URL = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
@@ -48,6 +49,35 @@ const STRIPE_APPEARANCE: StripeElementsOptions["appearance"] = {
 // brand-green trust accent, and the same action-orange CTA palette as ESA.
 // Spacing rhythm, hierarchy, and typography all flow from these tokens.
 const BRAND_GREEN = "#1A5C4F";
+
+// ─── Order summary · what's included ─────────────────────────────────────────
+// ONE list, rendered by both the mobile and the desktop summary, so the two can
+// never drift apart. The workbook is the only line with artwork: a small cover
+// thumbnail makes the free resource feel real at the moment of payment. It is
+// the PSD workbook's OWN cover — never the ESA planner's — and it is
+// presentation only. Entitlement is decided by the database after payment
+// (ESA-PSD-PLANNERS-MARKETING-LIVE-001).
+interface IncludedItem {
+  icon: string;
+  text: string;
+  thumb?: { src: string; alt: string; width: number; height: number };
+}
+const PSD_CHECKOUT_INCLUDED: IncludedItem[] = [
+  { icon: "ri-stethoscope-line", text: "Provider evaluation" },
+  { icon: "ri-file-text-line", text: "Official PSD letter PDF" },
+  { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
+  { icon: "ri-service-line", text: "ADA-compliant" },
+  {
+    icon: "ri-book-open-line",
+    text: "Free PSD Training Workbook",
+    thumb: {
+      src: "/assets/planner/psd-workbook-cover.jpg",
+      alt: "Cover of the free Psychiatric Service Dog Training Workbook by PawTenant",
+      width: 720,
+      height: 938,
+    },
+  },
+];
 const BRAND_GREEN_SOFT = "#E8F1EE";
 const ACTION_ORANGE = "#F97316";
 const ACTION_ORANGE_SOFT = "#FFEDD5";
@@ -976,19 +1006,27 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
                   <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.18em] mb-3">
                     What&apos;s Included
                   </p>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
-                    {[
-                      { icon: "ri-stethoscope-line", text: "Provider evaluation" },
-                      { icon: "ri-file-text-line", text: "Official PSD letter PDF" },
-                      { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
-                      { icon: "ri-service-line", text: "ADA-compliant" },
-                      { icon: "ri-book-open-line", text: "Free PSD Training Workbook" },
-                    ].map((item) => (
-                      <div key={item.text} className="flex items-center gap-1.5 min-w-0">
-                        <i
-                          className={`${item.icon} text-xs flex-shrink-0`}
-                          style={{ color: BRAND_GREEN }}
-                        ></i>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 items-center">
+                    {PSD_CHECKOUT_INCLUDED.map((item) => (
+                      <div
+                        key={item.text}
+                        className={`flex items-center gap-2 min-w-0 ${item.thumb ? "col-span-2" : ""}`}
+                      >
+                        {item.thumb ? (
+                          <ResponsiveImage
+                            src={item.thumb.src}
+                            alt={item.thumb.alt}
+                            width={item.thumb.width}
+                            height={item.thumb.height}
+                            sizes="26px"
+                            className="w-[26px] h-auto block flex-shrink-0 rounded-[3px] ring-1 ring-slate-200 bg-white"
+                          />
+                        ) : (
+                          <i
+                            className={`${item.icon} text-xs flex-shrink-0`}
+                            style={{ color: BRAND_GREEN }}
+                          ></i>
+                        )}
                         <span className="text-xs text-slate-700 font-medium truncate">
                           {item.text}
                         </span>
@@ -1519,19 +1557,27 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
                   <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.18em] mb-3">
                     What&apos;s Included
                   </p>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
-                    {[
-                      { icon: "ri-stethoscope-line", text: "Provider evaluation" },
-                      { icon: "ri-file-text-line", text: "Official PSD letter PDF" },
-                      { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
-                      { icon: "ri-service-line", text: "ADA-compliant" },
-                      { icon: "ri-book-open-line", text: "Free PSD Training Workbook" },
-                    ].map((item) => (
-                      <div key={item.text} className="flex items-center gap-1.5 min-w-0">
-                        <i
-                          className={`${item.icon} text-xs flex-shrink-0`}
-                          style={{ color: BRAND_GREEN }}
-                        ></i>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 items-center">
+                    {PSD_CHECKOUT_INCLUDED.map((item) => (
+                      <div
+                        key={item.text}
+                        className={`flex items-center gap-2 min-w-0 ${item.thumb ? "col-span-2" : ""}`}
+                      >
+                        {item.thumb ? (
+                          <ResponsiveImage
+                            src={item.thumb.src}
+                            alt={item.thumb.alt}
+                            width={item.thumb.width}
+                            height={item.thumb.height}
+                            sizes="26px"
+                            className="w-[26px] h-auto block flex-shrink-0 rounded-[3px] ring-1 ring-slate-200 bg-white"
+                          />
+                        ) : (
+                          <i
+                            className={`${item.icon} text-xs flex-shrink-0`}
+                            style={{ color: BRAND_GREEN }}
+                          ></i>
+                        )}
                         <span className="text-xs text-slate-700 font-medium truncate">
                           {item.text}
                         </span>

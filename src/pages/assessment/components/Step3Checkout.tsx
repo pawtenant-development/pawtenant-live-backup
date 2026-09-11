@@ -22,6 +22,7 @@ import SupportCard from "./step3/SupportCard";
 import { US_STATES } from "../../../lib/usStates";
 import { trackCheckoutViewed } from "@/lib/trackEvent";
 import { flowVersionProp } from "@/config/flowVersion";
+import ResponsiveImage from "@/components/base/ResponsiveImage";
 
 // ─── Module-level Stripe constants ───────────────────────────────────────────
 const stripePromise = loadStripe(
@@ -35,6 +36,34 @@ const SUPABASE_KEY = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY as string;
 // BRAND_GREEN (#1A5C4F) — calm, deep, used for trust signals (HIPAA chip,
 // shield icons, "Reviewed by Licensed" card, etc.). Does NOT pop, by design.
 const BRAND_GREEN = "#1A5C4F";
+
+// ─── Order summary · what's included ─────────────────────────────────────────
+// ONE list, rendered by both the mobile and the desktop summary, so the two can
+// never drift apart again. The planner is the only line with artwork: a small
+// cover thumbnail makes the free resource feel real at the moment of payment.
+// It is presentation only — nothing here grants access. Entitlement is decided
+// by the database after payment (ESA-PSD-PLANNERS-MARKETING-LIVE-001).
+interface IncludedItem {
+  icon: string;
+  text: string;
+  thumb?: { src: string; alt: string; width: number; height: number };
+}
+const CHECKOUT_INCLUDED: IncludedItem[] = [
+  { icon: "ri-stethoscope-line", text: "Provider evaluation" },
+  { icon: "ri-file-text-line", text: "Official ESA letter PDF" },
+  { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
+  { icon: "ri-home-heart-line", text: "Fair Housing Act" },
+  {
+    icon: "ri-book-open-line",
+    text: "Free Pet Care Planner",
+    thumb: {
+      src: "/assets/planner/pet-care-planner-cover.jpg",
+      alt: "Cover of the free Pet Care Planner by PawTenant",
+      width: 720,
+      height: 920,
+    },
+  },
+];
 const BRAND_GREEN_SOFT = "#E8F1EE";
 const BRAND_GREEN_BORDER = "#CFE2DC";
 
@@ -865,19 +894,27 @@ function MobileSummarySheet({
                 <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.18em] mb-3">
                   What&apos;s Included
                 </p>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
-                  {[
-                    { icon: "ri-stethoscope-line", text: "Provider evaluation" },
-                    { icon: "ri-file-text-line", text: "Official ESA letter PDF" },
-                    { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
-                    { icon: "ri-home-heart-line", text: "Fair Housing Act" },
-                    { icon: "ri-book-open-line", text: "Free Pet Care Planner" },
-                  ].map((item) => (
-                    <div key={item.text} className="flex items-center gap-1.5 min-w-0">
-                      <i
-                        className={`${item.icon} text-xs flex-shrink-0`}
-                        style={{ color: BRAND_GREEN }}
-                      ></i>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 items-center">
+                  {CHECKOUT_INCLUDED.map((item) => (
+                    <div
+                      key={item.text}
+                      className={`flex items-center gap-2 min-w-0 ${item.thumb ? "col-span-2" : ""}`}
+                    >
+                      {item.thumb ? (
+                        <ResponsiveImage
+                          src={item.thumb.src}
+                          alt={item.thumb.alt}
+                          width={item.thumb.width}
+                          height={item.thumb.height}
+                          sizes="26px"
+                          className="w-[26px] h-auto block flex-shrink-0 rounded-[3px] ring-1 ring-slate-200 bg-white"
+                        />
+                      ) : (
+                        <i
+                          className={`${item.icon} text-xs flex-shrink-0`}
+                          style={{ color: BRAND_GREEN }}
+                        ></i>
+                      )}
                       <span className="text-xs text-slate-700 font-medium truncate">
                         {item.text}
                       </span>
@@ -1270,19 +1307,27 @@ export default function Step3Checkout({
                   <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.18em] mb-3">
                     What&apos;s Included
                   </p>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
-                    {[
-                      { icon: "ri-stethoscope-line", text: "Provider evaluation" },
-                      { icon: "ri-file-text-line", text: "Official ESA letter PDF" },
-                      { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
-                      { icon: "ri-home-heart-line", text: "Fair Housing Act" },
-                    { icon: "ri-book-open-line", text: "Free Pet Care Planner" },
-                    ].map((item) => (
-                      <div key={item.text} className="flex items-center gap-1.5 min-w-0">
-                        <i
-                          className={`${item.icon} text-xs flex-shrink-0`}
-                          style={{ color: BRAND_GREEN }}
-                        ></i>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 items-center">
+                    {CHECKOUT_INCLUDED.map((item) => (
+                      <div
+                        key={item.text}
+                        className={`flex items-center gap-2 min-w-0 ${item.thumb ? "col-span-2" : ""}`}
+                      >
+                        {item.thumb ? (
+                          <ResponsiveImage
+                            src={item.thumb.src}
+                            alt={item.thumb.alt}
+                            width={item.thumb.width}
+                            height={item.thumb.height}
+                            sizes="26px"
+                            className="w-[26px] h-auto block flex-shrink-0 rounded-[3px] ring-1 ring-slate-200 bg-white"
+                          />
+                        ) : (
+                          <i
+                            className={`${item.icon} text-xs flex-shrink-0`}
+                            style={{ color: BRAND_GREEN }}
+                          ></i>
+                        )}
                         <span className="text-xs text-slate-700 font-medium truncate">
                           {item.text}
                         </span>

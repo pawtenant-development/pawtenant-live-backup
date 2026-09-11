@@ -229,10 +229,26 @@ async function run() {
   ok(!/\.from\("orders"\)|\.from\("doctor_earnings"\)|\.from\("order_documents"\)/.test(fnUrlCode + codeOnly(fnUp)), "an edge function reads or writes orders / earnings / documents directly");
 
   // ── 14 · checkout copy is product-aware (executed) ────────────────────────
-  ok((step3Nc.match(/text: "Free Pet Care Planner"/g) || []).length === 2, "the ESA checkout 'What's Included' no longer lists the free planner on BOTH its desktop and mobile copies");
-  ok(!/workbook/i.test(step3Nc), "the ESA checkout advertises the PSD workbook");
-  ok((psdStep3Nc.match(/text: "Free PSD Training Workbook"/g) || []).length === 2, "the PSD checkout 'What's Included' no longer lists the PSD workbook on BOTH its desktop and mobile copies");
-  ok(!/Pet Care Planner/.test(psdStep3Nc), "the PSD checkout advertises the ESA Pet Care Planner");
+  // The two summaries (mobile + desktop) render ONE shared list, so they cannot
+  // drift: exactly one planner entry, rendered by exactly two call sites, and
+  // neither may slice or filter the list on its way to the customer.
+  ok((step3Nc.match(/text: "Free Pet Care Planner"/g) || []).length === 1
+     && (step3Nc.match(/CHECKOUT_INCLUDED\.map\(/g) || []).length === 2
+     && !/CHECKOUT_INCLUDED\s*\.\s*(slice|filter|splice)/.test(step3Nc),
+    "the ESA checkout 'What's Included' no longer lists the free planner on BOTH its desktop and mobile copies (one shared list, rendered twice, unfiltered)");
+  // The thumbnail is the ESA planner's OWN cover, described, and sized so the
+  // summary box cannot shift while it loads.
+  ok(/thumb:\s*\{[\s\S]{0,120}src: "\/assets\/planner\/pet-care-planner-cover\.jpg",[\s\S]{0,200}alt: "[^"]{15,}",[\s\S]{0,80}width: 720,[\s\S]{0,40}height: 920,/.test(step3Nc),
+    "the ESA checkout planner thumbnail lost its own cover source, its alt text or its intrinsic dimensions");
+  ok(!/workbook/i.test(step3Nc) && !/psd-workbook/.test(step3Nc), "the ESA checkout advertises the PSD workbook");
+  // Same shape on the PSD side: ONE shared list, rendered by both summaries.
+  ok((psdStep3Nc.match(/text: "Free PSD Training Workbook"/g) || []).length === 1
+     && (psdStep3Nc.match(/PSD_CHECKOUT_INCLUDED\.map\(/g) || []).length === 2
+     && !/PSD_CHECKOUT_INCLUDED\s*\.\s*(slice|filter|splice)/.test(psdStep3Nc),
+    "the PSD checkout 'What's Included' no longer lists the PSD workbook on BOTH its desktop and mobile copies (one shared list, rendered twice, unfiltered)");
+  ok(/thumb:\s*\{[\s\S]{0,120}src: "\/assets\/planner\/psd-workbook-cover\.jpg",[\s\S]{0,200}alt: "[^"]{15,}",[\s\S]{0,80}width: 720,[\s\S]{0,40}height: 938,/.test(psdStep3Nc),
+    "the PSD checkout workbook thumbnail lost its own cover source, its alt text or its intrinsic dimensions");
+  ok(!/Pet Care Planner/.test(psdStep3Nc) && !/pet-care-planner/.test(psdStep3Nc), "the PSD checkout advertises the ESA Pet Care Planner");
   ok((pkgNc.match(/bonus: plannerBenefitFor\("esa"\)/g) || []).length === 2, "the ESA package cards no longer resolve their bonus through plannerBenefitFor(\"esa\")");
   ok((pkgNc.match(/bonus: plannerBenefitFor\("psd"\)/g) || []).length === 2, "the PSD package cards no longer resolve their bonus through plannerBenefitFor(\"psd\") (service-aware)");
   ok(/\{c\.bonus && \(/.test(pkgNc), "the package card no longer renders the bonus conditionally");
@@ -500,10 +516,22 @@ if (process.argv.includes("--self-test")) {
       find: "  const safeName = safeDownloadFilename(", replace: "  await admin.from(\"communications\").insert({ type: \"email\" });\n  const safeName = safeDownloadFilename(" },
     { name: "N14 opening a resource creates a provider earning", file: "fnUrl",
       find: "  const safeName = safeDownloadFilename(", replace: "  await admin.from(\"doctor_earnings\").insert({});\n  const safeName = safeDownloadFilename(" },
-    { name: "N15 the ESA checkout drops the planner from one of its two copies", file: "step3",
-      find: "                    { icon: \"ri-book-open-line\", text: \"Free Pet Care Planner\" },\n", replace: "" },
+    { name: "N15 the ESA checkout drops the planner from its shared What's Included list", file: "step3",
+      find: "  {\n    icon: \"ri-book-open-line\",\n    text: \"Free Pet Care Planner\",\n", replace: "  {\n    icon: \"ri-book-open-line\",\n    text: \"Provider evaluation\",\n" },
+    { name: "N15b one of the two ESA summaries silently shortens the shared list", file: "step3",
+      find: "CHECKOUT_INCLUDED.map((item) => (", replace: "CHECKOUT_INCLUDED.slice(0, 4).map((item) => (" },
+    { name: "N15c the ESA checkout thumbnail loses its intrinsic dimensions (layout shift at payment)", file: "step3",
+      find: "      width: 720,\n      height: 920,\n", replace: "" },
+    { name: "N15d the ESA checkout shows the PSD workbook cover as the pet planner", file: "step3",
+      find: "      src: \"/assets/planner/pet-care-planner-cover.jpg\",", replace: "      src: \"/assets/planner/psd-workbook-cover.jpg\"," },
     { name: "N16 the PSD checkout advertises the ESA Pet Care Planner", file: "psdStep3",
-      find: "{ icon: \"ri-book-open-line\", text: \"Free PSD Training Workbook\" },", replace: "{ icon: \"ri-book-open-line\", text: \"Free Pet Care Planner\" }," },
+      find: "    text: \"Free PSD Training Workbook\",", replace: "    text: \"Free Pet Care Planner\"," },
+    { name: "N16b one of the two PSD summaries silently shortens the shared list", file: "psdStep3",
+      find: "PSD_CHECKOUT_INCLUDED.map((item) => (", replace: "PSD_CHECKOUT_INCLUDED.slice(0, 4).map((item) => (" },
+    { name: "N16c the PSD checkout thumbnail loses its intrinsic dimensions (layout shift at payment)", file: "psdStep3",
+      find: "      width: 720,\n      height: 938,\n", replace: "" },
+    { name: "N16d the PSD checkout shows the ESA planner cover as the workbook", file: "psdStep3",
+      find: "      src: \"/assets/planner/psd-workbook-cover.jpg\",", replace: "      src: \"/assets/planner/pet-care-planner-cover.jpg\"," },
     { name: "N17 plannerBenefitFor(\"psd\") promises the ESA planner (assets swapped in copy)", file: "benefit",
       find: "  return PSD_PLANNER_PUBLISHED ? PSD_PLANNER_BENEFIT_LINE : null;", replace: "  return ESA_PLANNER_BENEFIT_LINE;" },
     { name: "N18 the shared PSD plan cards advertise the ESA planner", file: "cards",
@@ -519,7 +547,7 @@ if (process.argv.includes("--self-test")) {
       find: "grant execute on function public.customer_resource_access(text, text) to authenticated, service_role;",
       replace: "grant execute on function public.customer_resource_access(text, text) to anon, authenticated, service_role;" },
     { name: "N23 the portal no longer mounts the Included Resources section", file: "portal",
-      find: "            <IncludedResourcesSection\n              orders={orders}\n              isAdminPreview={isAdminPreview}\n              previewEmail={isAdminPreview ? (searchEmail.trim() || null) : null}\n            />\n", replace: "" },
+      find: "                      includedResources={\n                        <IncludedResourcesSection\n                          orders={orders}\n                          isAdminPreview={isAdminPreview}\n                          previewEmail={isAdminPreview ? (searchEmail.trim() || null) : null}\n                        />\n                      }\n", replace: "" },
     { name: "N24 the marketing section drops the disclaimer", file: "marketing",
       find: "            <p className=\"text-[11px] text-gray-400 mt-3 leading-relaxed max-w-lg\">{content.disclaimer}</p>\n", replace: "" },
     { name: "N25 the ESA housing LP puts the ESA planner line into the PSD card", file: "lp",

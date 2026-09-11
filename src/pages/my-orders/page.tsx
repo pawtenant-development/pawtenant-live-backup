@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../../lib/supabaseClient";
 import ContactSupportWidget from "./components/ContactSupportWidget";
@@ -220,11 +220,18 @@ function OrderCard({
   addonSuccessOrder,
   addPetSuccessOrder,
   layout = "two-col",
+  includedResources = null,
 }: {
   order: Order;
   onContactSupport: () => void;
   addonSuccessOrder?: string | null;
   addPetSuccessOrder?: string | null;
+  // Account-level Included Resources card, built by the page (which owns the
+  // order list and the admin Customer View email) and rendered here so it sits
+  // directly under Your Provider instead of at the bottom of the portal. It is
+  // still ONE card for the account — OrderCard renders only for the selected
+  // order — and it is deliberately kept out of the My Documents column.
+  includedResources?: ReactNode;
   // "two-col" = dedicated right-hand Documents column (single-order view).
   // "single" = stacked one column (used beside the multi-order switcher rail),
   // Documents still surfacing right after the Housing workflow.
@@ -382,6 +389,11 @@ function OrderCard({
 
       {/* Assigned provider */}
       <ProviderInfoCard order={order} />
+
+      {/* Included Resources (free planner / workbook) — directly under the
+          provider, where customers look after their case status. Not part of
+          the clinical document list. */}
+      {includedResources}
 
       {/* Where your letter will appear (pre-delivery placeholder) */}
       <LetterDeliveryCard order={order} />
@@ -1336,25 +1348,18 @@ export default function MyOrdersPage() {
                       addonSuccessOrder={addonSuccessOrder}
                       addPetSuccessOrder={addPetSuccessOrder}
                       layout={filteredOrders.length > 1 ? "single" : "two-col"}
+                      includedResources={
+                        <IncludedResourcesSection
+                          orders={orders}
+                          isAdminPreview={isAdminPreview}
+                          previewEmail={isAdminPreview ? (searchEmail.trim() || null) : null}
+                        />
+                      }
                     />
                   </>
                 )}
               </div>
             </div>
-
-            {/* Included Resources — the free Pet Care Planner / PSD Training Workbook
-                (ESA-PLANNER-CUSTOMER-RESOURCE-TEST-001 / ESA-PSD-PLANNERS-MARKETING-LIVE-001).
-                Account-level and SEPARATE from My Documents: one card per entitled
-                family regardless of how many paid orders the customer has.
-                Eligibility is decided by the database from the authoritative
-                payment + service-family helpers; this mount only passes the local
-                order list for the empty/locked states and the Customer View email
-                for admins. */}
-            <IncludedResourcesSection
-              orders={orders}
-              isAdminPreview={isAdminPreview}
-              previewEmail={isAdminPreview ? (searchEmail.trim() || null) : null}
-            />
 
             {/* PSD cross-sell — ESA customers who have not bought PSD (account-level, once) */}
             {showPsdUpsell && (
