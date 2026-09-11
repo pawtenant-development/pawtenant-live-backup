@@ -4435,13 +4435,15 @@ export default function AdminOrdersPage() {
                         {groups.map((group) => (
                           <div key={group.dateKey}>
                             {/* Date ribbon */}
-                            <div className="flex items-center gap-2 mb-2 px-1">
+                            {/* flex-wrap: on a 390 px screen the basis label wraps under
+                                the date instead of being ellipsised — nothing is truncated. */}
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-2 px-1">
                               <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
                                 <i className="ri-calendar-line text-[#3b6ea5] text-xs"></i>
                               </div>
                               <span className="text-xs font-extrabold text-[#3b6ea5]">{group.dateLabel}</span>
                               <span
-                                className="text-[10px] font-semibold text-gray-400 truncate min-w-0"
+                                className="text-[10px] font-semibold text-gray-400 whitespace-nowrap"
                                 title={`Grouped by ${effDateBasisLabel} in America/New_York — not a Stripe payment count.`}
                               >
                                 · {effDateBasisLabel} · America/New_York
