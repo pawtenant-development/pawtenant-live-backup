@@ -727,16 +727,12 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>(
     () => readKpiParam(window.location.search) ?? "all",
   );
-  // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — ONE date basis drives the list
-  // sort, the day ribbons, the From/To filter AND the KPI cards. Sorting by
-  // latest activity while silently filtering by created_at is the exact
-  // ambiguity this removes. Default "activity", so an older order completed or
-  // reviewed today stays visible on the first All page; "created" keeps
-  // acquisition-cohort work available as an explicit operator choice.
-  //
-  // V2 intentionally resets the former device-local default. The old key stored
-  // both an implicit default and explicit choices, so desktop and mobile could
-  // silently show different first pages for the same account.
+  // ADMIN-ORDERS-CREATION-DATE-POSITION-001 — the Orders list has one permanent
+  // display chronology: created_at. Changing status, assigning a provider,
+  // completing, reopening or taking a later payment must never move an existing
+  // order into today's group. This persisted basis remains a FILTER/REPORT lens:
+  // it controls From/To, KPI selection and CSV semantics, but never row position
+  // or day ribbons. LIVE keeps its activity-basis default for those reports.
   const [dateBasis, setDateBasis] = useState<OrderDateBasis>(() => {
     try {
       const saved = localStorage.getItem(ADMIN_ORDERS_DATE_BASIS_STORAGE_KEY);
@@ -990,9 +986,8 @@ export default function AdminOrdersPage() {
   // the banner copy, so the words on screen can never claim a period the rows
   // were not actually filtered by.
   const activeKpiKind = activeKpi ? KPI_CARD_KIND[activeKpi] : null;
-  // The one label every surface names the active date by. Derived from the same
-  // `effDateBasis`, so the words on screen can never describe a different column
-  // than the rows were selected, sorted and grouped on.
+  // Names the active FILTER/REPORT date. Row position and day ribbons are always
+  // Created date, independently of this effective basis.
   const effDateBasisLabel = ORDER_DATE_BASIS_LABEL[effDateBasis];
 
   // Faceted KPI/count recompute — reacts to every active NON-STATUS filter
@@ -1067,28 +1062,24 @@ export default function AdminOrdersPage() {
   const fetchOrdersPage = useCallback(async (pageIndex: number) => {
     const from = pageIndex * ORDERS_PAGE_SIZE;
     const asc = sortOrder === "asc";
-    // §6/§12 deterministic ordering: <basis>, created_at, id. The two
-    // tie-breakers are what make offset paging safe — without them two rows
-    // sharing a timestamp can swap pages and produce a duplicate on one page
-    // and a missing row on the next.
+    // ADMIN-ORDERS-CREATION-DATE-POSITION-001 — deterministic display ordering
+    // is permanently created_at, id. Filtering may use any lifecycle basis, but
+    // pagination must use creation chronology or a status change can move a row
+    // between pages and into today's group.
     const base = applyListPredicates(
       supabase.from("orders").select(ORDERS_LIST_COLUMNS),
       listFilters,
       statusFilter,
       { defaultScopeCutoff: defaultScopeActive ? defaultScopeCutoff : null },
     );
-    const ordered = effDateBasis === "created"
-      ? base.order("created_at", { ascending: asc })
-      : base
-          .order(ORDER_DATE_BASIS_COLUMN[effDateBasis], { ascending: asc, nullsFirst: false })
-          .order("created_at", { ascending: asc });
+    const ordered = base.order("created_at", { ascending: asc });
     const { data, error } = await ordered
       .order("id", { ascending: asc })
       .range(from, from + ORDERS_PAGE_SIZE - 1);
     if (error) throw error;
     const rows = ((data as unknown as Order[]) ?? []);
     return { rows, full: rows.length === ORDERS_PAGE_SIZE };
-  }, [listFilters, statusFilter, defaultScopeActive, defaultScopeCutoff, effDateBasis, sortOrder]);
+  }, [listFilters, statusFilter, defaultScopeActive, defaultScopeCutoff, sortOrder]);
 
   // ONE key for "which query am I looking at". Changing it resets to page 0;
   // appending a page does not touch it.
@@ -2654,15 +2645,11 @@ export default function AdminOrdersPage() {
     if (!o.sent_followup_at) return true;
     const age = Date.now() - new Date(o.sent_followup_at).getTime();
     return age > 7 * 24 * 60 * 60 * 1000;
-  // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — the DISPLAY sort. Uses the same
-  // canonical comparator as the server page ordering, so flipping the basis
-  // re-orders instantly without waiting for the refetch. `desc` is newest-first
-  // on the ACTIVE basis.
-  // ...-LIFECYCLE-DATE-INTEGRITY-002 — the ACTIVE basis is the EFFECTIVE one. A
-  // list selected on `last_completed_at` but sorted on `created_at` emits one day
-  // ribbon per row and dates every group by the wrong event.
+  // ADMIN-ORDERS-CREATION-DATE-POSITION-001 — filtering can select orders by a
+  // lifecycle event, but display order never follows that event. An old order
+  // remains under its original Created date after every status change.
   }).sort((a, b) => {
-    const cmp = orderComparator(effDateBasis)(a, b);
+    const cmp = orderComparator("created")(a, b);
     return sortOrder === "desc" ? cmp : -cmp;
   });
 
@@ -3642,14 +3629,12 @@ export default function AdminOrdersPage() {
                             ? `${dateFrom || "start"} – ${dateTo || "today"}`
                             : `${kpiMonth.from} – ${kpiMonth.toInclusive}`}`}
                     </p>
-                    {/* ...-LIFECYCLE-DATE-INTEGRITY-002 — name the column the whole
-                        view is measured on. The count, the rows, the day ribbons
-                        and the CSV all read this one date, so the operator can
-                        read a group heading as that event and not guess. */}
+                    {/* The card decides which lifecycle event selects the rows.
+                        Their position below remains their original Created date. */}
                     <p className="text-[10px] text-[#3b6ea5]/70 mt-0.5">
                       {activeKpiKind === "operational"
-                        ? <>Current workload — the date range above is not applied, so older unresolved orders stay visible. Sorted and grouped by {effDateBasisLabel} · America/New_York.</>
-                        : <>Counted, listed, grouped and exported by {effDateBasisLabel} · America/New_York. Across all date groups below — &ldquo;Today&rdquo; is only one of them.</>}
+                        ? <>Current workload across all dates. Orders remain sorted and grouped by Created date · America/New_York.</>
+                        : <>Filtered and exported by {effDateBasisLabel}. Orders remain sorted and grouped by Created date · America/New_York. Across all date groups below.</>}
                     </p>
                   </div>
                   <button
@@ -4015,18 +4000,15 @@ export default function AdminOrdersPage() {
                       </p>
                     )}
                   </div>
-                  {/* ── Date Basis — ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001.
-                      Moved OUT of its standalone row above the list and INTO
-                      Filters, directly above the From/To range it governs: the
-                      basis is what those two dates MEAN, so separating them made
-                      the range ambiguous. Spans the full grid width because it is
-                      a lens over every other filter, not a peer of them.
-                      Drives the LIST ONLY — never the monthly banner. */}
+                  {/* ── Date Basis — ADMIN-ORDERS-CREATION-DATE-POSITION-001.
+                      This is a filter/report lens only. It controls the From/To
+                      range and CSV meaning. Orders always keep their Created-date
+                      position and ribbons. */}
                   <div className="sm:col-span-2 lg:col-span-3">
                     <label className="block text-xs font-bold text-gray-500 mb-1.5 flex items-center gap-1">
                       Date Basis
                       <span
-                        title={`Sorting, day groups and the From/To range all use ${ORDER_DATE_BASIS_LABEL[dateBasis]} — ${ORDER_DATE_BASIS_HINT[dateBasis]}. The monthly cards above are unaffected.`}
+                        title={`The From/To range and exports use ${ORDER_DATE_BASIS_LABEL[dateBasis]} — ${ORDER_DATE_BASIS_HINT[dateBasis]}. Order position and day groups always use Created date.`}
                         className="cursor-help"
                       >
                         <i className="ri-information-line text-gray-400 text-xs"></i>
@@ -4035,7 +4017,7 @@ export default function AdminOrdersPage() {
                     <div
                       className="inline-flex flex-wrap bg-gray-100 rounded-lg p-0.5 gap-0.5"
                       role="group"
-                      aria-label={`Date basis: ${ORDER_DATE_BASIS_LABEL[dateBasis]}. Sorting, day groups and the From/To range all use it. ${ORDER_DATE_BASIS_HINT[dateBasis]}`}
+                      aria-label={`Date filter basis: ${ORDER_DATE_BASIS_LABEL[dateBasis]}. The From/To range and exports use it. Order position and day groups always use Created date. ${ORDER_DATE_BASIS_HINT[dateBasis]}`}
                     >
                       {ORDER_DATE_BASES.map((b) => (
                         <button
@@ -4054,15 +4036,10 @@ export default function AdminOrdersPage() {
                         </button>
                       ))}
                     </div>
-                    {/* ...-LIFECYCLE-DATE-INTEGRITY-002 — a selected KPI card windows
-                        the list on ITS OWN stage-entry column. Say so, rather than
-                        leaving this control claiming a basis the list is not using;
-                        the operator's choice is kept and resumes when the card is
-                        cleared. */}
                     {activeKpi && effDateBasis !== dateBasis ? (
                       <p className="mt-1.5 text-[10px] font-semibold text-[#3b6ea5]">
-                        The {KPI_CARD_LABEL[activeKpi]} card is active — the list, day groups and export
-                        currently use {effDateBasisLabel}. Clear the card to return to {ORDER_DATE_BASIS_LABEL[dateBasis]}.
+                        The {KPI_CARD_LABEL[activeKpi]} card filters and stamps exports by {effDateBasisLabel}.
+                        Orders remain sorted and grouped by Created date. Clear the card to restore the {ORDER_DATE_BASIS_LABEL[dateBasis]} filter basis.
                       </p>
                     ) : null}
                   </div>
@@ -4325,13 +4302,12 @@ export default function AdminOrdersPage() {
                   const getDateKey = (ts: string) => businessIsoDate(new Date(ts));
                   const getDateLabel = (ts: string) => businessDayGroupLabel(ts, businessDayKey);
 
-                  // Build grouped structure: [{dateKey, dateLabel, orders[]}]
-                  // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — the day ribbons
-                  // MUST group by the SAME date the list is sorted on, otherwise a
-                  // list ordered by latest activity would emit one ribbon per row.
+                  // ADMIN-ORDERS-CREATION-DATE-POSITION-001 — group every order
+                  // under the New York business day it was created. Lifecycle
+                  // changes can filter the set, but can never change its ribbon.
                   const groups: { dateKey: string; dateLabel: string; orders: Order[] }[] = [];
                   visibleOrders.forEach((order) => {
-                    const groupIso = orderGroupingIso(order, effDateBasis) ?? order.created_at;
+                    const groupIso = orderGroupingIso(order, "created") ?? order.created_at;
                     const dk = getDateKey(groupIso);
                     const last = groups[groups.length - 1];
                     if (last && last.dateKey === dk) {
@@ -4389,16 +4365,13 @@ export default function AdminOrdersPage() {
                                 <i className="ri-calendar-line text-[#3b6ea5] text-xs"></i>
                               </div>
                               <span className="text-xs font-extrabold text-[#3b6ea5] tracking-wide">{group.dateLabel}</span>
-                              {/* STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — say WHICH
-                                  date this ribbon groups by. "Today" here is orders by the
-                                  active date basis (Created date by default), not Stripe
-                                  payments; Payments → Daily Revenue counts successful
-                                  payments by payment date. */}
+                              {/* "Today" is always the order's Created date, not a
+                                  status change or Stripe payment date. */}
                               <span
                                 className="text-[10px] font-semibold text-gray-400 tracking-normal truncate min-w-0"
-                                title={`Grouped by ${effDateBasisLabel} in America/New_York. Not a Stripe payment count — see Payments → Daily Revenue for successful payments by payment date.`}
+                                title="Grouped by Created date in America/New_York. Status changes never move an order. Not a Stripe payment count."
                               >
-                                · {effDateBasisLabel} · America/New_York
+                                · Created date · America/New_York
                               </span>
                               <div className="flex-1 h-px bg-[#d0ede6]"></div>
                               <span className="text-[10px] font-bold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
@@ -4444,9 +4417,9 @@ export default function AdminOrdersPage() {
                               <span className="text-xs font-extrabold text-[#3b6ea5]">{group.dateLabel}</span>
                               <span
                                 className="text-[10px] font-semibold text-gray-400 whitespace-nowrap"
-                                title={`Grouped by ${effDateBasisLabel} in America/New_York — not a Stripe payment count.`}
+                                title="Grouped by Created date in America/New_York. Status changes never move an order."
                               >
-                                · {effDateBasisLabel} · America/New_York
+                                · Created date · America/New_York
                               </span>
                               <div className="flex-1 h-px bg-[#d0ede6]"></div>
                               <span className="text-[10px] font-bold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full">

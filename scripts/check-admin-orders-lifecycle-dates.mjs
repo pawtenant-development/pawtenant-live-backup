@@ -2,8 +2,8 @@
 // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001 — build guard (§23) + logic tests (§22).
 //
 // Locks the lifecycle-date contract so a later refactor cannot silently:
-//   • go back to sorting Admin Orders by created_at (a June lead paying in July
-//     disappears to the bottom again),
+//   • let a lifecycle event reorder the Admin Orders display (an old order must
+//     remain under its original Created date),
 //   • sort by a generic modification timestamp (every background sync jumps an
 //     order to the top),
 //   • overwrite the immutable first-paid / first-completed timestamps,
@@ -11,7 +11,10 @@
 //   • sort by latest activity while silently filtering by created_at,
 //   • collapse payment state and workflow state back into one status field,
 //   • add a fifth top KPI card,
-//   • drop the pagination tie-breakers.
+//   • drop the pagination tie-breakers,
+//   • let KPI/filter dates change the immutable creation chronology of the list;
+//     CSV filtering/reporting remains basis-aware, while rows and ribbons stay
+//     on Created date.
 //
 //   node scripts/check-admin-orders-lifecycle-dates.mjs              → static + logic
 //   node scripts/check-admin-orders-lifecycle-dates.mjs --self-test  → + negative controls
@@ -67,27 +70,15 @@ const REQUIRED = [
   // The list actually consumes it.
   { file: PAGE, label: "page imports the canonical comparator", re: /orderComparator/ },
   { file: PAGE, label: "single date-basis state (sort + filter + cards)", re: /const \[dateBasis, setDateBasis\]/ },
-  // LIVE ARCHITECTURE NOTE (ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001-LIVE-ROLLOUT):
-  // TEST asserts `acc.slice().sort(orderComparator(` — its atomic commitSnapshot
-  // from the dataset-stability work, which was REVERTED on LIVE (see
-  // admin-orders-dataset-stability-live-rollout-001). LIVE keeps its own
-  // progressive-paging loader, so the equivalent LIVE invariant is asserted on the
-  // DISPLAY sort: the rendered list must order through the canonical comparator, so
-  // rows and the server page order can never disagree. Intent preserved, anchor
-  // retargeted — NOT weakened.
-  // ...-LIFECYCLE-DATE-INTEGRITY-002 — retargeted to the EFFECTIVE basis. Intent
-  // preserved (the list must order through the canonical comparator), tightened
-  // so the sort cannot diverge from the predicate the rows were selected with.
-  { file: PAGE, label: "display list sorted via canonical comparator", re: /const cmp = orderComparator\(effDateBasis\)\(a, b\);/ },
+  // LIVE keeps progressive paging. Both its server and client display layers are
+  // pinned to immutable creation chronology.
+  { file: PAGE, label: "display list sorted by Created date", re: /const cmp = orderComparator\("created"\)\(a, b\);/ },
   { file: PAGE, label: "SERVER-side basis ordering", re: /\.order\(ORDER_DATE_BASIS_COLUMN\[basis\]/ },
   { file: PAGE, label: "server tie-breaker created_at", re: /\.order\("created_at", \{ ascending: false \}\)\s*\n\s*\.order\("id"/ },
   { file: PAGE, label: "server tie-breaker id", re: /\.order\("id", \{ ascending: false \}\)/ },
   { file: PAGE, label: "lifecycle columns selected", re: /last_meaningful_activity_at,last_meaningful_activity_type/ },
-  // ADMIN-ORDERS-ACCOUNTS-MONTH-END-LIFECYCLE-DATE-INTEGRITY-002 — the ribbons,
-  // the display sort and the CSV must read the EFFECTIVE basis, not the raw
-  // operator state. Grouping August completions under the operator's Created
-  // basis is what put JULY headings inside the August Completed view.
-  { file: PAGE, label: "day ribbons group on the EFFECTIVE basis", re: /orderGroupingIso\(order, effDateBasis\)/ },
+  { file: PAGE, label: "server-paged Orders list is ordered by Created date", re: /const ordered = base\.order\("created_at", \{ ascending: asc \}\);/ },
+  { file: PAGE, label: "day ribbons always group on Created date", re: /orderGroupingIso\(order, "created"\)/ },
   { file: PAGE, label: "date FILTER uses the ACTIVE basis", re: /matchesBasisDateRange\(o, effDateBasis, effDateFrom, effDateTo\)/ },
   // ADMIN-ORDERS-SERVER-BACKED-LOADING-001 — the counts no longer take an
   // inline object literal; the faceted counts, the KPI cards AND the server row
@@ -101,7 +92,7 @@ const REQUIRED = [
   { file: PAGE, label: "Payment Failed stays reachable as a status FILTER tab", re: /\{ value: "payment_failed", label: "Payment Failed" \}/ },
   { file: PAGE, label: "status filter tabs apply the filter", re: /onClick=\{\(\) => onStatusTabClick\(opt\.value\)\}/ },
   { file: PAGE, label: "status column label is STATUS", re: /uppercase tracking-wider">Status<\/div>/ },
-  { file: PAGE, label: "date-basis behaviour explained by an accessible tooltip", re: /aria-label=\{`Date basis: / },
+  { file: PAGE, label: "date-filter behaviour explained by an accessible tooltip", re: /aria-label=\{`Date filter basis: / },
 
   // Row surface shows the dimensions separately and keeps creation visible.
   // ── COMPACT ROW CONTRACT (ADMIN-ORDERS-LIFECYCLE-UI-SIMPLIFICATION-001) ──
@@ -148,7 +139,7 @@ const REQUIRED = [
   { file: PAGE, label: "CSV export stamps the EFFECTIVE Date Basis", re: /ORDER_DATE_BASIS_LABEL\[effDateBasis\],[\s\S]{0,40}\);/ },
   { file: PAGE, label: "CSV filename names the EFFECTIVE basis", re: /pawtenant-orders-export-selected-\$\{effDateBasis\}/ },
   { file: PAGE, label: "the EFFECTIVE basis is named to the operator", re: /const effDateBasisLabel = ORDER_DATE_BASIS_LABEL\[effDateBasis\]/ },
-  { file: PAGE, label: "KPI caption states the date the view is measured on", re: /Counted, listed, grouped and exported by \{effDateBasisLabel\}/ },
+  { file: PAGE, label: "KPI caption separates filter date from Created-date position", re: /Filtered and exported by \{effDateBasisLabel\}\. Orders remain sorted and grouped by Created date/ },
   // Pagination is server-side now, so there is no client slice counter to reset.
   // The equivalent (and stricter) invariant: the EFFECTIVE window is part of the
   // list query key, so changing it restarts the server query at page 0.
@@ -264,20 +255,21 @@ const FORBIDDEN = [
     label: "status column must not be labelled `Payment / Workflow`",
     re: /uppercase tracking-wider">Payment \/ Workflow</,
   },
-  // ── ...-LIFECYCLE-DATE-INTEGRITY-002 NEGATIVE CONTROLS ────────────────────
-  // The three display surfaces must never fall back to the operator's raw
-  // `dateBasis` while the rows are selected on `effDateBasis`. Each pattern is
-  // a CALL/INTERPOLATION form, so explanatory prose naming `dateBasis` cannot
-  // satisfy it — the control tests the use, not the mention.
+  // ── ADMIN-ORDERS-CREATION-DATE-POSITION-001 NEGATIVE CONTROLS ─────────────
   {
     file: PAGE,
-    label: "day ribbons must not regroup on the raw operator basis",
-    re: /orderGroupingIso\(order, dateBasis\)/,
+    label: "day ribbons must not regroup on lifecycle activity",
+    re: /orderGroupingIso\(order, (?:dateBasis|effDateBasis)\)/,
   },
   {
     file: PAGE,
-    label: "display sort must not reorder on the raw operator basis",
-    re: /orderComparator\(dateBasis\)\(a, b\)/,
+    label: "display sort must not reorder on lifecycle activity",
+    re: /orderComparator\((?:dateBasis|effDateBasis)\)\(a, b\)/,
+  },
+  {
+    file: PAGE,
+    label: "server pagination must not order the visible list by lifecycle activity",
+    re: /const ordered = base\.order\(ORDER_DATE_BASIS_COLUMN\[effDateBasis\]/,
   },
   {
     file: PAGE,
@@ -570,10 +562,9 @@ const revenueEvents = (orders) =>
   ]);
 const inMonth = (iso, ym) => !!iso && iso.slice(0, 7) === ym;
 
-// ── ...-LIFECYCLE-DATE-INTEGRITY-002 — the display half of the contract ──────
-// The day ribbons key on the NEW YORK calendar date of the EFFECTIVE basis value,
-// and a selected KPI card supplies that basis. Mirrors businessIsoDate() plus
-// orderGroupingIso() plus the effDateBasis derivation in page.tsx.
+// ── ADMIN-ORDERS-CREATION-DATE-POSITION-001 — display contract ───────────────
+// KPI/filter membership remains basis-aware. Day ribbons always key on the New
+// York calendar date of immutable created_at.
 function nyIsoDate(instantMs) {
   const p = {};
   for (const x of NY_FMT.formatToParts(new Date(instantMs))) if (x.type !== "literal") p[x.type] = x.value;
@@ -586,9 +577,9 @@ const KPI_CARD_BASIS = {
   completed: "completed",
 };
 const effBasis = (activeKpi, operatorBasis) => (activeKpi ? KPI_CARD_BASIS[activeKpi] : operatorBasis);
-// The ribbon heading an order lands under, given the active card + operator basis.
-const ribbonDay = (o, activeKpi, operatorBasis) => {
-  const iso = orderGroupingIso(o, effBasis(activeKpi, operatorBasis)) ?? o.created_at;
+// Filters still use effBasis; display ribbons deliberately ignore it.
+const ribbonDay = (o) => {
+  const iso = orderGroupingIso(o, "created") ?? o.created_at;
   return nyIsoDate(new Date(iso).getTime());
 };
 
@@ -618,11 +609,11 @@ function runLogic() {
     last_meaningful_activity_type: "lead_created",
   };
 
-  t("1  June lead paid in July sorts above a July-created lead",
+  t("1  activity report ranks a June lead paid in July above a July-created lead",
     [julyLead, A].sort(orderComparator("activity"))[0].id, "A");
   t("2  created_at remains June", A.created_at.slice(0, 7), "2026-06");
   t("3  first-paid date is July", firstPaidIso(A).slice(0, 7), "2026-07");
-  t("4  order moves to top after payment",
+  t("4  activity report ranks the order first after payment",
     [julyLead, A].sort(orderComparator("activity")).map((o) => o.id), ["A", "L"]);
   t("5  unique paid-order count increases once", uniquePaidCount([A, julyLead]), 1);
   t("6  July revenue includes the payment once",
@@ -646,7 +637,7 @@ function runLogic() {
     last_meaningful_activity_type: "additional_payment_received",
   };
   t("8  additional payment updates last-payment date", C.last_payment_at, "2026-07-25T00:00:00Z");
-  t("9  additional payment moves order to top",
+  t("9  activity report ranks an additional payment first",
     [julyLead, C].sort(orderComparator("activity"))[0].id, "C");
   t("10 additional payment does NOT increment unique paid-order count",
     [uniquePaidCount([Cbefore]), uniquePaidCount([C])], [1, 1]);
@@ -676,7 +667,7 @@ function runLogic() {
   t("12 reopened order moves to Under Review/Reopened workflow", orderWorkflowState(B), "reopened");
   t("12b reopened order LEFT the Completed workflow",
     [orderWorkflowState(Bbefore), orderWorkflowState(B)], ["completed", "reopened"]);
-  t("13 reopened order moves to top",
+  t("13 activity report ranks a reopened order first",
     [julyLead, B].sort(orderComparator("activity"))[0].id, "B");
   t("14 reopen adds NO revenue",
     revenueEvents([B]).length, revenueEvents([Bbefore]).length);
@@ -880,24 +871,23 @@ function runLogic() {
   t("36K a completed row with NO completion timestamp is excluded, never coerced",
     [lastCompletedIso(fxK), inAugCompleted(fxK)], [null, false]);
 
-  // The defect itself: same rows, same window, ribbons under the OPERATOR's basis
-  // vs the EFFECTIVE one. Every persisted operator basis must give August ribbons.
+  // The Completed card selects rows by completion date, but it must not rewrite
+  // their historical position. Every persisted operator basis gives the same
+  // immutable Created-date ribbons.
   const augRows = [fxB, fxC, fxH];
-  t("36-DEFECT ribbons on the raw operator basis leak JULY headings (the bug)",
-    augRows.map((o) => ribbonDay(o, null, "created")).some((d) => d.startsWith("2026-07")), true);
-  t("36-FIX with the Completed card active every ribbon is an AUGUST day",
-    ["activity", "created", "first_paid", "completed"].every((operatorBasis) =>
-      augRows.every((o) => ribbonDay(o, "completed", operatorBasis).startsWith("2026-08"))),
-    true);
-  t("36-FIX ribbon date equals the row's own New York completion day",
-    augRows.map((o) => ribbonDay(o, "completed", "created")),
-    ["2026-08-02", "2026-08-05", "2026-08-01"]);
-  t("36-FIX the boundary row lands on Aug 1, not Jul 31",
-    ribbonDay(fxH, "completed", "activity"), "2026-08-01");
-  t("36-PARITY every ribboned row is also a selected row (grouping ⊆ predicate)",
+  t("36-FILTER every row still belongs to the August Completed result",
     augRows.filter((o) => inAugCompleted(o)).length, augRows.length);
-  t("36-SORT the display order is the completion order, not the creation order",
-    [fxB, fxC, fxH].sort(orderComparator("completed")).map((o) => o.id), ["C2", "B2", "H2"]);
+  t("36-FIX KPI choice cannot change Created-date ribbons",
+    ["activity", "created", "first_paid", "completed"].every(() =>
+      JSON.stringify(augRows.map((o) => ribbonDay(o))) === JSON.stringify(["2026-07-20", "2026-08-03", "2026-07-01"])),
+    true);
+  t("36-FIX ribbon date equals each row's own New York creation day",
+    augRows.map((o) => ribbonDay(o)),
+    ["2026-07-20", "2026-08-03", "2026-07-01"]);
+  t("36-FIX a completion at the month boundary does not move its July-created order",
+    ribbonDay(fxH), "2026-07-01");
+  t("36-SORT the display order is creation order even inside a completion filter",
+    [fxB, fxC, fxH].sort(orderComparator("created")).map((o) => o.id), ["C2", "B2", "H2"]);
 
   // I: DST. 2026-11-01 is the US fall-back; 01:30 ET occurs twice. Both instants
   // are still the same NEW YORK business day, and neither may drift into Oct 31.
@@ -905,9 +895,9 @@ function runLogic() {
     payment_intent_id: "pi", doctor_status: "patient_notified",
     last_completed_at: "2026-11-01T05:30:00Z" };  // 01:30 EDT
   const dstB = { ...dstA, id: "I2", last_completed_at: "2026-11-01T06:30:00Z" };  // 01:30 EST
-  t("36I both sides of the DST fall-back are the same New York business day",
-    [ribbonDay(dstA, "completed", "created"), ribbonDay(dstB, "completed", "created")],
-    ["2026-11-01", "2026-11-01"]);
+  t("36I completion timestamps cannot move either order from its Created day",
+    [ribbonDay(dstA), ribbonDay(dstB)],
+    ["2026-09-30", "2026-09-30"]);
   t("36I a DST-ambiguous completion never falls back into the previous month",
     [matchesBasisDateRange(dstA, "completed", "2026-10-01", "2026-10-31"),
      matchesBasisDateRange(dstB, "completed", "2026-11-01", "2026-11-30")],
@@ -931,10 +921,10 @@ function runLogic() {
     (() => {
       const reissued = { ...fxJreopened, doctor_status: "patient_notified", status: "completed",
         last_completed_at: "2026-08-06T14:00:00Z" };
-      return [reissued.first_completed_at, ribbonDay(reissued, "completed", "created"),
+      return [reissued.first_completed_at, ribbonDay(reissued),
         [reissued].filter(inAugCompleted).length];
     })(),
-    ["2026-08-01T14:00:00Z", "2026-08-06", 1]);
+    ["2026-08-01T14:00:00Z", "2026-07-15", 1]);
 
   if (fails.length) {
     console.error(`${RED}✗ admin-orders lifecycle-date logic FAILED${RESET} (${fails.length}/${n})`);
@@ -950,7 +940,8 @@ function runLogic() {
 function runSelfTest() {
   const fails = [];
 
-  // A created_at comparator MUST fail scenario 1 — proving it is not vacuous.
+  // The activity-report helper remains basis-aware even though the Orders display
+  // is fixed to Created date. This proves that reporting helper still differs.
   const bad = (a, b) => ms(b.created_at) - ms(a.created_at);
   const june = { id: "A", created_at: "2026-06-02T10:00:00Z", last_meaningful_activity_at: "2026-07-20T09:00:00Z" };
   const july = { id: "L", created_at: "2026-07-05T10:00:00Z", last_meaningful_activity_at: "2026-07-05T10:00:00Z" };
@@ -1021,7 +1012,7 @@ try {
   code |= runStatic();
   code |= runLogic();
   if (selfTest) code |= runSelfTest();
-  if (code === 0) console.log(`${DIM}  lifecycle-date contract: created_at immutable · paid_at = first payment (immutable) · last_meaningful_activity_at = default sort${RESET}`);
+  if (code === 0) console.log(`${DIM}  lifecycle-date contract: Orders display = created_at · filters/exports remain basis-aware · paid_at immutable${RESET}`);
 } catch (e) {
   console.error(`${RED}✗ lifecycle-date guard error: ${e.message}${RESET}`);
   code = 1;

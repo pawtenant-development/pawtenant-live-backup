@@ -316,8 +316,8 @@ function runStatic(src) {
   need(code(src.dashboard), "AdminDashboard", /7-day bars · by paid date · \{BUSINESS_TIMEZONE\}/, "the revenue card must name its basis and zone");
 
   // Orders list ribbons — grouping by creation is allowed, but must be LABELLED.
-  need(code(src.ordersPage), "admin-orders/page.tsx", /· \{effDateBasisLabel\} · America\/New_York/, "every day ribbon must name the date basis and the zone");
-  need(code(src.ordersPage).split("· {effDateBasisLabel} · America/New_York").length - 1 >= 2 ? "ok" : "", "admin-orders/page.tsx", /ok/, "both the desktop and the mobile ribbon must carry the basis + zone label");
+  need(code(src.ordersPage), "admin-orders/page.tsx", /· Created date · America\/New_York/, "every day ribbon must name Created date and the zone");
+  need(code(src.ordersPage).split("· Created date · America/New_York").length - 1 >= 2 ? "ok" : "", "admin-orders/page.tsx", /ok/, "both the desktop and the mobile ribbon must carry the Created-date + zone label");
   need(codeNoStrings(src.ordersPage), "admin-orders/page.tsx", /businessDayGroupLabel\(ts, businessDayKey\)/, "ribbons must still group by the NY business day");
 
   // Twins: both clocks expose the same day primitives.
@@ -401,7 +401,7 @@ async function main() {
       ["static: Analytics browser-local day helpers restored", () => [timeBrowser, timeEdge, bucketsEdge, bucketsBrowser, { ...src, analytics: src.analytics.replace("function businessDayRange(fromIso: string, toIso: string): { from: Date; to: Date } {", "function dayStart(d: Date): Date { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }\nfunction businessDayRange(fromIso: string, toIso: string): { from: Date; to: Date } {") }]],
       ["static: Analytics custom `to` with 23:59:59 sentinel", () => [timeBrowser, timeEdge, bucketsEdge, bucketsBrowser, { ...src, analytics: src.analytics.replace("return businessDayRange(customFrom, customTo);", 'return { from: new Date(customFrom), to: new Date(customTo + "T23:59:59") };') }]],
       ["static: Dashboard rolling 24h windows restored", () => [timeBrowser, timeEdge, bucketsEdge, bucketsBrowser, { ...src, dashboard: src.dashboard.replace("paidOrdersByBusinessDay(orders, last7BusinessDates)", "((os) => { const counts = Array(7).fill(0); const now = Date.now(); os.forEach((o) => { const diffDays = Math.floor((now - new Date(o.created_at).getTime()) / 86400000); if (diffDays < 7) counts[6 - diffDays] += (o.price ?? 0); }); return { daily: counts.map((revenue) => ({ revenue })), payments: 0 }; })(orders)") }]],
-      ["static: Orders ribbon loses its basis + zone label", () => [timeBrowser, timeEdge, bucketsEdge, bucketsBrowser, { ...src, ordersPage: src.ordersPage.split("· {effDateBasisLabel} · America/New_York").join("· {effDateBasisLabel}") }]],
+      ["static: Orders ribbon loses its Created-date + zone label", () => [timeBrowser, timeEdge, bucketsEdge, bucketsBrowser, { ...src, ordersPage: src.ordersPage.split("· Created date · America/New_York").join("· Created date") }]],
       ["static: edge clock drops businessDayEndExclusive export", () => [timeBrowser, timeEdge, bucketsEdge, bucketsBrowser, { ...src, timeEdge: src.timeEdge.replace("export function businessDayEndExclusive(", "function businessDayEndExclusive(") }]],
     ];
     let total = 0;

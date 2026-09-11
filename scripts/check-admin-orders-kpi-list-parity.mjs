@@ -161,8 +161,9 @@ async function runChecks() {
     opWindows.every(([, w]) => w.dateFrom === undefined && w.dateTo === undefined),
     opWindows.map(([k, w]) => `${k}:${w.dateFrom ?? "-"}..${w.dateTo ?? "-"}`).join(" "));
 
-  // …but keep their stage-entry basis, which still drives sort/ribbons/CSV.
-  add("K4  operational cards keep their stage-entry basis for sort/grouping",
+  // …but keep their stage-entry basis for filter membership and CSV reporting.
+  // The Orders list itself always sorts/groups by immutable Created date.
+  add("K4  operational cards keep their stage-entry basis for filtering",
     mod.kpiCardWindow("under_review", RANGE).dateBasis === "under_review_entered" &&
     mod.kpiCardWindow("pending_delivery", RANGE).dateBasis === "pending_delivery_entered" &&
     mod.kpiCardWindow("paid_unassigned", RANGE).dateBasis === "first_paid");

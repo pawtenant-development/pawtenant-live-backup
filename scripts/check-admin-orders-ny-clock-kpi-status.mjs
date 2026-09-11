@@ -173,19 +173,16 @@ const CHECKS = [
     return /const businessDayKey = useBusinessDayKey\(\)/.test(p)
       && /businessDayGroupLabel\(ts, businessDayKey\)/.test(p);
   }],
-  // ADMIN-ORDERS-ACCOUNTS-MONTH-END-LIFECYCLE-DATE-INTEGRITY-002 — this check used
-  // to hardcode `dateBasis`, which CODIFIED the defect: with a KPI card active the
-  // rows were selected on the card's column while the ribbons were still keyed on
-  // the operator's, so August completions rendered under July headings. The real
-  // invariant was never "the identifier is dateBasis" — it is "the ribbon groups on
-  // the SAME basis the list sorts on, and that basis is the EFFECTIVE one". Assert
-  // that structurally by extracting both identifiers and comparing them.
-  ["N14", "the grouping TIMESTAMP matches the sort basis, and both are EFFECTIVE", () => {
+  // ADMIN-ORDERS-CREATION-DATE-POSITION-001 — lifecycle/KPI dates choose which
+  // rows match, but all three display layers must stay on immutable created_at:
+  // server pagination, client ordering and New York day ribbons.
+  ["N14", "server page, display sort and day ribbons are fixed to Created date", () => {
     const p = stripComments(read(PAGE));
-    const group = p.match(/orderGroupingIso\(order,\s*([A-Za-z_$][\w$]*)\)\s*\?\?\s*order\.created_at/);
-    const sort = p.match(/orderComparator\(\s*([A-Za-z_$][\w$]*)\s*\)\(a, b\)/);
-    if (!group || !sort) return false;
-    return group[1] === sort[1] && group[1] === "effDateBasis";
+    return /const ordered = base\.order\("created_at", \{ ascending: asc \}\);/.test(p)
+      && /orderComparator\(\s*"created"\s*\)\(a, b\)/.test(p)
+      && /orderGroupingIso\(order,\s*"created"\)\s*\?\?\s*order\.created_at/.test(p)
+      && !/orderComparator\(\s*effDateBasis\s*\)\(a, b\)/.test(p)
+      && !/orderGroupingIso\(order,\s*effDateBasis\)/.test(p);
   }],
 
   // ── Clickable OPERATIONAL KPI cards (parity task §5/§8) ────────────────────
@@ -535,6 +532,13 @@ const CONTROLS = [
     (s) => s.replace("          <BusinessClock />\n", "")],
   ["hardcoded EDT abbreviation", BIZ,
     (s) => s.replace('return parts.find((p) => p.type === "timeZoneName")?.value ?? "ET";', 'return "EDT";')],
+  ["status activity restored as the display sort", PAGE,
+    (s) => s.replace('orderComparator("created")(a, b)', 'orderComparator(effDateBasis)(a, b)')],
+  ["status activity restored as the day grouping", PAGE,
+    (s) => s.replace('orderGroupingIso(order, "created")', 'orderGroupingIso(order, effDateBasis)')],
+  ["status activity restored as server pagination order", PAGE,
+    (s) => s.replace('const ordered = base.order("created_at", { ascending: asc });',
+      'const ordered = base.order(ORDER_DATE_BASIS_COLUMN[effDateBasis], { ascending: asc });')],
 
   // ── the corrected clickable-card contract ────────────────────────────────
   ["cards made non-clickable again", PAGE,
