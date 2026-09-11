@@ -173,6 +173,13 @@ export default function StatePSDPage() {
     );
   }
 
+  const relatedPSDStates = [
+    { slug: "california", name: "California" },
+    { slug: "texas", name: "Texas" },
+    { slug: "florida", name: "Florida" },
+    { slug: "new-york", name: "New York" },
+  ].filter((state) => state.slug !== stateData.slug).slice(0, 2);
+
   return (
     <main>
       <SharedNavbar />
@@ -558,6 +565,11 @@ export default function StatePSDPage() {
           <h2 className="text-xl font-bold text-gray-900 mb-6">Related Resources for {stateData.name} Residents</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
+              ...relatedPSDStates.map((state) => ({
+                to: `/psd-letter/${state.slug}`,
+                label: `PSD Letter in ${state.name}`,
+                icon: "ri-map-pin-2-line",
+              })),
               { to: "/how-to-get-psd-letter", label: "How to Get a PSD Letter", icon: "ri-guide-line" },
               { to: `/esa-letter/${stateData.slug}`, label: `ESA Letter in ${stateData.name}`, icon: "ri-heart-line" },
               { to: "/all-about-service-dogs", label: "Service Dogs Guide", icon: "ri-service-line" },

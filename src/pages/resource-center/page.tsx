@@ -27,6 +27,23 @@ const guides = [
 
 const blogCategories = ["All", "ESA", "PSD", "Housing", "Travel", "Mental Health", "State Guides"];
 
+const popularLegalGuides = [
+  { to: "/states/california-esa-psd-guide", title: "California ESA & PSD Legal Guide", desc: "Compare California housing rules for emotional support animals and psychiatric service dogs." },
+  { to: "/landlord-says-esa-letter-is-fake", title: "When a Landlord Says an ESA Letter Is Fake", desc: "Understand verification, documentation, and practical next steps." },
+  { to: "/states/san-diego-telehealth-guide", title: "San Diego ESA Telehealth Guide", desc: "Learn how California telehealth and the 30-day relationship rule apply in San Diego." },
+  { to: "/california-esa-letter-30-day-rule", title: "California ESA Letter 30-Day Rule", desc: "A plain-language guide to California's provider relationship requirement." },
+  { to: "/states/san-francisco-hoa-psd-guide", title: "San Francisco PSD Housing Guide", desc: "PSD documentation, task training, and housing considerations for San Francisco residents." },
+  { to: "/esa-letter-verification-id", title: "ESA Letter Verification ID", desc: "See how verification helps landlords confirm a letter without exposing private clinical details." },
+  { to: "/iowa-esa-letter-housing-rules", title: "Iowa ESA Letter Housing Rules", desc: "Review Iowa rental housing considerations and federal accommodation protections." },
+  { to: "/states/texas-esa-psd-guide", title: "Texas ESA & PSD Housing Laws", desc: "Compare ESA housing accommodations and psychiatric service dog protections in Texas." },
+  { to: "/states/los-angeles-esa-landlord-guide", title: "Los Angeles Landlord ESA Rules", desc: "Understand documentation and accommodation requests for Los Angeles housing." },
+  { to: "/what-documents-can-landlord-ask-for-esa", title: "What Documents Can a Landlord Ask for an ESA?", desc: "Learn what housing providers may request during the accommodation process." },
+  { to: "/esa-letter-vs-pet-policy", title: "ESA Letter vs. a Building's Pet Policy", desc: "See why disability accommodations are evaluated separately from ordinary pet rules." },
+  { to: "/is-pawtenant-legit", title: "Is PawTenant Legit?", desc: "Review the evaluation, licensed-provider, privacy, and verification process." },
+  { to: "/can-landlord-reject-esa-letter", title: "Can a Landlord Reject an ESA Letter?", desc: "Learn common reasons for follow-up requests or lawful denials and what to do next." },
+  { to: "/everything-you-need-to-know-about-obtaining-an-esa-letter-online", title: "How to Get an ESA Letter Online", desc: "A complete guide to legitimate online evaluations and compliant documentation." },
+];
+
 const highTrafficESAStates = usStates.filter(s =>
   ["california","texas","florida","new-york","ohio","washington","illinois","pennsylvania","georgia","north-carolina","arizona","michigan","new-jersey","virginia","colorado","minnesota","oregon"].includes(s.slug)
 );
@@ -295,7 +312,7 @@ export default function ResourceCenterPage() {
                 <div className="w-8 h-8 flex items-center justify-center bg-gray-100 rounded-lg flex-shrink-0 group-hover:bg-orange-100 transition-colors">
                   <span className="text-xs font-black text-gray-600 group-hover:text-orange-600 transition-colors">{state.abbreviation}</span>
                 </div>
-                <span className="text-xs font-semibold text-gray-800 leading-tight">{state.name}</span>
+                <span className="text-xs font-semibold text-gray-800 leading-tight">PSD Letter in {state.name}</span>
               </Link>
             ))}
           </div>
@@ -308,6 +325,25 @@ export default function ResourceCenterPage() {
               <i className="ri-add-line"></i> Show All 50 States
             </button>
           )}
+        </div>
+      </section>
+
+      {/* Stable descriptive links; this hub is full-body prerendered. */}
+      <section id="popular-guides" className="py-16 bg-white">
+        <div className="max-w-7xl mx-auto px-5">
+          <div className="mb-8">
+            <span className="text-xs font-bold uppercase tracking-widest text-orange-500 mb-2 block">Popular Questions</span>
+            <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900">ESA &amp; PSD Legal and Verification Guides</h2>
+            <p className="text-gray-500 text-sm mt-1">Explore state-specific rules, landlord questions, verification, and legitimate online evaluation guidance.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {popularLegalGuides.map((guide) => (
+              <Link key={guide.to} to={guide.to} className="group rounded-xl border border-gray-100 p-5 hover:border-orange-200 hover:bg-orange-50/30 transition-colors">
+                <h3 className="text-sm font-bold text-gray-900 group-hover:text-orange-600 transition-colors">{guide.title}</h3>
+                <p className="mt-2 text-xs leading-relaxed text-gray-500">{guide.desc}</p>
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
 

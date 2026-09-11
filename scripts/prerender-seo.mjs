@@ -25,6 +25,13 @@ const OUT_DIR = join(ROOT, "out");
 const TEMPLATE_PATH = join(OUT_DIR, "index.html");
 const SEO_CONFIG_PATH = resolve(ROOT, "src/config/seoConfig.ts");
 const STATE_BLOG_MAP_PATH = resolve(ROOT, "src/mocks/stateBlogMap.ts");
+const BLOG_POST_PATHS = [
+  resolve(ROOT, "src/mocks/blogPosts.ts"),
+  resolve(ROOT, "src/mocks/blogPostsExtended.ts"),
+  resolve(ROOT, "src/mocks/blogPostsExtended2.ts"),
+  resolve(ROOT, "src/mocks/blogPostsVerification.ts"),
+];
+const COLLEGES_PATH = resolve(ROOT, "src/mocks/colleges.ts");
 
 // ── Load seoConfig.ts at runtime via jiti ───────────────────────────────────
 const jiti = createJiti(import.meta.url, { interopDefault: true });
@@ -62,6 +69,33 @@ if (!Array.isArray(STATE_BLOG_MAP) || typeof buildStateBlogSEO !== "function") {
   process.exit(1);
 }
 
+// Runtime effects cannot repair the raw HTML seen by non-JavaScript crawlers.
+const blogModules = await Promise.all(BLOG_POST_PATHS.map((path) => jiti.import(path)));
+const dynamicBlogPosts = [
+  blogModules[0].blogPosts,
+  blogModules[1].blogPostsExtended,
+  blogModules[2].blogPostsExtended2,
+  blogModules[3].blogPostsVerification,
+].flat();
+const { colleges } = await jiti.import(COLLEGES_PATH);
+
+if (!dynamicBlogPosts.length || !Array.isArray(colleges) || !colleges.length) {
+  console.error("[prerender-seo] ERROR: dynamic blog or college metadata is empty.");
+  process.exit(1);
+}
+function assertUniqueRouteMetadata(items, label) {
+  const seen = new Set();
+  for (const item of items) {
+    if (!item?.slug || !item?.metaTitle || !item?.metaDesc) {
+      throw new Error(`[prerender-seo] ${label} metadata is incomplete.`);
+    }
+    if (seen.has(item.slug)) throw new Error(`[prerender-seo] duplicate ${label} slug: ${item.slug}`);
+    seen.add(item.slug);
+  }
+}
+assertUniqueRouteMetadata(dynamicBlogPosts, "blog");
+assertUniqueRouteMetadata(colleges, "college");
+
 // ── HTML helpers ────────────────────────────────────────────────────────────
 function escapeAttr(s) {
   return String(s)
@@ -91,6 +125,8 @@ function rewriteHead(html, { title, description, canonical }) {
 
   out = replaceOrInsertMetaName(out, "description", description);
   out = replaceOrInsertCanonical(out, canonical);
+  out = replaceOrInsertHreflang(out, "en-us", canonical);
+  out = replaceOrInsertHreflang(out, "x-default", canonical);
 
   out = replaceOrInsertMetaProp(out, "og:title", title);
   out = replaceOrInsertMetaProp(out, "og:description", description);
@@ -125,6 +161,16 @@ function replaceOrInsertMetaProp(html, prop, content) {
 function replaceOrInsertCanonical(html, href) {
   const re = /<link\s+rel=["']canonical["'][^>]*\/?>/i;
   const tag = `<link rel="canonical" href="${escapeAttr(href)}" />`;
+  if (re.test(html)) return html.replace(re, tag);
+  return html.replace(/<\/head>/i, `    ${tag}\n  </head>`);
+}
+
+function replaceOrInsertHreflang(html, language, href) {
+  const re = new RegExp(
+    `<link\\s+rel=["']alternate["'][^>]*hreflang=["']${escapeRegex(language)}["'][^>]*\\/?>`,
+    "i"
+  );
+  const tag = `<link rel="alternate" hreflang="${language}" href="${escapeAttr(href)}" />`;
   if (re.test(html)) return html.replace(re, tag);
   return html.replace(/<\/head>/i, `    ${tag}\n  </head>`);
 }
@@ -506,6 +552,33 @@ async function main() {
     try {
       const target = await writeRoute(template, routePath, { title, description });
       written.push(target);
+    } catch (err) {
+      errors.push({ route: routePath, error: String(err) });
+    }
+  }
+
+  // 4d) Data-driven article routes previously fell through to app.html,
+  //     exposing the homepage canonical until JavaScript ran.
+  for (const post of dynamicBlogPosts.filter((item) => !item.externalUrl)) {
+    const routePath = `/blog/${post.slug}`;
+    try {
+      written.push(await writeRoute(template, routePath, {
+        title: post.metaTitle,
+        description: post.metaDesc,
+      }));
+    } catch (err) {
+      errors.push({ route: routePath, error: String(err) });
+    }
+  }
+
+  // 4e) Data-driven college policy detail routes.
+  for (const college of colleges) {
+    const routePath = `/college-pet-policy/${college.slug}`;
+    try {
+      written.push(await writeRoute(template, routePath, {
+        title: college.metaTitle,
+        description: college.metaDesc,
+      }));
     } catch (err) {
       errors.push({ route: routePath, error: String(err) });
     }

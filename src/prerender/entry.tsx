@@ -41,6 +41,9 @@ import BlogEsaLetterRequirementsPage from "@/pages/blog-esa-letter-requirements/
 import ExploreStatesPage from "@/pages/explore-states/page";
 import DoctorProfilePage from "@/pages/doctor-profile/page";
 import OurProvidersPage from "@/pages/our-providers/page";
+import BlogPage from "@/pages/blog/page";
+import ResourceCenterPage from "@/pages/resource-center/page";
+import CollegePetPolicyPage from "@/pages/college-pet-policy/page";
 // AI-SEO-LIVE-SOFT-404-COMMERCIAL-ROUTES-001 — four commercial pages that
 // already had full, hand-reviewed content and correct <head> metadata but were
 // never added to the spike, so their deployed raw HTML was the empty app shell
@@ -64,6 +67,9 @@ const ROUTE_ELEMENTS: { path: string; element: React.ReactNode }[] = [
   { path: "/blog/esa-letter-requirements", element: <BlogEsaLetterRequirementsPage /> },
   { path: "/explore-esa-letters-all-states", element: <ExploreStatesPage /> },
   { path: "/our-providers", element: <OurProvidersPage /> },
+  { path: "/blog", element: <BlogPage /> },
+  { path: "/resource-center", element: <ResourceCenterPage /> },
+  { path: "/college-pet-policy", element: <CollegePetPolicyPage /> },
   { path: "/doctors/:id", element: <DoctorProfilePage /> },
   { path: "/are-online-esa-letters-legit", element: <AreOnlineESALettersLegitPage /> },
   { path: "/esa-vs-psd-letter", element: <EsaVsPsdLetterPage /> },
@@ -83,6 +89,9 @@ export const SPIKE_ROUTES: string[] = [
   "/blog/esa-letter-requirements",
   "/explore-esa-letters-all-states",
   "/our-providers",
+  "/blog",
+  "/resource-center",
+  "/college-pet-policy",
   "/doctors/robert-staaf",
   "/doctors/lytara-garcia",
   "/doctors/stephanie-white",
@@ -115,6 +124,9 @@ export const ROUTE_SOURCE: Record<string, string> = {
   "/blog/esa-letter-requirements": "src/pages/blog-esa-letter-requirements/page.tsx",
   "/explore-esa-letters-all-states": "src/pages/explore-states/page.tsx",
   "/our-providers": "src/pages/our-providers/page.tsx",
+  "/blog": "src/pages/blog/page.tsx",
+  "/resource-center": "src/pages/resource-center/page.tsx",
+  "/college-pet-policy": "src/pages/college-pet-policy/page.tsx",
   "/doctors/robert-staaf": "src/pages/doctor-profile/page.tsx",
   "/doctors/lytara-garcia": "src/pages/doctor-profile/page.tsx",
   "/doctors/stephanie-white": "src/pages/doctor-profile/page.tsx",
