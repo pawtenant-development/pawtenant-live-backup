@@ -33,6 +33,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const F = {
   mig: join(ROOT, "supabase/migrations/20260909120000_customer_resource_planners.sql"),
   mig2: join(ROOT, "supabase/migrations/20260911100000_customer_resource_psd_workbook_slot.sql"),
+  mig3: join(ROOT, "supabase/migrations/20260911130000_customer_resource_cancel_spelling.sql"),
   fnUrl: join(ROOT, "supabase/functions/get-customer-resource-url/index.ts"),
   fnUp: join(ROOT, "supabase/functions/admin-upload-customer-resource/index.ts"),
   lib: join(ROOT, "src/lib/customerResources.ts"),
@@ -90,6 +91,7 @@ async function run() {
   const migRaw = read(F.mig);
   const mig = sqlCode(migRaw);
   const mig2 = sqlCode(read(F.mig2));
+  const mig3 = sqlCode(read(F.mig3));
   const fnUrl = read(F.fnUrl), fnUrlCode = codeOnly(fnUrl), fnUrlNc = noComments(fnUrl);
   const fnUp = read(F.fnUp), fnUpNc = noComments(fnUp);
   const lib = read(F.lib), libCode = codeOnly(lib), libNc = noComments(lib);
@@ -129,6 +131,12 @@ async function run() {
   ok(/not in \('lead', 'cancelled', 'archived', 'refunded', 'disputed'\)/.test(elig), "the status exclusion list lost lead / cancelled / archived / refunded / disputed");
   ok(/public\.order_payment_state\(o\) in \('paid', 'partially_refunded'\)/.test(elig), "eligibility no longer requires the canonical order_payment_state to be paid or partially_refunded");
   ok(!/'unpaid'|'failed'/.test(elig), "an unpaid or failed payment state would be accepted");
+  // The LIVE-data hardening: the redefinition must keep every predicate AND exclude both spellings of cancelled.
+  const elig3 = fnBody(mig3, "customer_resource_order_eligible");
+  ok(/not in \('lead', 'cancelled', 'canceled', 'archived', 'refunded', 'disputed'\)/.test(elig3), "the hardened status exclusion list no longer names BOTH spellings (cancelled / canceled) plus lead / archived / refunded / disputed");
+  ok(/public\.order_payment_state\(o\) in \('paid', 'partially_refunded'\)/.test(elig3) && !/'unpaid'|'failed'/.test(elig3), "the hardened predicate no longer requires the canonical paid / partially_refunded payment state");
+  ok(/public\.order_service_family\([\s\S]*?\)\s*=\s*p_family/.test(elig3) && /p_family in \('esa', 'psd'\)/.test(elig3), "the hardened predicate dropped the service-family match");
+  ok(/revoke all on function public\.customer_resource_order_eligible\(public\.orders, text\) from public, anon, authenticated;/.test(mig3), "the hardened predicate is no longer re-revoked from public / anon / authenticated after create or replace");
   ok(/return json\(403, \{ ok: false, code: "not_entitled"/.test(fnUrlNc), "the signed-URL function no longer answers 403 not_entitled");
 
   // ── 4 · authentication alone is insufficient without order ownership ──────
@@ -156,7 +164,7 @@ async function run() {
   ok(/createSignedUrl\(path, SIGNED_URL_TTL_SECONDS, wantDownload \? \{ download: safeName \}/.test(fnUrlNc), "downloads no longer set Content-Disposition via the signed URL's download option (iPhone Safari)");
 
   // ── 6 · existing paid orders use the active version — no order rewrites ───
-  ok(!/update public\.orders|insert into public\.orders|alter table public\.orders|delete from public\.orders/.test(mig + mig2), "a migration writes to orders — historical orders must never be rewritten");
+  ok(!/update public\.orders|insert into public\.orders|alter table public\.orders|delete from public\.orders/.test(mig + mig2 + mig3), "a migration writes to orders — historical orders must never be rewritten");
   ok(/active_version_id\s+uuid/.test(mig) && /on v\.id = s\.active_version_id/.test(fnBody(mig, "customer_resource_entitlements")), "the active version is no longer a single pointer on the slot");
   ok(!/orders\.[a-z_]*planner|planner_version|resource_version_id/.test(mig), "a per-order planner column appeared — the asset must never be duplicated per order");
 
@@ -169,8 +177,8 @@ async function run() {
   ok(/if v_new\.retired_at is not null then/.test(pub) && /'storage_object_missing'/.test(pub), "publish no longer refuses a retired version or a version whose storage object is missing");
 
   // ── 8 · previous versions remain auditable and restorable ─────────────────
-  ok(!/delete from public\.customer_resource_versions|drop table[^;]*customer_resource_versions|truncate[^;]*customer_resource_versions/.test(mig + mig2), "a migration deletes version rows — history must be append-only");
-  ok(!/delete from storage\.objects/.test(mig + mig2), "a migration deletes storage objects — cleanup must be a separate deliberate operation");
+  ok(!/delete from public\.customer_resource_versions|drop table[^;]*customer_resource_versions|truncate[^;]*customer_resource_versions/.test(mig + mig2 + mig3), "a migration deletes version rows — history must be append-only");
+  ok(!/delete from storage\.objects/.test(mig + mig2 + mig3), "a migration deletes storage objects — cleanup must be a separate deliberate operation");
   ok(/superseded_by_version_id = v_new\.id,/.test(pub) && /superseded_by_version_id = null,/.test(pub), "publish no longer records / clears supersession");
   ok(/v_action := 'rollback'/.test(pub), "publishing an OLDER version is no longer recorded as a rollback");
   ok(/customer_resource_events/.test(mig) && /insert into public\.customer_resource_events/.test(pub), "publish is no longer audited in customer_resource_events");
@@ -189,14 +197,14 @@ async function run() {
   // ── 10 · permanent signed URLs are not stored ─────────────────────────────
   const ttl = Number((fnUrlNc.match(/const SIGNED_URL_TTL_SECONDS = (\d+);/) || [])[1]);
   ok(Number.isFinite(ttl) && ttl > 0 && ttl <= 900, `signed URL TTL is ${ttl || "missing"}s — must be a short-lived link (<= 900s)`);
-  ok(!/signed_url|signedurl/i.test(mig + mig2), "a migration stores a signed URL");
+  ok(!/signed_url|signedurl/i.test(mig + mig2 + mig3), "a migration stores a signed URL");
   ok(!/localStorage|sessionStorage|indexedDB/.test(libCode + sectionCode + marketingCode), "the client persists a signed URL in browser storage");
   ok(/"Cache-Control": "no-store"/.test(fnUrlNc), "signed-URL responses are cacheable");
   ok(/requestCustomerResourceUrl\(resourceKey, \{ \.\.\.opts, download: false \}\)/.test(libNc) && /requestCustomerResourceUrl\(resourceKey, \{ \.\.\.opts, download: true \}\)/.test(libNc), "open / download no longer mint a FRESH URL per action");
   ok(/if \(!token\) return \{ ok: false, code: "unauthenticated"/.test(libNc), "the client falls back to the anon key instead of requiring a session");
 
   // ── 11 · clinical document tables / delivery state are not reused ─────────
-  for (const [label, src] of [["migration", mig + mig2], ["get-customer-resource-url", fnUrlCode], ["admin-upload-customer-resource", codeOnly(fnUp)], ["customerResources.ts", libCode], ["IncludedResourcesSection", sectionCode], ["PlannerMarketingSection", marketingCode]]) {
+  for (const [label, src] of [["migration", mig + mig2 + mig3], ["get-customer-resource-url", fnUrlCode], ["admin-upload-customer-resource", codeOnly(fnUp)], ["customerResources.ts", libCode], ["IncludedResourcesSection", sectionCode], ["PlannerMarketingSection", marketingCode]]) {
     ok(!/order_documents|order_document_versions|doctor_status|patient_notified|signed_letter_url|letter_url|processed_file_url|sent_to_customer|customer_visible|delivered_at|patient_notification_sent_at/.test(src),
       `${label} reads clinical document / delivery state as planner entitlement`);
   }
@@ -205,7 +213,7 @@ async function run() {
   ok(/title="Included Resources"/.test(section), "the portal section is no longer a distinct 'Included Resources' section");
 
   // ── 12 · resource access triggers no customer / provider communications ───
-  for (const [label, src] of [["migration", mig + mig2], ["get-customer-resource-url", fnUrlCode], ["admin-upload-customer-resource", codeOnly(fnUp)], ["customerResources.ts", libCode], ["IncludedResourcesSection", sectionCode], ["PlannerMarketingSection", marketingCode]]) {
+  for (const [label, src] of [["migration", mig + mig2 + mig3], ["get-customer-resource-url", fnUrlCode], ["admin-upload-customer-resource", codeOnly(fnUp)], ["customerResources.ts", libCode], ["IncludedResourcesSection", sectionCode], ["PlannerMarketingSection", marketingCode]]) {
     ok(!/communications|logEmailComm|resend|ghl|sendSms|sms|send-email|email_templates|notify-|twilio|trackEvent/i.test(src.replace(/actor_email|v_actor_email|auth\.email|normalize_email|p_preview_email|previewEmail|v_email|p_email|o\.email|uploaded_by_email/g, "")),
       `${label} reaches a communications path`);
   }
@@ -214,10 +222,10 @@ async function run() {
   ok(!/functions\/v1\/(notify|send|ghl|twilio|create-payment|create-checkout)/.test(fnUrlNc + fnUpNc + libNc + sectionNc + marketingNc), "planner code invokes a notification or payment function");
 
   // ── 13 · resource access creates no earnings / payment mutations ──────────
-  for (const [label, src] of [["migration", mig + mig2], ["get-customer-resource-url", fnUrlCode], ["admin-upload-customer-resource", codeOnly(fnUp)], ["customerResources.ts", libCode], ["IncludedResourcesSection", sectionCode], ["PlannerMarketingSection", marketingCode]]) {
+  for (const [label, src] of [["migration", mig + mig2 + mig3], ["get-customer-resource-url", fnUrlCode], ["admin-upload-customer-resource", codeOnly(fnUp)], ["customerResources.ts", libCode], ["IncludedResourcesSection", sectionCode], ["PlannerMarketingSection", marketingCode]]) {
     ok(!/doctor_earnings|payment_attempts|stripe|refund_status\s*=|payment_intent_id\s*=|paid_at\s*=/i.test(src), `${label} touches earnings or payment state`);
   }
-  ok(!/update public\.(orders|doctor_earnings|order_documents|order_status_logs)/.test(mig + mig2), "a migration mutates orders / earnings / documents");
+  ok(!/update public\.(orders|doctor_earnings|order_documents|order_status_logs)/.test(mig + mig2 + mig3), "a migration mutates orders / earnings / documents");
   ok(!/\.from\("orders"\)|\.from\("doctor_earnings"\)|\.from\("order_documents"\)/.test(fnUrlCode + codeOnly(fnUp)), "an edge function reads or writes orders / earnings / documents directly");
 
   // ── 14 · checkout copy is product-aware (executed) ────────────────────────
@@ -548,6 +556,12 @@ if (process.argv.includes("--self-test")) {
       find: "<PlannerMarketingSection family=\"esa\" className=\"border-t border-orange-100\" />", replace: "<PlannerMarketingSection family=\"psd\" className=\"border-t border-orange-100\" />" },
     { name: "N39 a page duplicates the marketing section", file: "psdCost",
       find: "      <PlannerMarketingSection family=\"psd\" />\n", replace: "      <PlannerMarketingSection family=\"psd\" />\n      <PlannerMarketingSection family=\"psd\" id=\"dup\" />\n" },
+    { name: "N41 the hardened predicate silently drops the US spelling (a paid `canceled` order keeps access)", file: "mig3",
+      find: "not in ('lead', 'cancelled', 'canceled', 'archived', 'refunded', 'disputed')", replace: "not in ('lead', 'cancelled', 'archived', 'refunded', 'disputed')" },
+    { name: "N42 the hardened predicate stops matching the order's family to the slot's family", file: "mig3",
+      find: "         ) = p_family;", replace: "         ) is not null;" },
+    { name: "N43 the hardened predicate is redefined without re-revoking authenticated", file: "mig3",
+      find: "revoke all on function public.customer_resource_order_eligible(public.orders, text) from public, anon, authenticated;", replace: "revoke all on function public.customer_resource_order_eligible(public.orders, text) from public, anon;" },
     { name: "N40 the marketing copy invents a planner price", file: "benefit",
       find: "    portalHint: \"Already a customer? It's waiting in My Orders under Included Resources the moment your payment is confirmed.\",\n    previews: [\n      {\n        src: \"/assets/planner/pet-care-planner-cover.jpg\",",
       replace: "    portalHint: \"Buy the planner alone for $19.\",\n    previews: [\n      {\n        src: \"/assets/planner/pet-care-planner-cover.jpg\"," },
