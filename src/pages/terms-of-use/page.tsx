@@ -88,7 +88,7 @@ export default function TermsOfUsePage() {
             Terms of Use
           </h1>
           <p className="text-sm text-gray-500">
-            <strong>Pawtenant (HyperSpace Solutions LLC)</strong> &nbsp;·&nbsp; Last Updated: <strong>July 22, 2026</strong>
+            <strong>Pawtenant (HyperSpace Solutions LLC)</strong> &nbsp;·&nbsp; Last Updated: <strong>September 11, 2026</strong>
           </p>
           <div className="mt-5 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 max-w-3xl">
             <p className="text-sm text-amber-800 leading-relaxed">
@@ -162,13 +162,13 @@ export default function TermsOfUsePage() {
                 <ul className="space-y-1.5 list-disc list-inside pl-2">
                   <li>You receive a <strong>full refund</strong> if a licensed provider determines you do not qualify — this applies to both ESA and PSD orders.</li>
                   <li>Claimed housing-denial refunds are subject to an <strong>evidence-based review</strong> under the Refund Policy. A landlord's denial does not automatically qualify for a refund, and PawTenant reviews only whether its own guarantee applies; it does not make legal determinations.</li>
-                  <li>Certain <strong>discretionary</strong> refunds requested after substantial professional work has been completed may be reduced by up to <strong>$40</strong> as a professional evaluation and administrative services fee, as described in the Refund Policy. This fee never applies to a full-refund category.</li>
+                  <li>If you request cancellation after <strong>documented clinical work has begun</strong>, including provider review, outreach or a consultation, a <strong>$30 professional evaluation and administrative services fee</strong> is retained and the remaining amount paid is refunded. The fee never applies to a full-refund category and is not based on order status alone.</li>
                   <li>Subscriptions and add-ons follow the terms stated in the Refund Policy.</li>
                 </ul>
                 <p>You agree to provide accurate information, to submit your accommodation request and PawTenant letter to your housing provider, not to alter or misuse any document, and to cooperate with any refund review, which may include verification of documents and communications. Any discretionary refund is a one-time courtesy and creates no future entitlement. Nothing in these Terms or the Refund Policy limits rights available under applicable law or applicable card-network rules.</p>
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                   <p className="text-xs text-amber-800 font-bold mb-1">ARKANSAS, CALIFORNIA, IOWA, LOUISIANA, and MONTANA Residents Notice</p>
-                  <p className="text-xs text-amber-800">Beginning January 1, 2022, state law AB 468 requires individuals seeking ESA letters for dogs to have a client-provider relationship lasting at least <strong>30 days</strong> before documentation can be issued. This process will involve two consultations. Refund eligibility in these cases is governed by our <Link to="/refund-policy" className="text-orange-500 hover:underline">Refund Policy</Link>.</p>
+                  <p className="text-xs text-amber-800">Beginning January 1, 2022, California law AB 468 requires individuals seeking ESA letters for dogs to have a client-provider relationship lasting at least <strong>30 days</strong> before documentation can be issued. This process will involve two consultations. A disclosed waiting period is not a provider determination that you do not qualify. If you cancel after documented clinical work has begun, the $30 service fee applies; full-refund categories remain protected under our <Link to="/refund-policy" className="text-orange-500 hover:underline">Refund Policy</Link>.</p>
                 </div>
               </div>
             </div>

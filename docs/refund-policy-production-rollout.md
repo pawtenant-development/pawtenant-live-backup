@@ -21,15 +21,17 @@
 
 ## What changed on LIVE
 New `/refund-policy` (source of truth: categories A–I, housing-denial review, evidence examples,
-up-to-$40 discretionary fee, 5–10-day timing, disputes, fair-housing resources) wired into
+$30 documented-clinical-work cancellation fee, 5–10-day timing, disputes, fair-housing resources) wired into
 router + manifest + XML/HTML sitemaps + footer + `CORE_PAGE_META`. Terms refund summary + link.
 Privacy refund-evidence additions. Concise No-Risk page. FAQ + public contradiction removals.
 Portal + admin-SMS timing → 5–10 days. Internal support KB + post-request admin email template.
 
-## Up-to-$40 rule
-Discretionary, manual, case-specific, never exceeds amount paid, only after substantial
-professional work, exempt from every guaranteed full-refund category, subject to applicable law.
-**No automatic backend deduction.** Appears only in `/refund-policy` + the concise Terms summary.
+## $30 documented-work cancellation rule
+Manual and evidence-based, never exceeds the amount paid, and limited to a customer-requested
+cancellation after documented clinical work begins. Provider non-qualification/rejection and every
+other guaranteed full-refund category remain exempt, subject to applicable law. **No automatic
+backend deduction.** Appears only in `/refund-policy` + the concise Terms summary; the homepage
+guarantee links to the detailed section.
 
 ## Guardrails preserved
 provider-entity, provider-ra-earnings, route-status, full-body-prerender, machine-facts, pricing,

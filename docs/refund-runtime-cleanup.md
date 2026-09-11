@@ -27,7 +27,7 @@
 ## Verification
 - LIVE DB: both rows now 5–10, 0 active templates with 3–5, placeholders intact.
 - LIVE deployed chat v6 bundle: contains all refund facts (5–10, ESA+PSD full refund, HUD
-  optional, RA full add-on refund, up-to-$40 discretionary/not-automatic, housing-denial
+  optional, RA full add-on refund, $30 after documented clinical work/not status-only/not automatic, housing-denial
   reviewed under Refund Policy) and no stale 3–5. Verified by deployed-bundle inspection —
   no LLM invocation, no outbound customer message.
 - pawtenant.com/refund-policy still 200; checkout, provider profiles, RA earnings unchanged.

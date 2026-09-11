@@ -68,10 +68,11 @@ function runChecks(s) {
   if (!/hud[^.]{0,60}optional/i.test(k)) F.push("B9. KB does not state the HUD reference is OPTIONAL");
   if (!/never tell a customer a hud complaint is required/i.test(k)) F.push("B10. KB missing the HUD-not-required guardrail");
   if (!/add-on is refunded in full/i.test(k)) F.push("B11. KB does not state RA/add-on provider non-approval = full add-on refund");
-  if (!/up to \$40/i.test(k)) F.push("B12. KB does not mention the up-to-$40 provision");
-  if (!/discretionary partial or goodwill refunds/i.test(k)) F.push("B13. KB does not describe the $40 as discretionary");
-  if (!/does not automatically keep a fee/i.test(k)) F.push("B14. KB does not state PawTenant does NOT automatically keep a fee");
-  if (!/never present \$40 as automatic/i.test(k)) F.push("B15. KB missing the '$40-not-automatic' guardrail");
+  if (!/retains a \$30 professional evaluation and administrative services fee/i.test(k)) F.push("B12. KB does not state the $30 post-work cancellation rule");
+  if (!/documented clinical work begins/i.test(k)) F.push("B13. KB does not require documented clinical work");
+  if (!/not based on Under Review status alone/i.test(k)) F.push("B14. KB does not reject status-only fee decisions");
+  if (!/not deducted automatically by the backend/i.test(k)) F.push("B15. KB does not prohibit an automatic backend deduction");
+  if (!/waiting period[\s\S]{0,180}not provider non-qualification/i.test(k)) F.push("B16. KB does not distinguish a state waiting period from provider non-qualification");
 
   // ── (C) deploy list — only genuine KB consumers ──────────────────────────────
   for (const fn of DEPLOY_LIST) {
@@ -99,7 +100,7 @@ async function selfTest(base) {
     { name: "HUD becomes mandatory", mut: (s) => { s.kb = (s.kb || "").replace(/optional/gi, "required").replace(/never tell a customer a hud complaint is required/gi, "always require a HUD complaint"); } },
     { name: "PSD refunds prohibited", mut: (s) => { s.kb = (s.kb || "").replace(/never say psd orders are non-refundable/gi, "PSD orders are non-refundable"); } },
     { name: "landlord denial becomes automatic refund", mut: (s) => { s.kb = (s.kb || "").replace(/does not automatically qualify for a refund/gi, "automatically qualifies for a full refund"); } },
-    { name: "$40 becomes mandatory/automatic", mut: (s) => { s.kb = (s.kb || "").replace(/does not automatically keep a fee/gi, "automatically keeps a fee"); } },
+    { name: "$30 becomes an automatic backend deduction", mut: (s) => { s.kb = (s.kb || "").replace(/not deducted automatically by the backend/gi, "deducted automatically by the backend"); } },
     { name: "RA rejection stops being refundable", mut: (s) => { s.kb = (s.kb || "").replace(/add-on is refunded in full/gi, "add-on is not refundable"); } },
     { name: "unrelated function added to deploy list", mut: (s) => { s.funcImports["stripe-webhook"] = "import { verifyStripeSignature } from '../_shared/verifyStripeSignature.ts';"; DEPLOY_LIST.push("stripe-webhook"); } },
   ];
@@ -132,7 +133,7 @@ async function main() {
   console.log("  ✓ migration sets refund timing to 5-10 business days (safe replace()).");
   console.log("  ✓ AI knowledge: full refund on non-qualification (ESA + PSD); RA non-approval = full add-on refund.");
   console.log("  ✓ AI knowledge: housing-denial reviewed under Refund Policy; HUD optional; eligibility only, no legal call.");
-  console.log("  ✓ AI knowledge: up-to-$40 discretionary, never automatic; no 3-5-day wording.");
+  console.log("  ✓ AI knowledge: $30 after documented clinical work; never status-only or backend-automatic; no 3-5-day wording.");
   console.log(`  ✓ deploy list = only genuine KB consumers: ${DEPLOY_LIST.join(", ")}.`);
   console.log("\n[check-refund-runtime-parity] PASSED — refund runtime contract green.");
 }

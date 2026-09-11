@@ -10,7 +10,8 @@
 // surfaces). Checkout and marketing pages stay brief. So this guard does NOT
 // require every condition to appear on checkout or every page — it verifies the
 // source-of-truth exists, that public pages don't CONTRADICT it, that the
-// up-to-$40 rule is discretionary (never automatic), and that checkout stays
+// $30 post-work cancellation rule is evidence-based (never status-only or an
+// automatic backend deduction), and that checkout stays
 // free of newly-added detailed refund-policy copy.
 //
 // Run:  node scripts/check-refund-guarantee-parity.mjs
@@ -30,6 +31,8 @@ const TERMS = "src/pages/terms-of-use/page.tsx";
 const PRIVACY = "src/pages/privacy-policy/page.tsx";
 const PLAN_CARDS = "src/data/planPricingCards.ts";
 const CREATE_REFUND = "supabase/functions/create-refund/index.ts";
+const HOME_HERO = "src/pages/home/components/HeroSection.tsx";
+const PRERENDER = "scripts/prerender-seo.mjs";
 
 // Customer-facing marketing / guarantee / landlord surfaces scanned for
 // contradictions (curated so internal admin/provider files are excluded).
@@ -54,7 +57,7 @@ const PUBLIC_SCAN = [
   "public/llms.txt",
 ];
 
-// Checkout components that MUST stay free of newly-added $40 / detailed policy.
+// Checkout components that MUST stay free of newly-added $30 / detailed policy.
 const CHECKOUT_FILES = [
   "src/pages/assessment/components/StripeCardForm.tsx",
   "src/pages/assessment/components/StripePaymentForm.tsx",
@@ -96,7 +99,7 @@ const FORBIDDEN_HUD_MANDATORY = [
   { re: /HUD complaint (?:number )?is required/i, label: '"HUD complaint is required"' },
 ];
 const CHECKOUT_FORBIDDEN = [
-  { re: /\$40\b/, label: '"$40"' },
+  { re: /\$30[^.]{0,50}(?:service|administrative|cancellation) fee|(?:service|administrative|cancellation) fee[^.]{0,50}\$30/i, label: 'a "$30 refund-service fee" clause' },
   { re: /refund-policy/i, label: "a /refund-policy link" },
   { re: /administrative services fee/i, label: "retained-services-fee copy" },
   { re: /housing.?denial/i, label: "housing-denial policy copy" },
@@ -143,17 +146,17 @@ function runChecks(f) {
   if (!(/not qualify/i.test(rpS) && /full refund/i.test(rpS)))
     F.push("4. Refund Policy does not state a full refund for provider non-qualification");
 
-  // 5. up-to-$40 rule exists.
-  if (!/up to\s*\$40/i.test(rpS))
-    F.push("5. Refund Policy is missing the up-to-$40 provision");
+  // 5. Exact $30 rule exists for customer cancellation after documented work begins.
+  if (!/cancel[\s\S]{0,120}documented clinical work[\s\S]{0,160}\$30/i.test(rpS))
+    F.push("5. Refund Policy is missing the $30 post-work customer-cancellation rule");
 
-  // 6. $40 rule is discretionary, not automatic.
-  if (!/discretionary/i.test(rpS))
-    F.push("6. Refund Policy fee is not described as discretionary");
-  if (!/not an automatic deduction/i.test(rpS))
-    F.push('6. Refund Policy fee is missing the "not an automatic deduction" qualifier');
-  if (/automatic\s*\$40|\$40[^.]{0,20}(deducted from every|mandatory)/i.test(rpS))
-    F.push("6. Refund Policy describes the $40 fee as automatic/mandatory");
+  // 6. $30 rule requires evidence and is not an automatic backend deduction.
+  if (!/not applied merely because[^.]{0,80}Under Review/i.test(rpS))
+    F.push("6. Refund Policy does not reject status-only fee decisions");
+  if (!/record that clinical work began/i.test(rpS))
+    F.push("6. Refund Policy does not require a documented clinical-work record");
+  if (!/not an automatic backend deduction/i.test(rpS))
+    F.push('6. Refund Policy fee is missing the "not an automatic backend deduction" qualifier');
 
   // 7. Full-refund categories are expressly exempt from the fee.
   if (!/does not apply to[\s\S]{0,300}provider non-qualification/i.test(rpS))
@@ -176,10 +179,10 @@ function runChecks(f) {
   const terms = f[TERMS] || "";
   if (!/to="\/refund-policy"/.test(terms))
     F.push("2. Terms of Use does not link to /refund-policy");
-  // 11. No old $30 refund fee remains (Terms + Refund Policy).
+  // 11. No superseded $40 refund fee remains (Terms + Refund Policy).
   for (const src of [TERMS, REFUND_POLICY]) {
-    if ((f[src] || "").includes("$30"))
-      F.push(`11. ${src} still contains a "$30" refund fee`);
+    if ((f[src] || "").includes("$40"))
+      F.push(`11. ${src} still contains the superseded "$40" refund fee`);
   }
   // 12. "PSD refunds are never issued" is absent.
   for (const src of [TERMS, REFUND_POLICY]) {
@@ -212,7 +215,7 @@ function runChecks(f) {
       F.push(`13. ${src} still promises 3–5 business days (should be 5–10)`);
   }
 
-  // 15. Checkout stays free of newly-added $40 / detailed refund-policy copy.
+  // 15. Checkout stays free of newly-added $30 / detailed refund-policy copy.
   for (const src of CHECKOUT_FILES) {
     const txt = f[src]; if (txt == null) continue;
     for (const { re, label } of CHECKOUT_FORBIDDEN)
@@ -224,6 +227,13 @@ function runChecks(f) {
   for (const re of BACKEND_FEE_FORBIDDEN)
     if (re.test(cr)) F.push(`16. ${CREATE_REFUND} appears to add an automatic refund-fee path (${re})`);
 
+  // 17. Homepage refund promise links to the detailed policy in both React and
+  //     the pre-hydration homepage skeleton.
+  for (const src of [HOME_HERO, PRERENDER]) {
+    if (!/refund-policy#services-fee/.test(f[src] || ""))
+      F.push(`17. ${src} is missing the homepage refund-policy link`);
+  }
+
   return F;
 }
 
@@ -234,22 +244,24 @@ async function selfTest(baseFiles) {
   const controls = [
     { name: 'reintroduce "Landlord denies? Full refund. No questions asked."',
       mutate: (f) => { f["src/pages/faqs/page.tsx"] = (f["src/pages/faqs/page.tsx"] || "x") + "\nLandlord denies? Full refund. No questions asked."; } },
-    { name: "make the $40 fee an automatic deduction",
-      mutate: (f) => { f[REFUND_POLICY] = (f[REFUND_POLICY] || "").replace(/not an automatic deduction/i, "an automatic deduction on every refund"); } },
+    { name: "make the $30 fee an automatic backend deduction",
+      mutate: (f) => { f[REFUND_POLICY] = (f[REFUND_POLICY] || "").replace(/not an automatic backend deduction/i, "an automatic backend deduction"); } },
     { name: "remove the fee exemption list",
       mutate: (f) => { f[REFUND_POLICY] = (f[REFUND_POLICY] || "").replace(/does not apply/gi, "applies"); } },
-    { name: 'reintroduce the old "$30" refund fee',
-      mutate: (f) => { f[TERMS] = (f[TERMS] || "x") + "\na $30 administrative fee will be deducted."; } },
+    { name: 'reintroduce the superseded "$40" refund fee',
+      mutate: (f) => { f[TERMS] = (f[TERMS] || "x") + "\nup to $40 may be retained."; } },
     { name: 'reintroduce "Refunds for PSD letters are never issued"',
       mutate: (f) => { f[TERMS] = (f[TERMS] || "x") + "\nRefunds for PSD letters are never issued."; } },
-    { name: "insert $40 clause into a checkout file",
-      mutate: (f) => { f["src/pages/assessment/components/StripeCardForm.tsx"] = (f["src/pages/assessment/components/StripeCardForm.tsx"] || "x") + "\nPawTenant may retain up to $40."; } },
+    { name: "insert $30 clause into a checkout file",
+      mutate: (f) => { f["src/pages/assessment/components/StripeCardForm.tsx"] = (f["src/pages/assessment/components/StripeCardForm.tsx"] || "x") + "\nPawTenant retains a $30 service fee."; } },
     { name: "introduce a mandatory HUD complaint",
       mutate: (f) => { f[REFUND_POLICY] = (f[REFUND_POLICY] || "x") + "\nA HUD complaint is required to qualify."; } },
     { name: "claim PawTenant determines an unlawful denial",
       mutate: (f) => { f["src/pages/faqs/page.tsx"] = (f["src/pages/faqs/page.tsx"] || "x") + "\nPawTenant confirms the unlawful denial before refunding."; } },
     { name: "provider non-qualification stops being fully refundable",
       mutate: (f) => { f[PLAN_CARDS] = (f[PLAN_CARDS] || "").replace(/Full refund if you don'?t qualify/gi, "Store credit only"); } },
+    { name: "remove the homepage refund-policy link",
+      mutate: (f) => { f[HOME_HERO] = (f[HOME_HERO] || "").replace(/refund-policy#services-fee/g, "terms-of-use"); } },
   ];
 
   const baseFailures = runChecks(baseFiles).length;
@@ -270,7 +282,7 @@ async function selfTest(baseFiles) {
 // ── main ─────────────────────────────────────────────────────────────────────
 async function main() {
   const allPaths = [...new Set([
-    REFUND_POLICY, TERMS, PRIVACY, PLAN_CARDS, CREATE_REFUND,
+    REFUND_POLICY, TERMS, PRIVACY, PLAN_CARDS, CREATE_REFUND, HOME_HERO, PRERENDER,
     ...PUBLIC_SCAN, ...CHECKOUT_FILES, ...TIMING_FILES,
   ])];
   const files = await readAll(allPaths);
@@ -288,9 +300,10 @@ async function main() {
     process.exit(1);
   }
   console.log("  ✓ Refund Policy is the source of truth; Terms link to it; Privacy covers evidence.");
-  console.log("  ✓ up-to-$40 fee is discretionary, exempts full-refund categories, absent from checkout.");
-  console.log("  ✓ No unconditional landlord-denial refund, legal adjudication, $30 fee, or PSD-never-refund copy.");
+  console.log("  ✓ $30 post-work cancellation fee requires evidence, exempts full-refund categories, and is absent from checkout.");
+  console.log("  ✓ No unconditional landlord-denial refund, legal adjudication, superseded $40 fee, or PSD-never-refund copy.");
   console.log("  ✓ HUD reference optional; refund timing consistently 5–10 business days.");
+  console.log("  ✓ Homepage refund promise links to the detailed fee section before and after hydration.");
   console.log("\n[check-refund-guarantee-parity] PASSED — refund/housing-denial contract green.");
 }
 

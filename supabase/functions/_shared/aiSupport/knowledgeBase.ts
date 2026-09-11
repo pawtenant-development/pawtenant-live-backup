@@ -33,7 +33,8 @@ export const KB_REFUND_FACTS: readonly string[] = [
   "A landlord's denial does NOT automatically qualify for a refund. Housing-denial refund requests are reviewed by the support team under PawTenant's Refund Policy. PawTenant reviews refund eligibility only — never tell a customer that PawTenant determined the landlord broke the law or how HUD would rule.",
   "A HUD or state/local fair-housing complaint reference is OPTIONAL — never tell a customer a HUD complaint is required.",
   "If a standalone Additional-Documentation / Reasonable-Accommodation add-on is not approved by the reviewing provider, that add-on is refunded in full; the base ESA/PSD service stays completed.",
-  "PawTenant does NOT automatically keep a fee on refunds. Certain discretionary partial or goodwill refunds after substantial work may retain up to $40, but guaranteed full-refund cases never do. Never present $40 as automatic or applied to every refund.",
+  "If a customer requests cancellation after documented clinical work begins, PawTenant retains a $30 professional evaluation and administrative services fee and refunds the remaining amount paid. Clinical work may include provider review, provider outreach or a consultation. The fee never applies to guaranteed full-refund cases, is not based on Under Review status alone, and is not deducted automatically by the backend.",
+  "A disclosed state waiting period, including California's required provider-client relationship period for emotional support dog documentation, is not provider non-qualification. If the customer cancels because of the waiting period after documented clinical work begins, the $30 fee applies. Route every refund request to support for evidence review; never make the refund decision yourself.",
   "For any actual money-back request, keep your reply brief and accurate and route it to the support team — never approve, promise, or deny a refund yourself.",
 ];
 

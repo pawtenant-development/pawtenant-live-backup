@@ -17,9 +17,9 @@ import SharedFooter from "../../components/feature/SharedFooter";
 //     or whether a property is legally exempt.
 //   • Evidence is case-specific ("examples PawTenant may consider"); a HUD /
 //     agency reference is optional when filed, never the sole required proof.
-//   • The up-to-$40 professional evaluation & administrative services fee is
-//     discretionary, manual, case-specific, never exceeds the amount paid, and
-//     never applies to a guaranteed full-refund category. It is NOT automatic.
+//   • A $30 professional evaluation & administrative services fee applies to a
+//     customer-requested cancellation after documented clinical work begins.
+//     It never applies to a guaranteed full-refund category and is not automated.
 //
 // Title/description/canonical come from CORE_PAGE_META via SEOManager +
 // scripts/prerender-seo.mjs (no hardcoded <title> — single source of truth).
@@ -53,13 +53,13 @@ const categories: { name: string; outcome: string; fee: boolean }[] = [
   { name: "A licensed provider determines you do not qualify", outcome: "Full refund", fee: false },
   { name: "Duplicate or erroneous charge", outcome: "Full refund", fee: false },
   { name: "PawTenant fails to deliver, or a provider is unable to complete the service", outcome: "Full refund", fee: false },
-  { name: "You cancel before professional work on your order begins", outcome: "Full refund", fee: false },
+  { name: "You cancel before documented clinical work on your order begins", outcome: "Full refund", fee: false },
   { name: "A qualifying housing-denial claim under this Refund Policy", outcome: "Full refund", fee: false },
   { name: "A standalone Additional-Documentation / Reasonable-Accommodation add-on the reviewing provider does not approve", outcome: "Full add-on refund", fee: false },
-  { name: "You cancel after professional work has been completed (change of mind)", outcome: "Discretionary — up to $40 may be retained", fee: true },
+  { name: "You cancel after documented clinical work has begun", outcome: "$30 service fee retained; the remaining amount paid is refunded", fee: true },
   { name: "A housing-denial claim that does not meet the criteria below", outcome: "No guaranteed refund; a discretionary partial refund may be offered", fee: true },
   { name: "Completed evaluation or letter already issued, where no guarantee category applies", outcome: "Generally non-refundable; discretionary only", fee: true },
-  { name: "Discretionary goodwill (no other category applies)", outcome: "Case by case — up to $40 may be retained", fee: true },
+  { name: "Discretionary goodwill (no other category applies)", outcome: "Case by case under this policy", fee: true },
   { name: "Subscription renewal", outcome: "Governed by the renewal terms below; cancel anytime from your account", fee: false },
   { name: "ESA + Reasonable-Accommodation or PSD + Reasonable-Accommodation bundle", outcome: "Reviewed by component under the rules above", fee: false },
   { name: "Payment dispute / chargeback", outcome: "Handled through the dispute process (see below)", fee: false },
@@ -100,7 +100,7 @@ export default function RefundPolicyPage() {
             Refund Policy
           </h1>
           <p className="text-sm text-gray-500">
-            <strong>Pawtenant (HyperSpace Solutions LLC)</strong> &nbsp;&middot;&nbsp; Last Updated: <strong>July 21, 2026</strong>
+            <strong>Pawtenant (HyperSpace Solutions LLC)</strong> &nbsp;&middot;&nbsp; Last Updated: <strong>September 11, 2026</strong>
           </p>
           <div className="mt-5 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 max-w-3xl">
             <p className="text-sm text-amber-800 leading-relaxed">
@@ -231,17 +231,16 @@ export default function RefundPolicyPage() {
             </div>
 
             <div>
-              <SectionHeading id="services-fee" title="Professional Evaluation & Administrative Services Fee (up to $40)" />
+              <SectionHeading id="services-fee" title="Professional Evaluation & Administrative Services Fee ($30)" />
               <div className="text-gray-600 text-sm leading-relaxed space-y-3">
-                <p>Where PawTenant approves a <strong>discretionary</strong> partial or goodwill refund <strong>after the professional evaluation, provider review, letter preparation, or other substantial professional work has already been completed</strong>, PawTenant may retain <strong>up to $40</strong> as a professional evaluation and administrative services fee.</p>
+                <p>If you ask to cancel <strong>after documented clinical work on your order has begun</strong>, PawTenant retains a <strong>$30 professional evaluation and administrative services fee</strong> and refunds the remaining amount you paid. Clinical work may include a licensed provider beginning the case review, contacting or calling you about the evaluation, conducting a consultation, or preparing clinical documentation.</p>
                 <p>This fee:</p>
                 <ul className="space-y-1.5 pl-1">
                   {[
-                    "is discretionary and case-specific — it is not deducted from every refund;",
-                    "never exceeds the amount you actually paid (for discounted orders, it is capped accordingly);",
-                    "applies only when PawTenant voluntarily approves a partial or goodwill refund;",
-                    "reflects work already performed (assessment and intake processing, licensed-provider review coordination, document preparation, compliance review, payment processing, and case administration); and",
-                    "remains a manual support/finance decision.",
+                    "applies only to a customer-requested cancellation after documented clinical work begins;",
+                    "never exceeds the amount you actually paid;",
+                    "reflects clinical and administrative work already performed; and",
+                    "is applied manually by PawTenant support or finance after the work record is reviewed.",
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-2">
                       <i className="ri-checkbox-blank-circle-fill text-orange-400 text-[6px] mt-2 flex-shrink-0"></i>
@@ -249,8 +248,8 @@ export default function RefundPolicyPage() {
                     </li>
                   ))}
                 </ul>
-                <p>It <strong>may</strong> apply when you change your mind after professional work is completed, or when a housing-denial request lacks sufficient verifiable evidence but PawTenant nevertheless approves a discretionary partial refund.</p>
-                <p>It <strong>does not apply</strong> to: provider non-qualification; a duplicate or erroneous charge; PawTenant's failure to deliver; a provider being unable to complete the service; cancellation before professional work begins; a qualifying housing-denial claim approved under this Refund Policy; a standalone Additional-Documentation / Reasonable-Accommodation add-on the provider does not approve; or a refund required by applicable law. It is not an automatic deduction, not a mandatory charge, and not a fee applied to every refund. This provision is subject to applicable law.</p>
+                <p>A disclosed state waiting period, including California&rsquo;s required provider-client relationship period for emotional support dog documentation, is <strong>not a provider determination that you do not qualify</strong>. If you cancel because of that waiting period after documented clinical work has begun, the $30 fee applies.</p>
+                <p>It <strong>does not apply</strong> to: provider non-qualification or provider rejection; a duplicate or erroneous charge; PawTenant's failure to deliver; a provider being unable to complete the service; cancellation before documented clinical work begins; a qualifying housing-denial claim approved under this Refund Policy; a standalone Additional-Documentation / Reasonable-Accommodation add-on the provider does not approve; or a refund required by applicable law. The fee is not applied merely because an order is marked &ldquo;Under Review&rdquo;; PawTenant must have a record that clinical work began. It is not an automatic backend deduction. This provision is subject to applicable law.</p>
               </div>
             </div>
 
