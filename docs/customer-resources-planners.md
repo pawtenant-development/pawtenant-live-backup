@@ -28,13 +28,16 @@ is a separate, deliberate operation (not built).
 
 ### The PSD slot
 
-The PSD planner is a **different document** that has not been supplied yet.
-The PSD slot exists so it can be added later, but it is inactive and
-**unadvertised**: customers see nothing for it, and no PSD page mentions a
-planner. When the real PSD asset arrives: upload it into the **PSD** slot,
-publish it, then (in a code task) flip `PSD_PLANNER_PUBLISHED` in
-`src/data/plannerBenefit.ts` and add PSD marketing copy. Never upload the ESA
-planner into the PSD slot.
+The **Psychiatric Service Dog Training Workbook by PawTenant** is a different
+document from the ESA planner. Since 2026-09-11 the PSD slot is **published and
+advertised** (TEST v1 and LIVE v1, `PSD PLANNER.pdf`, 30 pages, sha `5b7e9cf2…`):
+paid PSD customers see a "View Workbook" card in Included Resources, and the PSD
+pages carry the workbook section with its scope statement. Replace it exactly
+like the ESA planner — upload into the **PSD** slot, preview, publish. Never
+upload the ESA planner into the PSD slot (the guard's assets-swapped control
+exists for this). Retiring the PSD workbook is a code task: flip
+`PSD_PLANNER_PUBLISHED` in `src/data/plannerBenefit.ts` and the PSD copy
+disappears everywhere at once.
 
 ---
 
@@ -46,17 +49,18 @@ Decided by the database, once, in `public.customer_resource_order_eligible(order
 authenticated customer
 AND owns the order        (orders.user_id = auth.uid()
                            OR normalize_email(orders.email) = normalize_email(auth.email()))
-AND orders.status NOT IN ('lead','cancelled','archived','refunded','disputed')
+AND orders.status NOT IN ('lead','cancelled','canceled','archived','refunded','disputed')
 AND order_payment_state(orders) IN ('paid','partially_refunded')
-AND order_service_family(letter_type, package_key, package_display_name, plan_type, parent_order_id) = 'esa'
-AND the ESA slot has a published (active, not retired) version
+AND order_service_family(letter_type, package_key, package_display_name, plan_type, parent_order_id) = the slot's family ('esa' | 'psd')
+AND that slot has a published (active, not retired) version
 ```
 
 * `order_payment_state()` is the canonical lifecycle payment truth
   (`payment_intent_id` / `paid_at`, minus refunds and disputes).
 * `order_service_family()` is the canonical asymmetric classifier: **any PSD
   evidence wins**, `unknown` fails closed. It never reads `confirmation_id`.
-* Refund/cancel policy follows the portal: a **full** refund, a cancellation, an
+* Refund/cancel policy follows the portal: a **full** refund, a cancellation
+  (either spelling — LIVE data carries both `cancelled` and `canceled`), an
   archive or a dispute ends access; a **partial** refund keeps it.
 * Multiple paid ESA orders → one planner card (entitlement is per customer).
 
@@ -89,12 +93,26 @@ never consulted.
 Opening or downloading the planner writes **nothing**: no order, review,
 provider, document, delivery, earning, communication or lifecycle change.
 
-## LIVE promotion (not authorized yet)
+## LIVE — promoted 2026-09-11 (ESA-PSD-PLANNERS-MARKETING-LIVE-001)
 
-1. Apply `supabase/migrations/20260909120000_customer_resource_planners.sql` to
-   LIVE via MCP `apply_migration` (idempotent; depends on the existing
-   `is_admin_staff()`, `normalize_email()`, `order_payment_state()` and
-   `order_service_family()` helpers — confirm all four exist on LIVE first).
-2. Deploy both edge functions with `verify_jwt=true`.
-3. Cherry-pick commit `70b5f71` (never merge TEST `main`).
-4. Upload and publish the corrected planner from the LIVE admin panel.
+Both migrations applied, both edge functions deployed (`verify_jwt=true`, v1),
+frontend on LIVE `650367e4` (`dpl_9KHLfNxiXDMyZwiZAEeowaKM9HQw`), ESA planner v1
+and PSD workbook v1 uploaded, hash-checked and published from the LIVE admin
+panel. Full record: `docs/tasks/ESA-PSD-PLANNERS-MARKETING-LIVE-001.md`.
+
+**Hardening (closure 2026-09-11):**
+`supabase/migrations/20260911130000_customer_resource_cancel_spelling.sql`
+(adds the `canceled` spelling to the exclusion list) is applied on TEST **and**
+LIVE (LIVE ledger `20260911081234`, MCP `apply_migration`, owner-authorized).
+LIVE rolled-back access matrix afterwards: 22/22. SQL-only — no function or
+frontend deployment was needed.
+
+### Rollback on LIVE
+
+* **Asset problem** — admin panel: *Disable (unpublish)* or *Roll back to this*
+  on an earlier version. No deployment, nothing deleted.
+* **Code problem** — `git revert 650367e4` (and `1e96f75f`) on
+  `pawtenant-live-backup`, or promote the previous production deployment in
+  Vercel. The migrations are additive and safe to leave in place.
+* **Never** delete rows from `customer_resource_versions` or objects from the
+  private bucket as a rollback step.
