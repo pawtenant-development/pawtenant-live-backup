@@ -100,7 +100,7 @@ export default function RefundPolicyPage() {
             Refund Policy
           </h1>
           <p className="text-sm text-gray-500">
-            <strong>Pawtenant (HyperSpace Solutions LLC)</strong> &nbsp;&middot;&nbsp; Last Updated: <strong>September 11, 2026</strong>
+            <strong>Pawtenant (HyperSpace Solutions LLC)</strong>
           </p>
           <div className="mt-5 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 max-w-3xl">
             <p className="text-sm text-amber-800 leading-relaxed">
@@ -287,7 +287,7 @@ export default function RefundPolicyPage() {
             <div>
               <SectionHeading id="changes" title="Review & Changes" />
               <div className="text-gray-600 text-sm leading-relaxed space-y-3">
-                <p>Refund decisions are made by PawTenant support and finance under this policy. If you disagree with a decision, reply to your support thread to request a second review. We may update this policy from time to time; the &ldquo;Last Updated&rdquo; date above reflects the current version. Questions? Email{" "}
+                <p>Refund decisions are made by PawTenant support and finance under this policy. If you disagree with a decision, reply to your support thread to request a second review. We may update this policy from time to time. Questions? Email{" "}
                   <a href="mailto:hello@pawtenant.com" className="text-orange-500 hover:underline">hello@pawtenant.com</a>.</p>
               </div>
             </div>
