@@ -25,6 +25,9 @@ import {
   getPsdAnnualTotal,
   getPsdRenewalTotal,
 } from "../config/pricing";
+// ESA-PSD-PLANNERS-MARKETING-LIVE-001 — each family lists ONLY its own free
+// resource: the Pet Care Planner on ESA cards, the PSD Training Workbook on PSD cards.
+import { ESA_PLANNER_BENEFIT_LINE, PSD_PLANNER_BENEFIT_LINE } from "./plannerBenefit";
 
 export interface PlanSectionCopy {
   eyebrow: string;
@@ -68,6 +71,7 @@ export function buildEsaPlanCards(ctaHref = "/assessment"): PlanCard[] {
         "Scan-to-verify QR code on the letter",
         "Landlord verification support",
         "Full refund if you don't qualify",
+        ESA_PLANNER_BENEFIT_LINE,
       ],
       ctaLabel: "Start Your Evaluation",
       ctaHref,
@@ -86,6 +90,7 @@ export function buildEsaPlanCards(ctaHref = "/assessment"): PlanCard[] {
         "Automatic yearly renewal — cancel anytime",
         "Priority scheduling — no waitlist",
         "Everything in the ESA Letter plan",
+        ESA_PLANNER_BENEFIT_LINE,
       ],
       ctaLabel: "Choose Annual",
       ctaHref,
@@ -106,6 +111,7 @@ export function buildEsaPlanCards(ctaHref = "/assessment"): PlanCard[] {
         "Scan-to-verify QR code on the letter",
         "Landlord verification support",
         "Full refund if you don't qualify",
+        ESA_PLANNER_BENEFIT_LINE,
       ],
       ctaLabel: "Start Three-Pet",
       ctaHref,
@@ -129,6 +135,7 @@ export function buildPsdPlanCards(ctaHref = "/psd-assessment"): PlanCard[] {
         "Scan-to-verify QR code on the letter",
         "Housing & travel documentation support",
         "Full refund if you don't qualify",
+        PSD_PLANNER_BENEFIT_LINE,
       ],
       ctaLabel: "Start Your Evaluation",
       ctaHref,
@@ -147,6 +154,7 @@ export function buildPsdPlanCards(ctaHref = "/psd-assessment"): PlanCard[] {
         "Automatic yearly renewal — cancel anytime",
         "Priority scheduling — no waitlist",
         "Everything in the PSD Letter plan",
+        PSD_PLANNER_BENEFIT_LINE,
       ],
       ctaLabel: "Choose Annual",
       ctaHref,
@@ -162,6 +170,7 @@ export function buildPsdPlanCards(ctaHref = "/psd-assessment"): PlanCard[] {
         "Signed PSD documentation letter",
         "Scan-to-verify QR code on the letter",
         "Housing & travel documentation support",
+        PSD_PLANNER_BENEFIT_LINE,
       ],
       ctaLabel: "Start Multi-Dog",
       ctaHref,

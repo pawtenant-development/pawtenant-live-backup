@@ -13,6 +13,8 @@ import { ESA_PRICE_LABELS, BUNDLE_PRICING } from "@/config/pricing";
 import { useSitePricing } from "@/hooks/useSitePricing";
 
 import HeroPriceLine from "@/components/feature/HeroPriceLine";
+import PlannerMarketingSection from "@/components/feature/PlannerMarketingSection";
+import { ESA_PLANNER_INCLUDED_LINE } from "@/data/plannerBenefit";
 // LIVE-PUBLIC-PAGES-...-001: the former two-card `packages` array was removed.
 // This page now renders the CANONICAL homepage three-card block
 // (PlanPricingSection + buildEsaPlanCards), so its prices come from the same
@@ -27,6 +29,7 @@ const included = [
   "Money Back Guarantee for stress-free experience",
   "Dedicated customer support",
   "Legitimate ESA letter for peace of mind",
+  ESA_PLANNER_INCLUDED_LINE,
 ];
 
 const whyChoose = [
@@ -276,6 +279,10 @@ export default function ESALetterCostPage() {
           </p>
         </div>
       </section>
+
+      {/* Pet Care Planner — the ONE on-site ESA preview; package cards elsewhere
+          link here (ESA-PSD-PLANNERS-MARKETING-LIVE-001). */}
+      <PlannerMarketingSection family="esa" />
 
       {/* Included + Letter Visual — mobile: image first if you read top-down,
           but to keep desktop intent we keep order. Reduce gap on mobile,

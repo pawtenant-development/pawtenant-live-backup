@@ -24,6 +24,7 @@ import LockedFeaturePreviews from "./components/LockedFeaturePreviews";
 import MyDocumentsCard from "./components/MyDocumentsCard";
 import NeedHelpCard from "./components/NeedHelpCard";
 import CustomerPortalSection from "./components/CustomerPortalSection";
+import IncludedResourcesSection from "./components/IncludedResourcesSection";
 import { isUnpaidLead, isPaidOrder, isTerminalOrder } from "@/lib/bookingProgress";
 import { isRefundTerminal, isOperationallyCancelled, isPartialRefund } from "@/lib/orderClassification";
 import { resolveAccountGreeting, type NameUserLike } from "@/lib/customerName";
@@ -1340,6 +1341,20 @@ export default function MyOrdersPage() {
                 )}
               </div>
             </div>
+
+            {/* Included Resources — the free Pet Care Planner / PSD Training Workbook
+                (ESA-PLANNER-CUSTOMER-RESOURCE-TEST-001 / ESA-PSD-PLANNERS-MARKETING-LIVE-001).
+                Account-level and SEPARATE from My Documents: one card per entitled
+                family regardless of how many paid orders the customer has.
+                Eligibility is decided by the database from the authoritative
+                payment + service-family helpers; this mount only passes the local
+                order list for the empty/locked states and the Customer View email
+                for admins. */}
+            <IncludedResourcesSection
+              orders={orders}
+              isAdminPreview={isAdminPreview}
+              previewEmail={isAdminPreview ? (searchEmail.trim() || null) : null}
+            />
 
             {/* PSD cross-sell — ESA customers who have not bought PSD (account-level, once) */}
             {showPsdUpsell && (

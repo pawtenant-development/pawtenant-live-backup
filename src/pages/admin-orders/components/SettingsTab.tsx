@@ -5,6 +5,7 @@ import UTMLinkGenerator from "./UTMLinkGenerator";
 import GoogleAdsCampaignBuilderPanel from "./GoogleAdsCampaignBuilderPanel";
 import AdminNotificationPrefsPanel from "./AdminNotificationPrefsPanel";
 import WebsitePricingPanel from "./WebsitePricingPanel";
+import CustomerResourcesPanel from "./CustomerResourcesPanel";
 import LetterQualityCheckPanel from "./LetterQualityCheckPanel";
 // Phase G hotfix — MasterEmailLayoutPanel and RecoverySequencePanel were
 // inadvertently moved alongside CommsTemplatesPanel during the Phase G
@@ -2368,6 +2369,19 @@ export default function SettingsTab({ adminRole }: SettingsTabProps) {
         iconColor="text-[#3b6ea5]"
       >
         <WebsitePricingPanel />
+      </AccordionSection>
+
+      {/* ── Customer Resources → Planners — owner-managed downloadable resources
+          (ESA-PLANNER-CUSTOMER-RESOURCE-TEST-001 / ESA-PSD-PLANNERS-MARKETING-LIVE-001).
+          Replace / preview / publish / roll back / disable with no deployment. ── */}
+      <AccordionSection
+        title="Customer Resources → Planners"
+        subtitle="The Pet Care Planner and PSD Training Workbook paid customers download from their portal — upload, preview, publish, roll back or disable without a deployment"
+        icon="ri-book-open-line"
+        iconBg="bg-[#ECFDF5]"
+        iconColor="text-[#059669]"
+      >
+        <CustomerResourcesPanel />
       </AccordionSection>
 
       {/* ───────────── Category A: CRM & Integrations ───────────── */}

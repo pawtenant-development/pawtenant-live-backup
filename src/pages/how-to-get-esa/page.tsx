@@ -2,6 +2,7 @@
 import SharedFooter from "../../components/feature/SharedFooter";
 import PublicPageHero from "@/components/feature/PublicPageHero";
 import PlanPricingSection from "@/components/feature/PlanPricingSection";
+import PlannerMarketingSection from "@/components/feature/PlannerMarketingSection";
 import { buildEsaPlanCards, ESA_PLAN_COPY } from "@/data/planPricingCards";
 import EsaVsPsdCard from "@/components/feature/EsaVsPsdCard";
 import { Link } from "react-router-dom";
@@ -407,6 +408,9 @@ export default function HowToGetESAPage() {
         cards={buildEsaPlanCards("/assessment?ref=how-to-get-esa-letter")}
         footnote={ESA_PLAN_COPY.footnote}
       />
+
+      {/* Free Pet Care Planner — shared section (ESA-PSD-PLANNERS-MARKETING-LIVE-001). */}
+      <PlannerMarketingSection family="esa" id="pet-care-planner-howto" />
 
       {/* What Is ESA — 2026-05-21 HOWTO-MOBILE-REVAMP
           Mobile: only the first paragraph shows; paragraphs 2 + 3 stay in

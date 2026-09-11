@@ -982,6 +982,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
                       { icon: "ri-file-text-line", text: "Official PSD letter PDF" },
                       { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
                       { icon: "ri-service-line", text: "ADA-compliant" },
+                      { icon: "ri-book-open-line", text: "Free PSD Training Workbook" },
                     ].map((item) => (
                       <div key={item.text} className="flex items-center gap-1.5 min-w-0">
                         <i
@@ -1524,6 +1525,7 @@ export default function PSDStep3Checkout({ step1, step2, confirmationId, onBack,
                       { icon: "ri-file-text-line", text: "Official PSD letter PDF" },
                       { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
                       { icon: "ri-service-line", text: "ADA-compliant" },
+                      { icon: "ri-book-open-line", text: "Free PSD Training Workbook" },
                     ].map((item) => (
                       <div key={item.text} className="flex items-center gap-1.5 min-w-0">
                         <i

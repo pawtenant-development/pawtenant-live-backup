@@ -871,6 +871,7 @@ function MobileSummarySheet({
                     { icon: "ri-file-text-line", text: "Official ESA letter PDF" },
                     { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
                     { icon: "ri-home-heart-line", text: "Fair Housing Act" },
+                    { icon: "ri-book-open-line", text: "Free Pet Care Planner" },
                   ].map((item) => (
                     <div key={item.text} className="flex items-center gap-1.5 min-w-0">
                       <i
@@ -1275,6 +1276,7 @@ export default function Step3Checkout({
                       { icon: "ri-file-text-line", text: "Official ESA letter PDF" },
                       { icon: "ri-shield-check-line", text: "HIPAA-compliant" },
                       { icon: "ri-home-heart-line", text: "Fair Housing Act" },
+                    { icon: "ri-book-open-line", text: "Free Pet Care Planner" },
                     ].map((item) => (
                       <div key={item.text} className="flex items-center gap-1.5 min-w-0">
                         <i

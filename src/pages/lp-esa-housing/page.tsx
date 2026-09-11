@@ -4,6 +4,8 @@ import SharedNavbar from "@/components/feature/SharedNavbar";
 import SharedFooter from "@/components/feature/SharedFooter";
 import Hud2026UpdateBanner from "@/components/feature/Hud2026UpdateBanner";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
+import { ESA_PLANNER_BENEFIT_SHORT, PLANNER_PREVIEW_HREF, PSD_PLANNER_BENEFIT_SHORT, PSD_WORKBOOK_PREVIEW_HREF } from "@/data/plannerBenefit";
+import PlannerMarketingSection from "@/components/feature/PlannerMarketingSection";
 
 const LP_TITLE = "Get an ESA Letter for Housing — Reviewed by Licensed Providers | PawTenant";
 const LP_DESC = "Verified with a unique ID your landlord can confirm in seconds. Reviewed by licensed mental health providers. Refund if you don't qualify.";
@@ -790,6 +792,10 @@ export default function LpEsaHousingPage() {
                 <PriceFeat>Refund if you do not qualify after clinical review</PriceFeat>
                 <PriceFeat>Covers up to 2 pets — 3 pets at a fixed $149 total</PriceFeat>
                 <PriceFeat>Klarna available at checkout (subject to eligibility)</PriceFeat>
+                {/* ESA-PLANNER-CUSTOMER-RESOURCE-TEST-001 — ESA card only; the PSD card below lists only the PSD workbook. */}
+                <PriceFeat>
+                  <Link to={PLANNER_PREVIEW_HREF} className="underline decoration-orange-300 underline-offset-2 hover:text-orange-700">{ESA_PLANNER_BENEFIT_SHORT}</Link> — downloadable immediately after payment
+                </PriceFeat>
               </ul>
 
               <Link
@@ -833,6 +839,10 @@ export default function LpEsaHousingPage() {
                 <PriceFeat>Secure PDF delivery — typically within 24 hours</PriceFeat>
                 <PriceFeat>Refund if you do not qualify after clinical review</PriceFeat>
                 <PriceFeat>Klarna available at checkout (subject to eligibility)</PriceFeat>
+                {/* ESA-PSD-PLANNERS-MARKETING-LIVE-001 — the PSD card advertises ONLY the PSD workbook. */}
+                <PriceFeat>
+                  <Link to={PSD_WORKBOOK_PREVIEW_HREF} className="underline decoration-amber-300 underline-offset-2 hover:text-amber-800">{PSD_PLANNER_BENEFIT_SHORT}</Link> — downloadable immediately after payment
+                </PriceFeat>
               </ul>
 
               <Link
@@ -905,6 +915,10 @@ export default function LpEsaHousingPage() {
           </Link>
         </div>
       </section>
+
+      {/* Free Pet Care Planner — shared section, compact for the paid LP
+          (ESA-PSD-PLANNERS-MARKETING-LIVE-001). Anchor kept unique per page. */}
+      <PlannerMarketingSection family="esa" compact id="pet-care-planner-lp" className="border-b border-slate-200" />
 
       {/* ─────────── 7b. ESA vs PSD — quick comparison so users pick the
           right path (especially after seeing both pricing cards above).

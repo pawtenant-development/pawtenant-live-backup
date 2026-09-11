@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 import { ESA_PRICE_LABELS } from "@/config/pricing";
 import { useSitePricing } from "@/hooks/useSitePricing";
+import { ESA_PLANNER_BENEFIT_SHORT } from "@/data/plannerBenefit";
 
 interface Props {
   /** Optional section bg override. Default: white. */
@@ -51,6 +52,8 @@ const COMPACT_FEATURES = [
   { icon: "ri-stethoscope-line", text: "Licensed provider review" },
   { icon: "ri-shield-check-line", text: "Money-back if not approved" },
   { icon: "ri-qr-code-line", text: "Verifiable, housing-ready letter" },
+  // ESA-PLANNER-CUSTOMER-RESOURCE-TEST-001 — ESA-only bonus, downloadable after payment.
+  { icon: "ri-book-open-line", text: ESA_PLANNER_BENEFIT_SHORT },
 ];
 
 // Richer proof-point list for the premium (state-page) variant — mirrors
@@ -62,6 +65,7 @@ const PREMIUM_FEATURES = [
   { icon: "ri-mail-send-line", text: "Secure PDF delivered by email" },
   { icon: "ri-calendar-check-line", text: "Valid for 1 year" },
   { icon: "ri-qr-code-line", text: "Landlord verification support" },
+  { icon: "ri-book-open-line", text: "Free Pet Care Planner — download right after payment" },
 ];
 
 export default function EsaPricingMini({ className, premium = false }: Props) {

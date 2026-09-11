@@ -4,6 +4,8 @@ import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import { RelatedResources } from "../../components/feature/SeoKit";
 import HeroPriceLine from "@/components/feature/HeroPriceLine";
+import PlannerMarketingSection from "@/components/feature/PlannerMarketingSection";
+import { PSD_PLANNER_BENEFIT_LINE, PSD_PLANNER_INCLUDED_LINE } from "@/data/plannerBenefit";
 import {
   getPsdOneTimeTotal,
   getPsdAnnualTotal,
@@ -45,6 +47,7 @@ const packages = [
       "Digital delivery — typically within 24 hours",
       "Covers up to 2 dogs for $129 · 3 dogs $149 one-time",
       "100% money-back guarantee if you don't qualify",
+      PSD_PLANNER_BENEFIT_LINE,
     ],
   },
   {
@@ -73,6 +76,7 @@ const included = [
   "Clear, PSD-specific documentation (distinct from an ESA letter)",
   "Digital delivery, typically within 24 hours",
   "Money-back guarantee if you don't qualify",
+  PSD_PLANNER_INCLUDED_LINE,
 ];
 
 const faqs = [
@@ -264,6 +268,10 @@ export default function PSDLetterCostPage() {
           </div>
         </div>
       </section>
+
+      {/* PSD Training Workbook — the ONE on-site PSD preview; PSD package
+          cards elsewhere link here (ESA-PSD-PLANNERS-MARKETING-LIVE-001). */}
+      <PlannerMarketingSection family="psd" />
 
       {/* FAQ */}
       <section className="py-12 sm:py-16 bg-white">

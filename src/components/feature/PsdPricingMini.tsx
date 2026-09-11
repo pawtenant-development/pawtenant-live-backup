@@ -42,6 +42,8 @@ const PSD_BASE_FEATURES = [
   "Landlord documentation support",
   "Public-access documentation support where applicable",
   "Secure online assessment",
+  // ESA-PSD-PLANNERS-MARKETING-LIVE-001 — PSD-only bonus, downloadable after payment.
+  "Free PSD Training Workbook — download right after payment",
 ];
 
 const PLANS = [

@@ -18,6 +18,7 @@ import type { PackageKey } from "@/config/pricing";
 import { packageOffer } from "@/lib/packageOffer";
 import { trackPackageScreenViewed } from "@/lib/trackEvent";
 import { flowVersionProp } from "@/config/flowVersion";
+import { plannerBenefitFor } from "@/data/plannerBenefit";
 
 type Accent = "esa" | "psd";
 
@@ -49,6 +50,9 @@ interface CardModel {
   features: string[];
   recommended: boolean;
   badge: string | null;
+  /** ESA-PLANNER-CUSTOMER-RESOURCE-TEST-001 — a non-clinical bonus line rendered
+   *  under the 7 benefits. Service-aware via plannerBenefitFor(family). */
+  bonus: string | null;
 }
 
 function ProgressBar({ theme }: { theme: { solid: string; soft: string } }) {
@@ -113,6 +117,7 @@ export default function PackageSelectionStep({
           annual: getPackageTotal(stdKey, "annual", n),
           recommended: false,
           badge: null,
+          bonus: plannerBenefitFor("psd"),
           features: [
             "Licensed provider evaluation",
             "Official PSD letter PDF if you qualify",
@@ -131,6 +136,7 @@ export default function PackageSelectionStep({
           annual: getPackageTotal(bundleKey, "annual", n),
           recommended: true,
           badge: "Best for housing accommodation requests",
+          bonus: plannerBenefitFor("psd"),
           features: [
             "Everything included in Standard PSD",
             "Reasonable Accommodation letter included",
@@ -151,6 +157,7 @@ export default function PackageSelectionStep({
           annual: getPackageTotal(stdKey, "annual", n),
           recommended: false,
           badge: null,
+          bonus: plannerBenefitFor("esa"),
           features: [
             "Licensed provider evaluation",
             "Official ESA letter PDF if you qualify",
@@ -169,6 +176,7 @@ export default function PackageSelectionStep({
           annual: getPackageTotal(bundleKey, "annual", n),
           recommended: true,
           badge: "Best for landlord / property-manager requests",
+          bonus: plannerBenefitFor("esa"),
           features: [
             "Everything included in Standard ESA",
             "Reasonable Accommodation letter included",
@@ -270,6 +278,14 @@ export default function PackageSelectionStep({
                     </li>
                   ))}
                 </ul>
+
+                {/* Free resource bonus — service-aware via plannerBenefitFor. Not a clinical item. */}
+                {c.bonus && (
+                  <div className="flex items-start gap-2 rounded-lg px-3 py-2 mb-2.5 bg-[#FFF7ED] border border-[#FFEDD5]">
+                    <i className="ri-gift-line text-sm flex-shrink-0 mt-0.5 text-orange-500"></i>
+                    <span className="text-xs font-semibold text-[#9A3412]">{c.bonus}</span>
+                  </div>
+                )}
 
                 {/* Refund reassurance box — approved wording, shown on every card.
                     Deliberately NOT a guaranteed-approval / guaranteed-qualification

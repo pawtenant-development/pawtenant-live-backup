@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import SharedNavbar from "../../components/feature/SharedNavbar";
 import HeroSection from "./components/HeroSection";
 import StepsSection from "./components/StepsSection";
+import PlannerMarketingSection from "@/components/feature/PlannerMarketingSection";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
 
@@ -304,6 +305,10 @@ export default function Home() {
           <Suspense fallback={<SectionFallback />}>
             <HomePricingSection />
           </Suspense>
+
+          {/* Free Pet Care Planner — the ONE shared planner-marketing section
+              (ESA-PSD-PLANNERS-MARKETING-LIVE-001); copy from plannerBenefit. */}
+          <PlannerMarketingSection family="esa" className="border-t border-orange-100" />
 
           {/* "Having a hard time deciding?" — hands the CURRENT page to ChatGPT,
               Claude, Perplexity or Gemini with a compliant prompt, then routes

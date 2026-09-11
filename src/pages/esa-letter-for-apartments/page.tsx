@@ -5,6 +5,7 @@ import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import MobileStickyApplyCTA from "../../components/feature/MobileStickyApplyCTA";
 import SampleLetterCard from "../../components/feature/SampleLetterCard";
 import EsaPricingMini from "../../components/feature/EsaPricingMini";
+import PlannerMarketingSection from "@/components/feature/PlannerMarketingSection";
 import PetRentSavingsMini from "../../components/feature/PetRentSavingsMini";
 import AIAssistantTrustCard from "../../components/feature/AIAssistantTrustCard";
 import { useAttributionParams } from "@/hooks/useAttributionParams";
@@ -488,6 +489,9 @@ export default function ESALetterForApartmentsPage() {
 
       {/* PRICING */}
       <EsaPricingMini className="bg-white border-t border-gray-100" />
+
+      {/* Free Pet Care Planner — shared section (ESA-PSD-PLANNERS-MARKETING-LIVE-001). */}
+      <PlannerMarketingSection family="esa" id="pet-care-planner-apartments" className="border-t border-gray-100" />
 
       {/* FAQ */}
       <section className="py-14 sm:py-16 bg-[#fafafa] border-t border-gray-100">

@@ -4,6 +4,7 @@ import SharedNavbar from "../../components/feature/SharedNavbar";
 import SharedFooter from "../../components/feature/SharedFooter";
 import Hud2026UpdateBanner from "../../components/feature/Hud2026UpdateBanner";
 import { useSitePricing } from "../../hooks/useSitePricing";
+import PlannerMarketingSection from "@/components/feature/PlannerMarketingSection";
 
 const steps = [
   {
@@ -522,6 +523,9 @@ export default function HowToGetPSDLetterPage() {
           </div>
         </div>
       </section>
+
+      {/* PSD Training Workbook — shared section (ESA-PSD-PLANNERS-MARKETING-LIVE-001). */}
+      <PlannerMarketingSection family="psd" id="psd-training-workbook-howto" />
 
       {/* CTA Banner */}
       <section className="relative py-20 bg-orange-500 overflow-hidden">
