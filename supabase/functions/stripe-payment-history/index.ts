@@ -1,5 +1,10 @@
 import Stripe from "https://esm.sh/stripe@14?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — every date in this
+// report is an America/New_York business day (the canonical PawTenant clock),
+// resolved from the IANA database. See _shared/stripeDailyBuckets.ts for the
+// contract and the pure logic the guard executes.
+import { resolveStripeReportWindow, bucketSucceededChargesByBusinessDay } from "../_shared/stripeDailyBuckets.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -61,29 +66,21 @@ Deno.serve(async (req) => {
     const period = url.searchParams.get("period") ?? "30d";
 
     // Optional explicit custom range (YYYY-MM-DD). Takes precedence over period.
+    //
+    // STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — `from`/`to` are
+    // America/New_York BUSINESS days: "2026-09-11" is [Sep 11 00:00 ET, Sep 12
+    // 00:00 ET) = [04:00Z, 04:00Z next day) in summer. The previous code parsed
+    // them as UTC midnight and 23:59:59Z, so every Accounts range was up to five
+    // hours wrong at each end and the final second of each day was dropped. The
+    // upper bound is EXCLUSIVE (`lt`), never an inclusive end-of-day sentinel.
     const fromParam = url.searchParams.get("from");
     const toParam = url.searchParams.get("to");
-
-    let since: number;
-    let until: number | null = null;
-    let days: number;
-
-    if (fromParam) {
-      const fromTs = Math.floor(new Date(`${fromParam}T00:00:00Z`).getTime() / 1000);
-      since = isNaN(fromTs) ? Math.floor(Date.now() / 1000) - 30 * 86400 : fromTs;
-      if (toParam) {
-        const toTs = Math.floor(new Date(`${toParam}T23:59:59Z`).getTime() / 1000);
-        until = isNaN(toTs) ? null : toTs;
-      }
-      const span = (until ?? Math.floor(Date.now() / 1000)) - since;
-      days = Math.max(1, Math.ceil(span / 86400));
-    } else {
-      days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
-      since = Math.floor(Date.now() / 1000) - days * 86400;
-    }
+    const reportWindow = resolveStripeReportWindow({ from: fromParam, to: toParam, period });
+    const since = reportWindow.sinceSec;
+    const days = reportWindow.days;
 
     const createdFilter: Record<string, number> = { gte: since };
-    if (until) createdFilter.lte = until;
+    if (reportWindow.untilExclusiveSec != null) createdFilter.lt = reportWindow.untilExclusiveSec;
 
     // Paginate through ALL Stripe list pages for the window. Stripe caps a single
     // list page at 100 rows; the old code took only the first 100 and silently
@@ -184,22 +181,13 @@ Deno.serve(async (req) => {
       .filter((c) => c.status === "succeeded")
       .reduce((s, c) => s + (c.fee ?? 0), 0);
 
-    // Build daily revenue buckets
-    const dailyMap: Record<string, number> = {};
-    for (let i = 0; i < days; i++) {
-      const d = new Date((until ?? Math.floor(Date.now() / 1000)) * 1000);
-      d.setUTCDate(d.getUTCDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      dailyMap[key] = 0;
-    }
-    successfulCharges.forEach((c) => {
-      const key = new Date(c.created * 1000).toISOString().slice(0, 10);
-      if (key in dailyMap) dailyMap[key] = (dailyMap[key] ?? 0) + c.amount;
-    });
-
-    const daily = Object.entries(dailyMap)
-      .map(([date, revenue]) => ({ date, revenue }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+    // Build daily revenue buckets — keyed on the America/New_York business day
+    // of Stripe's own `created` (the authoritative payment instant). One
+    // succeeded charge per PaymentIntent; failed / pending never count. The
+    // old buckets were UTC days, which filed every 20:00–00:00 ET payment under
+    // the next day (8 of 53 succeeded LIVE charges in Sep 1–11 2026).
+    const bucketed = bucketSucceededChargesByBusinessDay(charges, reportWindow.dates);
+    const daily = bucketed.daily.map(({ date, revenue, count }) => ({ date, revenue, count }));
 
     const availableBalance = balanceRes.available.reduce((s, b) => s + b.amount / 100, 0);
     const pendingBalance = balanceRes.pending.reduce((s, b) => s + b.amount / 100, 0);
@@ -220,6 +208,16 @@ Deno.serve(async (req) => {
           available_balance: availableBalance,
           pending_balance: pendingBalance,
           period_days: days,
+          // STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — additive.
+          // The UI labels every daily figure with this zone; the two ISO dates
+          // are the inclusive business-day bounds the buckets were built over.
+          timezone: reportWindow.timezone,
+          from: reportWindow.fromIso,
+          to_inclusive: reportWindow.toIso,
+          window_start_utc: new Date(reportWindow.sinceSec * 1000).toISOString(),
+          window_end_exclusive_utc: reportWindow.untilExclusiveSec == null ? null : new Date(reportWindow.untilExclusiveSec * 1000).toISOString(),
+          daily_payment_count: bucketed.count,
+          daily_skipped: bucketed.skipped.length,
         },
         daily,
         charges,

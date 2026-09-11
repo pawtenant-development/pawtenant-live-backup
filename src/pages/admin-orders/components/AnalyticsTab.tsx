@@ -33,6 +33,20 @@ import {
   type AcquisitionLabel,
 } from "@/lib/acquisitionClassifier";
 import { computeOrderMetrics } from "@/lib/analyticsMetrics";
+// STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 (frozen-file surgical
+// hunk) — reporting presets resolve through the canonical America/New_York
+// business clock, never the operator's browser day.
+import {
+  BUSINESS_TIMEZONE,
+  businessIsoDate,
+  businessDayStart,
+  businessDayEndExclusive,
+  shiftBusinessIsoDate,
+  isBusinessIsoDate,
+  currentBusinessMonth,
+  previousBusinessMonth,
+  businessParts,
+} from "@/lib/businessTime";
 
 interface Order {
   id: string;
@@ -175,7 +189,9 @@ function normalizeCanonicalChannel(raw: unknown): string {
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 function fmtShort(ts: string) {
-  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  // Rendered in the business zone so a range bound at 23:59:59.999 ET never
+  // reads as the NEXT day for an operator whose browser is ahead of New York.
+  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: BUSINESS_TIMEZONE });
 }
 
 // Shared reporting-preset display labels (Current Month is the default).
@@ -189,33 +205,37 @@ const DATE_PRESET_LABEL: Record<string, string> = {
   custom: "Custom",
 };
 
+// STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — every preset is a
+// span of America/New_York BUSINESS days. `from` is the inclusive first instant
+// of the first day; `to` is the last millisecond of the last day, derived from
+// the EXCLUSIVE next-day boundary (so adjacent days can never overlap and a DST
+// day keeps its 23 or 25 hours). The previous helpers used `setHours(0,0,0,0)`
+// and rolling `now - N days` — the OPERATOR'S browser day — so "Today" in
+// Karachi began nine hours before the business day did.
+function businessDayRange(fromIso: string, toIso: string): { from: Date; to: Date } {
+  return { from: businessDayStart(fromIso), to: new Date(businessDayEndExclusive(toIso).getTime() - 1) };
+}
+
 function getDateRange(preset: string): { from: Date; to: Date } {
   const now = new Date();
-  const to = new Date(now);
+  const today = businessIsoDate(now);
   switch (preset) {
-    case "today": {
-      const from = new Date(now);
-      from.setHours(0, 0, 0, 0);
-      return { from, to };
-    }
+    case "today": return businessDayRange(today, today);
     case "yesterday": {
-      const from = new Date(now); from.setDate(from.getDate() - 1); from.setHours(0, 0, 0, 0);
-      const yTo = new Date(now); yTo.setDate(yTo.getDate() - 1); yTo.setHours(23, 59, 59, 999);
-      return { from, to: yTo };
+      const y = shiftBusinessIsoDate(today, -1);
+      return businessDayRange(y, y);
     }
-    case "7d": return { from: new Date(now.getTime() - 7 * 86400000), to };
-    case "30d": return { from: new Date(now.getTime() - 30 * 86400000), to };
-    case "90d": return { from: new Date(now.getTime() - 90 * 86400000), to };
-    case "mtd": return { from: new Date(now.getFullYear(), now.getMonth(), 1), to };
+    case "7d": return businessDayRange(shiftBusinessIsoDate(today, -6), today);
+    case "30d": return businessDayRange(shiftBusinessIsoDate(today, -29), today);
+    case "90d": return businessDayRange(shiftBusinessIsoDate(today, -89), today);
+    case "mtd": return businessDayRange(currentBusinessMonth(now).from, today);
     case "lastmonth": {
-      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      // Last day of the previous month, end-of-day.
-      const lastTo = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-      return { from, to: lastTo };
+      const prev = previousBusinessMonth(now);
+      return businessDayRange(prev.from, prev.toInclusive);
     }
-    case "ytd": return { from: new Date(now.getFullYear(), 0, 1), to };
+    case "ytd": return businessDayRange(`${businessParts(now).year}-01-01`, today);
     // default → Current Month (the canonical shared default)
-    default: return { from: new Date(now.getFullYear(), now.getMonth(), 1), to };
+    default: return businessDayRange(currentBusinessMonth(now).from, today);
   }
 }
 
@@ -384,8 +404,9 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
 
   // ── Date filtering ────────────────────────────────────────────────────────
   const { from: rangeFrom, to: rangeTo } = useMemo(() => {
-    if (datePreset === "custom" && customFrom && customTo) {
-      return { from: new Date(customFrom), to: new Date(customTo + "T23:59:59") };
+    // Custom bounds are America/New_York business days, like every preset.
+    if (datePreset === "custom" && isBusinessIsoDate(customFrom) && isBusinessIsoDate(customTo) && customFrom <= customTo) {
+      return businessDayRange(customFrom, customTo);
     }
     return getDateRange(datePreset);
   }, [datePreset, customFrom, customTo]);
@@ -394,9 +415,9 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   // "Current Month — Jun 1, 2026 to Jun 8, 2026". Reused across sections so
   // they all advertise the SAME window.
   const reportingLabel = useMemo(() => {
-    const fmt = (d: Date) => d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    const fmt = (d: Date) => d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: BUSINESS_TIMEZONE });
     const name = datePreset === "custom" ? "Custom" : (DATE_PRESET_LABEL[datePreset] ?? "Current Month");
-    return `${name} — ${fmt(rangeFrom)} to ${fmt(rangeTo)}`;
+    return `${name} — ${fmt(rangeFrom)} to ${fmt(rangeTo)} · ${BUSINESS_TIMEZONE}`;
   }, [datePreset, rangeFrom, rangeTo]);
 
   // ── Canonical order channel (LIVE-ANALYTICS-ATTRIBUTION-METRICS-REPAIR) ───
@@ -563,8 +584,9 @@ export default function AnalyticsTab({ orders, onViewOrder }: AnalyticsTabProps)
   }, [filteredOrders]);
 
   // Date strings for AdSpendPanel
-  const dateFromStr = rangeFrom.toISOString().slice(0, 10);
-  const dateToStr = rangeTo.toISOString().slice(0, 10);
+  // Business dates, not UTC dates: at 21:00 ET the UTC day has already rolled.
+  const dateFromStr = businessIsoDate(rangeFrom);
+  const dateToStr = businessIsoDate(rangeTo);
 
   // ── Funnel stats (date-range scoped) — legacy chat-session funnel ─────────
   const funnelStats = useMemo(() => {

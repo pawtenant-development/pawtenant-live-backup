@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { getAdminToken, getAdminUserToken } from "../../../lib/supabaseClient";
 import { presetRange, ACCOUNTS_PRESET_BUTTONS, type AccountsPreset } from "../../../lib/accountsPeriods";
+// STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — "today" and every
+// daily figure on this tab are America/New_York business days, never the UTC
+// day (`toISOString().slice(0, 10)`) and never the operator's browser day.
+import { businessIsoDate, BUSINESS_TIMEZONE } from "../../../lib/businessTime";
 import { can } from "../../../lib/adminPermissions";
 import RefundModal from "./RefundModal";
 import PaymentReconciliationPanel from "./PaymentReconciliationPanel";
@@ -52,8 +56,11 @@ interface RefundItem {
 }
 
 interface DailyRevenue {
+  /** America/New_York business date ("YYYY-MM-DD") of Stripe `created`. */
   date: string;
   revenue: number;
+  /** Succeeded charges that day (one per PaymentIntent). Additive field. */
+  count?: number;
 }
 
 interface PaymentSummary {
@@ -68,6 +75,12 @@ interface PaymentSummary {
   available_balance: number;
   pending_balance: number;
   period_days: number;
+  // STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — additive fields
+  // the edge function now reports so the UI can name the zone it bucketed in.
+  timezone?: string;
+  from?: string;
+  to_inclusive?: string;
+  daily_payment_count?: number;
 }
 
 interface PaymentData {
@@ -187,7 +200,7 @@ function downloadCSV(
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `pawtenant-payments-${label}-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `pawtenant-payments-${label}-${businessIsoDate(new Date())}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -396,7 +409,7 @@ export default function PaymentsTab() {
 
   const applyAccountsCustom = useCallback(() => {
     if (!customFrom) return;
-    const to = customTo || new Date().toISOString().slice(0, 10);
+    const to = customTo || businessIsoDate(new Date());
     setAccountsPreset("custom");
     setCustomActive(true);
     setCustomLabel(`Custom: ${customFrom} → ${to}`);
@@ -552,8 +565,8 @@ export default function PaymentsTab() {
   // Evidence-driven, never decorative: "Balanced" requires the Stripe↔Orders
   // bridge to have explained every residual AND the channel partition to tie
   // to the order basis. Anything unresolved reads Updating / Needs Review.
-  const accountsFrom = customFrom || new Date().toISOString().slice(0, 10);
-  const accountsTo = customTo || new Date().toISOString().slice(0, 10);
+  const accountsFrom = customFrom || businessIsoDate(new Date());
+  const accountsTo = customTo || businessIsoDate(new Date());
 
   // Shared manual ad-spend sync (see the state block above). Same request the
   // old Marketing Spend panel made — endpoint, payload and auth are unchanged.
@@ -1245,11 +1258,20 @@ export default function PaymentsTab() {
       {/* Revenue chart — pinned to bottom */}
       {data && !loading && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 mt-5">
-          <p className="text-xs font-bold text-gray-700 uppercase tracking-widest mb-4">Daily Revenue — {rangeLabel}</p>
+          <p className="text-xs font-bold text-gray-700 uppercase tracking-widest mb-1">Daily Revenue — {rangeLabel}</p>
+          {/* STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — name the basis and
+              the zone. These bars are succeeded Stripe charges by Stripe payment date in
+              America/New_York — NOT orders by creation date, and NOT the Stripe
+              Dashboard's own display zone. */}
+          <p className="text-[10px] text-gray-400 font-semibold mb-4 break-words">
+            Succeeded Stripe payments by payment date · {data.summary.timezone ?? BUSINESS_TIMEZONE}
+            {data.summary.from && data.summary.to_inclusive ? ` · ${data.summary.from} → ${data.summary.to_inclusive}` : ""}
+            {typeof data.summary.daily_payment_count === "number" ? ` · ${data.summary.daily_payment_count} payment${data.summary.daily_payment_count === 1 ? "" : "s"}` : ""}
+          </p>
           <div className="flex items-end gap-1 h-32 overflow-x-auto">
             {data.daily.map((d) => {
               const heightPct = maxDaily > 0 ? (d.revenue / maxDaily) * 100 : 0;
-              const isToday = d.date === new Date().toISOString().slice(0, 10);
+              const isToday = d.date === businessIsoDate(new Date());
               return (
                 <div key={d.date} className="flex flex-col items-center gap-1 flex-shrink-0" style={{ minWidth: (data.daily.length > 45) ? "10px" : "20px" }}>
                   <div className="relative group w-full">

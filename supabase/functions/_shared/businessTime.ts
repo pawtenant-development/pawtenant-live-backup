@@ -237,3 +237,61 @@ export function recentBusinessMonths(count: number, instant: Date = new Date()):
   }
   return out;
 }
+
+// ─── STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 ─────────────────
+//
+// BUSINESS-DAY primitives. A "day" is the America/New_York calendar day
+// [00:00 ET, next 00:00 ET) — start-INCLUSIVE, end-EXCLUSIVE — resolved from
+// the IANA database at that instant, so a fall-back day is 25 hours long and a
+// spring-forward day is 23. Stripe reports its `created` Unix seconds; the
+// Stripe Dashboard renders them in the ACCOUNT's timezone (America/Chicago on
+// PawTenant's account), so a payment at 00:06 ET on Sep 11 shows as 11:06 PM
+// Sep 10 there. These helpers are the one place PawTenant converts an instant
+// into a business date — never `toISOString().slice(0, 10)` (UTC day), never
+// `toDateString()` (the operator's browser day), never a fixed offset.
+
+const ISO_BUSINESS_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** True for a canonical "YYYY-MM-DD" business-date string. */
+export function isBusinessIsoDate(value: unknown): value is string {
+  return typeof value === "string" && ISO_BUSINESS_DAY.test(value);
+}
+
+/** "YYYY-MM-DD" business date of a Unix-seconds instant (a Stripe `created`). */
+export function businessIsoDateOfUnix(unixSeconds: number): string {
+  return businessIsoDate(new Date(unixSeconds * 1000));
+}
+
+/** First instant of the business day "YYYY-MM-DD", as a UTC instant. INCLUSIVE. */
+export function businessDayStart(isoDate: string): Date {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return businessWallClockToUtc(y, m - 1, d, 0, 0);
+}
+
+/**
+ * First instant of the FOLLOWING business day — the EXCLUSIVE upper bound of
+ * "YYYY-MM-DD". Never build a 23:59:59 sentinel: it drops the final second and
+ * is one hour wrong on either side of a DST transition.
+ */
+export function businessDayEndExclusive(isoDate: string): Date {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  // Date.UTC normalises day overflow, so "the 32nd" rolls into the next month.
+  return businessWallClockToUtc(y, m - 1, d + 1, 0, 0);
+}
+
+/**
+ * Step a business date by whole calendar days. Pure date arithmetic on the
+ * parts (no clock, no offset), so it is DST-, month-end- and leap-year-safe.
+ */
+export function shiftBusinessIsoDate(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const u = new Date(Date.UTC(y, m - 1, d + days));
+  return `${u.getUTCFullYear()}-${pad2(u.getUTCMonth() + 1)}-${pad2(u.getUTCDate())}`;
+}
+
+/** Every business date in [fromIso, toIso] inclusive, ascending. Empty if reversed. */
+export function businessDateRange(fromIso: string, toIso: string): string[] {
+  const out: string[] = [];
+  for (let cur = fromIso, i = 0; cur <= toIso && i < 4000; cur = shiftBusinessIsoDate(cur, 1), i++) out.push(cur);
+  return out;
+}

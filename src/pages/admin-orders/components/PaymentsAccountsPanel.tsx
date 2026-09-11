@@ -9,6 +9,9 @@ import {
 } from "../../../lib/companyExpenses";
 import { exportAccountsCSV, type ProfitabilityRow } from "../../../lib/exportAccounts";
 import { formatTimeOfDay12, pktTime12String } from "../../../lib/timezones";
+// STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — Accounts "today" is
+// the America/New_York business date, never the UTC day.
+import { businessIsoDate } from "../../../lib/businessTime";
 import { fetchAccountingPeriods, type AccountingPeriod } from "../../../lib/accountsBooks";
 import { buildCompanyFlow, type FlowStep, type ReconciliationStatus } from "../../../lib/accountsFinancialFlow";
 import MonthlyBooksSummary from "./MonthlyBooksSummary";
@@ -99,7 +102,7 @@ export interface CompanyTotals {
 // Explicit, editable — not a hidden conversion. Owned by the Accounts header.
 export const DEFAULT_PKR_PER_USD = 280;
 const fmtUSD2 = (v: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(v);
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => businessIsoDate(new Date());
 
 export default function PaymentsAccountsPanel({
   period, customActive, customFrom, customTo, rangeLabel, summary, charges, resolutionMap, canManageBooks = false, onOpenMonth,

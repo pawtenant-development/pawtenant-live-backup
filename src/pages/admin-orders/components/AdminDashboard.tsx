@@ -7,6 +7,12 @@ import { classifyOrder, ACQUISITION_VISUAL } from "../../../lib/acquisitionClass
 // still active work — it must stay in the overdue-unassigned alert and in every
 // active KPI count. A bare refunded_at silently dropped it from all of them.
 import { isRefundedBucket } from "../../../lib/orderClassification";
+// STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — the 7-day sparklines
+// are America/New_York business days: revenue by PAYMENT date (paid_at, Stripe
+// PaymentIntent required), order count by CREATION date. Never rolling 24-hour
+// windows from "now", never created_at as a payment time.
+import { BUSINESS_TIMEZONE, currentBusinessMonth } from "../../../lib/businessTime";
+import { paidOrdersByBusinessDay, ordersCreatedByBusinessDay, recentBusinessDates } from "../../../lib/paymentDayBuckets";
 
 interface Order {
   id: string;
@@ -23,6 +29,10 @@ interface Order {
   payment_intent_id: string | null;
   price: number | null;
   created_at: string;
+  /** Canonical FIRST successful payment (Stripe webhook). The only payment time. */
+  paid_at?: string | null;
+  is_test?: boolean | null;
+  order_origin?: string | null;
   letter_url: string | null;
   signed_letter_url: string | null;
   patient_notification_sent_at: string | null;
@@ -298,9 +308,11 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
   const stats = useMemo(() => {
     const now = Date.now();
     const ONE_HOUR = 60 * 60 * 1000;
-    const nowDate = new Date();
-    const monthStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1).getTime();
-    const monthEnd   = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+    // "This month" is the America/New_York business month (inclusive start,
+    // EXCLUSIVE end) — not the browser's calendar month.
+    const bizMonth = currentBusinessMonth(new Date());
+    const monthStart = bizMonth.start.getTime();
+    const monthEndExclusive = bizMonth.endExclusive.getTime();
 
     const activeOrders = orders.filter(o => !isRefundedBucket(o));
 
@@ -321,7 +333,7 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
     const cancelledThisMonth    = orders.filter(o => {
       if (o.status !== "cancelled") return false;
       const t = new Date(o.created_at).getTime();
-      return t >= monthStart && t <= monthEnd;
+      return t >= monthStart && t < monthEndExclusive;
     }).length;
 
     return {
@@ -352,26 +364,21 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
     return Math.round((paid / total) * 100);
   }, [orders]);
 
-  // Last 7 days order counts for sparkline
-  const last7DaysCounts = useMemo(() => {
-    const counts = Array(7).fill(0);
-    const now = Date.now();
-    orders.forEach(o => {
-      const diffDays = Math.floor((now - new Date(o.created_at).getTime()) / (86400000));
-      if (diffDays < 7) counts[6 - diffDays] += 1;
-    });
-    return counts;
-  }, [orders]);
+  // Last 7 America/New_York business days (oldest → today), shared by both sparklines.
+  // Recomputed with the dataset so a New York midnight rollover is picked up on
+  // the next refresh.
+  const last7BusinessDates = useMemo(() => recentBusinessDates(7), [orders]);
 
-  const last7DaysRevenue = useMemo(() => {
-    const counts = Array(7).fill(0);
-    const now = Date.now();
-    orders.filter(o => !!o.payment_intent_id && o.status !== "cancelled").forEach(o => {
-      const diffDays = Math.floor((now - new Date(o.created_at).getTime()) / (86400000));
-      if (diffDays < 7) counts[6 - diffDays] += (o.price ?? 0);
-    });
-    return counts;
-  }, [orders]);
+  // Orders CREATED per business day — operational, never a payment count.
+  const last7DaysCounts = useMemo(
+    () => ordersCreatedByBusinessDay(orders, last7BusinessDates).map((d) => d.payments),
+    [orders, last7BusinessDates],
+  );
+
+  // Successful Stripe payments per business day of paid_at — one per
+  // PaymentIntent, partner-funded / test / cancelled rows excluded.
+  const last7DaysPaid = useMemo(() => paidOrdersByBusinessDay(orders, last7BusinessDates), [orders, last7BusinessDates]);
+  const last7DaysRevenue = useMemo(() => last7DaysPaid.daily.map((d) => d.revenue), [last7DaysPaid]);
 
   const sourceBreakdown = useMemo(() => {
     // Phase K3 — bucket by normalized acquisition label so the dashboard
@@ -523,6 +530,11 @@ export default function AdminDashboard({ orders, doctorContacts, loading, onTabC
             <p className="text-[10px] text-white/40 font-semibold uppercase tracking-wider">Total Revenue</p>
             <p className="text-2xl font-extrabold text-white leading-tight">${totalRevenue.toLocaleString()}</p>
             <p className="text-[10px] text-white/30 mt-0.5 flex items-center gap-1">{stats.paidOrders} paid orders <i className="ri-arrow-right-line text-white/20"></i></p>
+            {/* STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — name what the
+                bars measure: payment date, business zone. */}
+            <p className="text-[10px] text-white/30 mt-0.5 break-words" title={`7-day bars: ${last7DaysPaid.payments} successful Stripe payment${last7DaysPaid.payments === 1 ? "" : "s"} by paid date (${last7BusinessDates[0]} → ${last7BusinessDates[6]}), ${BUSINESS_TIMEZONE}. Orders without a Stripe PaymentIntent are not counted.`}>
+              7-day bars · by paid date · {BUSINESS_TIMEZONE}
+            </p>
           </div>
         </div>
 

@@ -51,8 +51,10 @@ const CHECKS = [
   // section is handed that same pair — strictly stronger than each panel
   // re-deriving `customFrom || today` inline, which is what this used to allow.
   ["accounts range resolved once into canonical from/to",
-    (s) => /const accountsFrom = customFrom \|\| new Date\(\)\.toISOString\(\)\.slice\(0, 10\);/.test(s)
-        && /const accountsTo = customTo \|\| new Date\(\)\.toISOString\(\)\.slice\(0, 10\);/.test(s)],
+    // STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — the fallback "today"
+    // is the America/New_York business date, never the UTC day.
+    (s) => /const accountsFrom = customFrom \|\| businessIsoDate\(new Date\(\)\);/.test(s)
+        && /const accountsTo = customTo \|\| businessIsoDate\(new Date\(\)\);/.test(s)],
   ["Channel Contribution receives canonical from/to",
     (s) => /<ChannelContributionPanel[\s\S]{0,200}from=\{accountsFrom\}[\s\S]{0,80}to=\{accountsTo\}/.test(s)],
   ["Marketing ROI Health receives canonical from/to",

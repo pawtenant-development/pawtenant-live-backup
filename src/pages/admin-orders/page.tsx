@@ -4389,6 +4389,17 @@ export default function AdminOrdersPage() {
                                 <i className="ri-calendar-line text-[#3b6ea5] text-xs"></i>
                               </div>
                               <span className="text-xs font-extrabold text-[#3b6ea5] tracking-wide">{group.dateLabel}</span>
+                              {/* STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — say WHICH
+                                  date this ribbon groups by. "Today" here is orders by the
+                                  active date basis (Created date by default), not Stripe
+                                  payments; Payments → Daily Revenue counts successful
+                                  payments by payment date. */}
+                              <span
+                                className="text-[10px] font-semibold text-gray-400 tracking-normal truncate min-w-0"
+                                title={`Grouped by ${effDateBasisLabel} in America/New_York. Not a Stripe payment count — see Payments → Daily Revenue for successful payments by payment date.`}
+                              >
+                                · {effDateBasisLabel} · America/New_York
+                              </span>
                               <div className="flex-1 h-px bg-[#d0ede6]"></div>
                               <span className="text-[10px] font-bold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
                                 {group.orders.length} order{group.orders.length !== 1 ? "s" : ""}
@@ -4429,6 +4440,12 @@ export default function AdminOrdersPage() {
                                 <i className="ri-calendar-line text-[#3b6ea5] text-xs"></i>
                               </div>
                               <span className="text-xs font-extrabold text-[#3b6ea5]">{group.dateLabel}</span>
+                              <span
+                                className="text-[10px] font-semibold text-gray-400 truncate min-w-0"
+                                title={`Grouped by ${effDateBasisLabel} in America/New_York — not a Stripe payment count.`}
+                              >
+                                · {effDateBasisLabel} · America/New_York
+                              </span>
                               <div className="flex-1 h-px bg-[#d0ede6]"></div>
                               <span className="text-[10px] font-bold text-gray-400 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
                                 {group.orders.length}
