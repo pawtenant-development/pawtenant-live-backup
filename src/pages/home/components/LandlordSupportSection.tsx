@@ -20,7 +20,7 @@ const OBJECTIONS = [
   {
     icon: "ri-search-eye-line",
     question: "\"How do I know this letter is real?\"",
-    answer: "Every letter carries a discreet QR code landlords can scan to confirm it at pawtenant.com/verify.",
+    answer: "Every eligible order has a verification ID in the customer portal that landlords can enter at pawtenant.com/verify.",
     proof: "Instant verify",
     color: "border-slate-200 bg-white",
     iconColor: "bg-[#4A8472]/10 text-[#4A8472]",
@@ -114,12 +114,12 @@ export default function LandlordSupportSection() {
         {/* Verification CTA */}
         <div className="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center gap-6">
           <div className="w-14 h-14 flex items-center justify-center bg-white/20 rounded-2xl flex-shrink-0">
-            <i className="ri-qr-code-line text-white text-2xl"></i>
+            <i className="ri-shield-check-line text-white text-2xl"></i>
           </div>
           <div className="flex-1 text-center md:text-left">
             <p className="text-white font-extrabold text-lg mb-1">Instant Landlord Verification</p>
             <p className="text-white/80 text-sm leading-relaxed">
-              Every PawTenant letter carries a discreet verification QR code. Landlords scan it to confirm the letter is genuine — no phone calls needed.
+              Every eligible PawTenant order has a verification ID in the customer portal. Landlords can enter it at pawtenant.com/verify to confirm the letter is genuine — no phone calls needed.
             </p>
           </div>
           <a

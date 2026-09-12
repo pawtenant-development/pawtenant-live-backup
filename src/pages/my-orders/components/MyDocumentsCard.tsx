@@ -1,24 +1,11 @@
 // MyDocumentsCard — the dedicated "My Documents" deliverables card that lives in
 // the right-hand column on desktop (CUSTOMER-PORTAL-DOCUMENTS-IA-HOUSING-VISIBILITY-001).
 //
-// Shows ONLY true customer deliverables, resolved by the shared
-// resolveCustomerDocuments():
-//   • the delivered ESA/PSD letter — with its verification QR code,
-//   • the provider-COMPLETED Housing Accommodation form — with NO verification QR code.
-// It never shows the customer's own SOURCE upload (that stays in the Housing
-// workflow section).
-//
-// CUSTOMER-DUAL-LETTER-DOWNLOADS-001: the letter card offers BOTH stored
-// artifacts — "Download Original" (the provider's exact submitted file) then
-// "Download QR-verified copy" (the separate generated copy carrying the
-// verification QR code) — in that fixed order. They are two different storage
-// objects in two different buckets; neither is ever derived from or substituted
-// for the other. The Housing form has only one file and keeps Open/Download.
-//
-// Every open/download mints a fresh short-lived signed URL via the shared
-// openSecureDocument/downloadSecureDocument helper (get-document-signed-url →
-// service-role signing behind owning-customer authz). No storage path or raw URL
-// is ever exposed in the DOM.
+// Shows only true customer deliverables. Letter PDFs stay exactly as submitted
+// by the provider. A separate verification ID is displayed in the portal and
+// links to the public manual-verification result. Historical processed copies
+// are not offered. Secure downloads still mint short-lived signed URLs; no
+// storage path or raw URL is exposed in the DOM.
 
 import { useState } from "react";
 import CustomerPortalSection from "./CustomerPortalSection";
@@ -31,7 +18,7 @@ import {
 import { openSecureDocument, downloadSecureDocument } from "@/lib/openSecureDocument";
 import MyDocumentVersionHistory from "./MyDocumentVersionHistory";
 
-type RowBusy = "view" | "download" | "original" | "verification" | null;
+type RowBusy = "view" | "download" | "original" | null;
 
 /** Shared button chrome. `flex-1 basis-[9.5rem]` is what makes the pair sit
  *  side-by-side from ~390px up and stack cleanly at 375px, and the label is
@@ -67,9 +54,7 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
     setBusy(null);
   };
 
-  // CUSTOMER-DUAL-LETTER-DOWNLOADS-001 — one artifact, named strictly. The
-  // variant is sent to the edge function, which resolves THAT stored object or
-  // fails; it never quietly serves the other one.
+  // Letter-class rows download the provider's exact, unmodified original.
   const download = async (target: NonNullable<CustomerDeliverable["originalDownload"]>) => {
     setErr("");
     setBusy(target.variant);
@@ -79,21 +64,15 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
     });
     if (!r.ok) {
       setErr(
-        r.code === "verification_unavailable"
-          ? "The QR-verified copy isn't available for this letter. Please contact support."
-          : r.code === "original_unavailable"
-            ? "The original letter file isn't available. Please contact support."
-            : r.error ?? "Couldn't download this document. Please try again.",
+        r.code === "original_unavailable"
+          ? "The original letter file isn't available. Please contact support."
+          : r.error ?? "Couldn't download this document. Please try again.",
       );
     }
     setBusy(null);
   };
 
-  // CUSTOMER-PORTAL-LETTER-VIEW-RECOVERY-001 — downloading is not the same as
-  // viewing, especially on iPhone where a download may disappear into Files.
-  // Open the best customer-facing artifact in a popup-safe tab: prefer the
-  // QR-verified copy, then the provider original when no verified copy exists.
-  const viewTarget = doc.verificationDownload ?? doc.originalDownload;
+  const viewTarget = doc.originalDownload;
   const view = async () => {
     if (!viewTarget) return;
     setErr("");
@@ -101,12 +80,12 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
     const r = await openSecureDocument(viewTarget.documentId, {
       variant: viewTarget.variant,
     });
-    if (!r.ok) setErr(r.error ?? "Couldn't open this document. Please try again.");
+    if (!r.ok) setErr(r.error ?? "Couldn't open this letter. Please try again.");
     setBusy(null);
   };
 
   const dateLine = doc.date ? `${doc.dateVerb} ${formatDeliverableDate(doc.date)}` : doc.dateVerb;
-  const dualDownloads = doc.originalDownload || doc.verificationDownload;
+  const hasLetterDownload = !!doc.originalDownload;
 
   return (
     <li className="rounded-xl border border-[#e2e8f0] bg-white px-3.5 py-3">
@@ -129,58 +108,30 @@ function DeliverableRow({ doc }: { doc: CustomerDeliverable }) {
           )}
           {doc.verificationId && (
             <p className="text-[11px] text-[#5F6B7A] mt-0.5">
-              Verification reference <span className="font-mono font-semibold text-[#1e3a5f]">{doc.verificationId}</span>
+              Verification ID{" "}
+              <a href={`/verify/${encodeURIComponent(doc.verificationId)}`}
+                className="font-mono font-semibold text-[#1e3a5f] underline underline-offset-2 hover:text-[#3b6ea5]">
+                {doc.verificationId}
+              </a>
+              {" "}— share this ID with your landlord for manual verification.
             </p>
           )}
           <p className="text-[11px] text-[#64748b] mt-0.5">{dateLine}</p>
         </div>
       </div>
 
-      {dualDownloads ? (
-        // View the best customer-facing artifact first, then preserve the two
-        // explicit download choices in their required order: original, verified.
-        // A variant with no genuine stored file renders no button rather than
-        // aliasing the other one.
+      {hasLetterDownload ? (
         <div className="flex flex-wrap items-stretch gap-2 mt-2.5">
-          {viewTarget && (
-            <button
-              type="button"
-              onClick={view}
-              disabled={busy !== null}
-              className={BTN_PRIMARY}
-            >
-              {busy === "view"
-                ? <i className="ri-loader-4-line animate-spin"></i>
-                : <i className="ri-eye-line"></i>}
-              {doc.kind === "esa_letter" || doc.kind === "psd_letter" ? "View letter" : "View document"}
-            </button>
-          )}
-          {doc.originalDownload && (
-            <button
-              type="button"
-              onClick={() => download(doc.originalDownload!)}
-              disabled={busy !== null}
-              className={BTN_NEUTRAL}
-            >
-              {busy === "original"
-                ? <i className="ri-loader-4-line animate-spin"></i>
-                : <i className="ri-file-text-line"></i>}
-              Download Original
-            </button>
-          )}
-          {doc.verificationDownload && (
-            <button
-              type="button"
-              onClick={() => download(doc.verificationDownload!)}
-              disabled={busy !== null}
-              className={BTN_PRIMARY}
-            >
-              {busy === "verification"
-                ? <i className="ri-loader-4-line animate-spin"></i>
-                : <i className="ri-shield-check-line"></i>}
-              Download QR-verified copy
-            </button>
-          )}
+          <button type="button" onClick={view}
+            disabled={busy !== null} className={BTN_NEUTRAL}>
+            {busy === "view" ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-eye-line"></i>}
+            {"View letter"}
+          </button>
+          <button type="button" onClick={() => download(doc.originalDownload!)}
+            disabled={busy !== null} className={BTN_PRIMARY}>
+            {busy === "original" ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-download-line"></i>}
+            Download Letter
+          </button>
         </div>
       ) : (
         <div className="flex flex-wrap items-stretch gap-2 mt-2.5">

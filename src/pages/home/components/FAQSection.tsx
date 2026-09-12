@@ -20,7 +20,7 @@ const FONT_DISPLAY = { fontFamily: '"Source Serif 4", Georgia, "Times New Roman"
 const faqs = [
   {
     q: "Are PawTenant ESA letters valid for housing?",
-    a: "Yes. Every PawTenant ESA letter is reviewed and signed by a licensed mental health professional who is credentialed in your state. Each letter includes the provider's full name, license number, state of licensure, signature, and a discreet verification QR code so housing providers can scan it and confirm authenticity directly with us.",
+    a: "Yes. Every PawTenant ESA letter is reviewed and signed by a licensed mental health professional who is credentialed in your state. Each letter includes the provider's full name, license number, state of licensure, signature, and a separate verification ID in the customer portal so housing providers can enter it at pawtenant.com/verify and confirm authenticity directly with us.",
   },
   {
     q: "Can my landlord reject my ESA letter?",
@@ -44,7 +44,7 @@ const faqs = [
   },
   {
     q: "Can my landlord verify my ESA letter?",
-    a: "Yes. Every finalized ESA letter issued through PawTenant carries a discreet verification QR code. Landlords scan it to instantly confirm the letter's authenticity and the provider's license — without accessing any of your personal health information. Your diagnosis and medical details are never disclosed during verification.",
+    a: "Yes. Every finalized ESA order receives a verification ID in the customer portal. Landlords can enter it at pawtenant.com/verify to confirm the letter's authenticity and the provider's license — without accessing any of your personal health information. Your diagnosis and medical details are never disclosed during verification.",
   },
   {
     q: "What if my landlord refuses my letter?",

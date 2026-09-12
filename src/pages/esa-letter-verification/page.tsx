@@ -16,15 +16,15 @@ const steps = [
   },
   {
     number: "02",
-    icon: "ri-qr-code-line",
-    title: "Scan-To-Verify QR Code Is Added",
-    desc: "Our system records the letter and places a discreet verification QR code on the letter document. Scanning it opens the verification result — no ID is printed on the letter.",
+    icon: "ri-shield-check-line",
+    title: "Portal Verification ID Is Added",
+    desc: "Our system records the finalized letter and places its verification ID only in the customer's portal. Entering the ID at pawtenant.com/verify opens the verification result.",
   },
   {
     number: "03",
     icon: "ri-send-plane-line",
     title: "You Receive Your Verified Letter",
-    desc: "Your letter — carrying a discreet verification QR code — is delivered to you. You share it with your landlord or housing provider as needed.",
+    desc: "Your plain, provider-issued letter is delivered to you. Its separate verification ID is available in your customer portal. You share it with your landlord or housing provider as needed.",
   },
   {
     number: "04",
@@ -73,7 +73,7 @@ const faqs = [
   },
   {
     q: "What if my landlord says the ID doesn't work?",
-    a: "Verification records are only created for letters finalized through our provider portal. If you received your letter recently, scanning its QR code should return an active result. Contact our support team if you experience any issues.",
+    a: "Verification records are only created for letters finalized through our provider portal. If you received your letter recently, entering its portal verification ID should return an active result. Contact our support team if you experience any issues.",
   },
   {
     q: "Does the verification result expire?",
@@ -89,11 +89,11 @@ const faqs = [
   },
   {
     q: "How does my landlord verify my letter?",
-    a: "Your landlord scans the discreet QR code on your letter, lands on pawtenant.com/verify, and sees the letter status plus the provider's licensed credentials — name, NPI number, state license, letter type, and issue date. The whole confirmation takes a few seconds and never exposes your health information, diagnosis, or contact details.",
+    a: "Your landlord enters the portal verification ID at pawtenant.com/verify, and sees the letter status plus the provider's licensed credentials — name, NPI number, state license, letter type, and issue date. The whole confirmation takes a few seconds and never exposes your health information, diagnosis, or contact details.",
   },
   {
-    q: "Why does PawTenant use a scan-to-verify QR code instead of just a printed letter?",
-    a: "A printed letter alone cannot prove on its own that the provider is real, that the license is active, or that the letter has not been altered. The QR code gives landlords a privacy-respecting way to confirm those things directly from PawTenant's records, which makes a valid ESA letter easier to trust and harder to fake — protecting both legitimate tenants and the property owner.",
+    q: "Why does PawTenant provide a separate portal verification ID?",
+    a: "A printed letter alone cannot prove on its own that the provider is real, that the license is active, or that the letter has not been altered. The portal verification ID gives landlords a privacy-respecting way to confirm those things directly from PawTenant's records, which makes a valid ESA letter easier to trust and harder to fake — protecting both legitimate tenants and the property owner.",
   },
 ];
 
@@ -127,10 +127,10 @@ export default function ESALetterVerificationPage() {
         <PublicPageHero
           eyebrow="Landlord Verification System"
           heading="Check That an ESA Letter Is Real"
-          subheading="Every ESA and PSD letter issued through PawTenant carries a discreet verification QR code. Landlords and tenants scan it to confirm the document and the issuing provider's credentials in seconds — without any private health information being shown."
+          subheading="Eligible ESA and PSD orders receive a Verification ID in the customer portal. A landlord can enter the customer-supplied ID at pawtenant.com/verify to confirm the letter and issuing provider's credentials without seeing private health information."
           trustPoints={[
             "Licensed clinicians",
-            "Discreet verification QR code",
+            "Portal Verification ID",
             "No health information disclosed",
           ]}
         >
@@ -138,7 +138,7 @@ export default function ESALetterVerificationPage() {
             variant="card"
             className="shadow-[0_10px_40px_-24px_rgba(15,23,42,0.28)]"
             heading="Verify a letter now"
-            copy="Scan the QR code on the document, or enter a supplied Verification ID."
+            copy="Enter the Verification ID supplied by the customer."
           />
         </PublicPageHero>
 
@@ -188,7 +188,7 @@ export default function ESALetterVerificationPage() {
                   Only Public Professional Credentials
                 </h2>
                 <p className="text-gray-500 text-sm md:text-base leading-relaxed mb-6">
-                  When a landlord scans the QR code and lands on pawtenant.com/verify, they see exactly the following — and nothing else. No patient data. No health information. No diagnosis.
+                  When a landlord enters the verification ID at pawtenant.com/verify, they see exactly the following — and nothing else. No patient data. No health information. No diagnosis.
                 </p>
                 <ul className="space-y-3">
                   {providerFields.map((f) => (
@@ -351,7 +351,7 @@ export default function ESALetterVerificationPage() {
               Ready to Get a Verified ESA Letter?
             </h2>
             <p className="text-white/70 text-sm md:text-base leading-relaxed mb-8 max-w-xl mx-auto">
-              Every letter we issue carries a verification QR code automatically. Start your assessment today and receive a letter your landlord can verify in seconds.
+              Every eligible order receives a verification ID in the customer portal automatically. Start your assessment today and receive a letter your landlord can verify in seconds.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link
@@ -409,7 +409,7 @@ export default function ESALetterVerificationPage() {
                 { i: "ri-user-star-line", t: "Licensed professional review", d: "Every letter is reviewed and signed by a state-licensed mental health professional after an individual evaluation." },
                 { i: "ri-id-card-line", t: "Named provider and credentials", d: "The provider's name, credential and license state appear on the document — not a company signature." },
                 { i: "ri-medal-line", t: "NPI lookup where available", d: "Where a provider has a National Provider Identifier, it can be looked up in the public CMS NPPES registry." },
-                { i: "ri-qr-code-line", t: "Discreet verification QR code", d: "A QR code tied to your document — scanning it opens the result at pawtenant.com/verify." },
+                { i: "ri-id-card-line", t: "Portal Verification ID", d: "The customer can share the ID from their portal for manual lookup at pawtenant.com/verify." },
                 { i: "ri-calendar-check-line", t: "Issuance date on the letter", d: "The date the provider issued the document is printed on it, so currency can be confirmed." },
                 { i: "ri-lock-line", t: "Secure portal access", d: "Your documents stay available in your account portal, which you can reach at any time." },
               ].map((c) => (

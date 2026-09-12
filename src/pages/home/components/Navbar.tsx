@@ -167,7 +167,7 @@ export default function Navbar() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-800 group-hover:text-orange-600">Landlord Verification</p>
-                      <p className="text-xs text-gray-400 leading-tight">QR code — landlords verify instantly</p>
+                      <p className="text-xs text-gray-400 leading-tight">verification ID — landlords verify instantly</p>
                     </div>
                   </a>
                 </div>
@@ -277,7 +277,7 @@ export default function Navbar() {
                 </div>
                 <div>
                   <p className="font-extrabold leading-tight">Landlord Verification</p>
-                  <p className="text-xs text-orange-500/70 font-normal">QR code on every letter</p>
+                  <p className="text-xs text-orange-500/70 font-normal">Verification ID in customer portal</p>
                 </div>
               </a>
             </div>

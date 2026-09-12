@@ -76,8 +76,8 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function VerifyResultPage() {
   // One page serves three routes: /verify/:letterId (manual), /verify/t/:token
-  // and /v/t/:token (QR). Whichever param is present decides how we ask; the
-  // ANSWER comes from the same authoritative service either way, so a scan and
+  // and /v/t/:token (legacy token). Whichever param is present decides how we ask; the
+  // ANSWER comes from the same authoritative service either way, so a token and
   // a typed id cannot disagree.
   const { letterId, token } = useParams<{ letterId?: string; token?: string }>();
   const navigate = useNavigate();
@@ -130,8 +130,8 @@ export default function VerifyResultPage() {
       .then((data: VerifyResult) => {
         setResult(data);
         setLoading(false);
-        // Once resolved, replace the QR token in the address bar with the
-        // human Verification ID. The token is the scannable credential — it
+        // Once resolved, replace the legacy token in the address bar with the
+        // human Verification ID. The token remains a historical credential — it
         // should not survive in history, a shared screenshot, or a referrer.
         if (rawToken && data?.found && data.letter_id) {
           window.history.replaceState(null, "", `/verify/${encodeURIComponent(data.letter_id)}`);
@@ -240,11 +240,11 @@ export default function VerifyResultPage() {
               </div>
             ) : result?.found && result.status === "demo" ? (
               /* ── SAMPLE / DEMONSTRATION ──────────────────────────────────
-                 QR-LETTER-VERIFICATION-AND-SAMPLE-PARITY-001 · F3.
+                 LETTER-VERIFICATION-AND-SAMPLE-PARITY-001 · F3.
 
                  A sample previously rendered INSIDE the genuine result card —
                  emerald shield, emerald border, "Verification Result" bar —
-                 with only the heading and badge changed. A landlord scanning a
+                 with only the heading and badge changed. A landlord opening a
                  sample saw the same green chrome a real letter produces, which
                  is exactly the confusion the sample exists to avoid.
 
@@ -463,15 +463,11 @@ export default function VerifyResultPage() {
                   </div>
                 </div>
 
-                {/* How to verify — both methods, stated once, plainly. */}
+                {/* How to verify — portal ID/manual lookup only. */}
                 <div className="mt-6 bg-white border border-gray-200 rounded-xl px-4 py-3.5">
                   <p className="text-xs font-bold text-gray-600 mb-2">How to verify a PawTenant letter</p>
-                  <ol className="text-xs text-gray-500 space-y-1.5 list-decimal list-inside leading-relaxed">
-                    <li>Scan the discreet QR code on the letter with your phone camera.</li>
-                    <li>If a Verification ID has been supplied to you separately, you can enter it at pawtenant.com/verify.</li>
-                  </ol>
-                  <p className="text-[11px] text-gray-400 mt-2.5 leading-relaxed">
-                    Private medical information is never displayed.
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Enter the Verification ID supplied by the customer at pawtenant.com/verify. Private medical information is never displayed.
                   </p>
                 </div>
 
@@ -617,7 +613,7 @@ export default function VerifyResultPage() {
                     Unable to Verify
                   </h1>
                   <p className="text-sm text-gray-500 max-w-sm mx-auto leading-relaxed">
-                    We could not verify this letter. If you scanned the QR code, try again; if you entered a Verification ID, check it was entered correctly.
+                    We could not verify this letter. Check that the Verification ID was entered correctly.
                   </p>
                 </div>
 
@@ -679,7 +675,7 @@ export default function VerifyResultPage() {
 // ── Patient name: masked by default, confirmable, never disclosed ────────────
 //
 // A landlord holding the letter already knows the name printed on it, so they
-// can CONFIRM it. Someone who merely scanned a photographed QR cannot learn it:
+// can CONFIRM it. Someone who only has a historical token cannot learn it:
 // the server answers only "matches" / "does not match" and never echoes the
 // stored value, so repeated guessing yields nothing but booleans.
 function PatientNameCheck({ masked, letterId }: { masked: string; letterId: string }) {
@@ -694,7 +690,7 @@ function PatientNameCheck({ masked, letterId }: { masked: string; letterId: stri
       const r = await fetch(`${SUPABASE_URL}/functions/v1/verify-letter`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
-        // Sent by Verification ID, never by the QR token — the token stays out
+        // Sent by Verification ID, never by the legacy token — the token stays out
         // of every subsequent request the page makes.
         body: JSON.stringify({ action: "name_match", letter_id: letterId, name: value }),
       });

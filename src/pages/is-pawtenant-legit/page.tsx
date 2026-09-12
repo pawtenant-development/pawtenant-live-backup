@@ -38,7 +38,7 @@ const UPDATED_ISO = "2026-06-05";
 const heroBadges = [
   { icon: "ri-user-star-line", label: "Licensed providers" },
   { icon: "ri-lock-line", label: "HIPAA-conscious process" },
-  { icon: "ri-qr-code-line", label: "Verifiable letters" },
+  { icon: "ri-shield-check-line", label: "Verifiable letters" },
   { icon: "ri-refund-2-line", label: "Refund if you don't qualify" },
 ];
 
@@ -77,9 +77,9 @@ const whatWeDo = [
     desc: "If you qualify, you receive a letter on official letterhead with the provider's name, license type, license number, and signature, prepared for housing accommodation requests.",
   },
   {
-    icon: "ri-qr-code-line",
+    icon: "ri-shield-check-line",
     title: "Make letters verifiable",
-    desc: "Each finalized letter carries a discreet verification QR code. A landlord can scan it and confirm the letter is genuine — without ever seeing your diagnosis or clinical details.",
+    desc: "Each eligible finalized order has a verification ID in the customer portal. A landlord can enter it at pawtenant.com/verify and confirm the letter is genuine — without ever seeing your diagnosis or clinical details.",
   },
   {
     icon: "ri-customer-service-2-line",
@@ -114,15 +114,15 @@ const trustBlocks = [
   },
   {
     icon: "ri-shield-check-line",
-    title: "Scan-to-verify QR for landlords",
-    desc: "Each finalized letter carries a discreet verification QR code landlords can scan to confirm at pawtenant.com/verify, so your documentation stands up to scrutiny.",
+    title: "Portal verification ID for landlords",
+    desc: "Each eligible finalized order has a verification ID in the customer portal that landlords can enter at pawtenant.com/verify, so your documentation stands up to scrutiny.",
   },
 ];
 
 const faqs: FaqItem[] = [
   {
     q: "Is PawTenant legit?",
-    a: "Yes. PawTenant is an online service that connects you with mental health providers licensed in your state who evaluate you and, when clinically appropriate, issue an ESA or PSD letter for housing. Letters name the licensed provider and carry a discreet verification QR code landlords can scan to confirm. PawTenant does not guarantee approval and does not sell 'registrations' or certificates.",
+    a: "Yes. PawTenant is an online service that connects you with mental health providers licensed in your state who evaluate you and, when clinically appropriate, issue an ESA or PSD letter for housing. Letters name the licensed provider, while eligible orders provide a separate verification ID in the customer portal for landlord verification. PawTenant does not guarantee approval and does not sell 'registrations' or certificates.",
   },
   {
     q: "Is PawTenant a scam?",
@@ -225,7 +225,7 @@ export default function IsPawTenantLegitPage() {
               <div className="relative">
                 <SampleLetterCard size="default" eager />
                 <p className="text-center text-[11px] text-gray-400 mt-3 leading-relaxed">
-                  Every letter carries a verification QR code — names &amp; details are placeholders.
+                  Every eligible order has a portal verification ID — names &amp; details are placeholders.
                 </p>
               </div>
             </div>
@@ -241,7 +241,7 @@ export default function IsPawTenantLegitPage() {
               Yes. PawTenant is an online service that connects you with <strong>mental health
               providers licensed in your state</strong> who evaluate you and, when clinically
               appropriate, issue an <strong>ESA or PSD letter for housing</strong>. Every letter names
-              the licensed provider and carries a <strong>discreet verification QR code</strong> a landlord
+              the licensed provider, with a separate <strong>portal verification ID</strong> a landlord
               can confirm.
             </p>
             <p>

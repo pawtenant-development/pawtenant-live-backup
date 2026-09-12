@@ -64,8 +64,8 @@ const steps = [
     num: 3,
     title: "Receive your verifiable letter",
     text: "If approved, your signed PDF arrives — within 24 hours in most states — ready to hand to your landlord.",
-    meta: "QR-verifiable PDF",
-    metaIcon: "ri-qr-code-line",
+    meta: "Portal-verifiable order",
+    metaIcon: "ri-shield-check-line",
     icon: (
       <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M6 3.5h9l3.5 3.5v13.5h-12.5V3.5z" />

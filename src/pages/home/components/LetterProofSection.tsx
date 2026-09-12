@@ -30,7 +30,7 @@ const OBJECTIONS = [
     q: "How would they know it’s real?",
     a: (
       <>
-        They scan the discreet QR code on the letter —{" "}
+        They enter the verification ID shared from the customer portal at pawtenant.com/verify —{" "}
         <b className="text-[#3F7061]">instant confirmation</b>, any time, without contacting us.
       </>
     ),
@@ -55,7 +55,7 @@ export default function LetterProofSection() {
           <div className="max-w-[420px] sm:max-w-[460px] lg:max-w-[500px] mx-auto bg-white rounded-2xl p-3.5 sm:p-4 shadow-[0_2px_6px_rgba(35,31,26,0.08),0_20px_50px_-20px_rgba(35,31,26,0.28)]">
             <img
               src="/images/checkout/esa-sample-letter.svg"
-              alt="Sample ESA letter showing provider details, the signature area and a discreet verification QR code"
+              alt="Sample ESA letter showing provider details and the signature area"
               width={800}
               height={1035}
               loading="lazy"
@@ -78,21 +78,21 @@ export default function LetterProofSection() {
           </h2>
           <p className="text-[#6B6359] text-[15.5px] sm:text-base leading-relaxed max-w-xl">
             Most ESA letters get questioned. Ours get verified. Every PawTenant letter carries the
-            details landlords and property managers actually check — and a discreet QR code they can
-            scan to confirm it themselves.
+            details landlords and property managers actually check — and a verification ID they can
+            enter online to confirm it themselves.
           </p>
 
           {/* Verify band */}
           <div className="mt-6 bg-[#EDF4F0] border border-[#D6E5DF] rounded-2xl px-5 py-4 flex items-start gap-3.5">
             <div className="w-11 h-11 rounded-xl bg-[#231F1A] text-white flex items-center justify-center flex-shrink-0">
-              <i className="ri-qr-code-line text-xl" aria-hidden></i>
+              <i className="ri-shield-check-line text-xl" aria-hidden></i>
             </div>
             <div>
               <h3 className="text-[15px] font-extrabold text-[#3F7061] mb-0.5">
                 Landlords verify in under a minute
               </h3>
               <p className="text-[13px] text-[#4A443C] leading-relaxed">
-                They scan the discreet QR code printed on the letter. No health
+                They enter the verification ID shared from the customer portal. No health
                 information is ever shown.{" "}
                 <Link
                   to="/esa-letter-verification"

@@ -248,7 +248,7 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
   "/esa-letter-verification-id": {
     title: "ESA Letter Verification: What It Is & Why It Helps",
     description:
-      "How ESA letter verification works, whether ESA letters need it, and how a landlord scans the QR code on a PawTenant letter to confirm it is genuine without seeing your medical details.",
+      "How ESA letter verification works, whether ESA letters need it, and how a landlord enters the portal verification ID to confirm it is genuine without seeing your medical details.",
   },
   // ── ESA housing SEO batch (apartments / accommodation request / landlord checklist) ──
   "/esa-letter-for-apartments": {

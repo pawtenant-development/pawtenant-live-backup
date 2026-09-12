@@ -311,10 +311,10 @@ Deno.serve(async (req: Request) => {
   // ── 2026-05-19 DOCS-RESEND-DOCUMENT-COUNT-FIX ──────────────────────────
   // Build the canonical deliverable list HERE (was previously computed
   // after the dedupe check, which left the dedupe-return path with no
-  // count → UI rendered "0 document(s) delivered"). Same resolveUrl rule
-  // as before — prefer the footer-injected processed_file_url when
-  // available, fall back to the raw file_url.
-  const resolveUrl = (doc: OrderDoc): string => { if (doc.footer_injected && doc.processed_file_url) return doc.processed_file_url; return doc.file_url; };
+  // count → UI rendered "0 document(s) delivered"). Clinical letters are
+  // always delivered from the provider's original, unmodified file_url.
+  // Historical processed copies remain stored but are never selected here.
+  const resolveUrl = (doc: OrderDoc): string => doc.file_url;
   const allDocs: Array<{ label: string; url: string; id?: string }> = [];
   if (order.signed_letter_url) {
     const matchingDoc = docs.find((d) => d.file_url === order.signed_letter_url || d.processed_file_url === order.signed_letter_url);

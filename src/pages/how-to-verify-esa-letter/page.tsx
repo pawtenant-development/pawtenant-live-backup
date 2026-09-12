@@ -37,7 +37,7 @@ const UPDATED_ISO = "2026-06-16";
 
 const heroBadges = [
   { icon: "ri-user-star-line", label: "Licensed provider" },
-  { icon: "ri-qr-code-line", label: "Verifiable letter" },
+  { icon: "ri-shield-check-line", label: "Verifiable letter" },
   { icon: "ri-shield-check-line", label: "License verification" },
   { icon: "ri-home-heart-line", label: "Housing-focused" },
 ];
@@ -90,9 +90,9 @@ const checklist = [
     desc: "An ESA letter is for housing. It should not promise airline, stadium, restaurant, or other public-access rights.",
   },
   {
-    icon: "ri-qr-code-line",
-    title: "PawTenant verification QR code (if applicable)",
-    desc: "PawTenant letters carry a discreet verification QR code so a landlord can scan it and confirm authenticity without seeing any clinical detail.",
+    icon: "ri-shield-check-line",
+    title: "PawTenant verification ID (if applicable)",
+    desc: "PawTenant provides a verification ID in the customer portal so a landlord can enter it at pawtenant.com/verify and confirm authenticity without seeing any clinical detail.",
   },
 ];
 
@@ -159,18 +159,18 @@ const landlordSteps = [
     desc: "You generally cannot require a specific diagnosis, medical records, or access to the resident's treatment details. Verification confirms authenticity, not clinical detail.",
   },
   {
-    icon: "ri-qr-code-line",
+    icon: "ri-shield-check-line",
     title: "Use PawTenant verification where available",
-    desc: "If the letter is from PawTenant, the verification QR code and provider license details let you confirm authenticity in minutes — no medical information exposed.",
+    desc: "If the letter is from PawTenant, the portal verification ID and provider license details let you confirm authenticity in minutes — no medical information exposed.",
   },
 ];
 
-// ── PawTenant verification QR / approach
+// ── PawTenant portal verification approach
 const verificationApproach = [
   {
-    icon: "ri-qr-code-line",
+    icon: "ri-shield-check-line",
     title: "Verification details on every letter",
-    desc: "Where applicable, finalized PawTenant letters carry a discreet verification QR code and the provider's license details so authenticity can be confirmed.",
+    desc: "For eligible finalized orders, PawTenant provides a verification ID in the customer portal and the provider's license details so authenticity can be confirmed.",
   },
   {
     icon: "ri-customer-service-2-line",
@@ -218,7 +218,7 @@ const comparisonRows: { item: string; real: string; redFlag: string }[] = [
   },
   {
     item: "Verification support",
-    real: "A scannable verification QR code and a way to confirm the provider.",
+    real: "A portal verification ID and a way to confirm the provider.",
     redFlag: "No way to verify anything.",
   },
   {
@@ -236,11 +236,11 @@ const comparisonRows: { item: string; real: string; redFlag: string }[] = [
 const faqs: FaqItem[] = [
   {
     q: "How can I verify an ESA letter?",
-    a: "Check that the letter was written after a licensed provider evaluation and that it includes the provider's name, license type, and state, an issue date, your name, and housing-focused accommodation language. A real letter also offers a way to confirm the provider — such as an NPI or, for PawTenant letters, a scannable verification QR code. Treat \"registration\" certificates, ID cards, and instant no-evaluation documents as red flags.",
+    a: "Check that the letter was written after a licensed provider evaluation and that it includes the provider's name, license type, and state, an issue date, your name, and housing-focused accommodation language. A real letter also offers a way to confirm the provider — such as an NPI or, for PawTenant letters, a portal verification ID. Treat \"registration\" certificates, ID cards, and instant no-evaluation documents as red flags.",
   },
   {
     q: "Can a landlord verify my ESA letter?",
-    a: "Yes. A landlord can confirm that the provider is licensed and that the letter is genuine — for example, by checking the provider's NPI or scanning the verification QR code on a PawTenant letter. Verification confirms authenticity only; it does not expose your diagnosis or medical records.",
+    a: "Yes. A landlord can confirm that the provider is licensed and that the letter is genuine — for example, by checking the provider's NPI or entering the portal verification ID at pawtenant.com/verify. Verification confirms authenticity only; it does not expose your diagnosis or medical records.",
   },
   {
     q: "Is an ESA registration certificate valid?",
@@ -256,7 +256,7 @@ const faqs: FaqItem[] = [
   },
   {
     q: "Can a landlord call the provider?",
-    a: "A landlord may take reasonable steps to confirm that the provider is licensed and that the letter is authentic. That can include checking license or NPI details or scanning the verification QR code on the letter. The goal is confirming the letter is genuine — not obtaining private clinical information.",
+    a: "A landlord may take reasonable steps to confirm that the provider is licensed and that the letter is authentic. That can include checking license or NPI details or entering the portal verification ID at pawtenant.com/verify. The goal is confirming the letter is genuine — not obtaining private clinical information.",
   },
   {
     q: "What makes an online ESA letter suspicious?",
@@ -296,7 +296,7 @@ export default function HowToVerifyESALetterPage() {
     <main>
       <meta
         name="keywords"
-        content="how to verify ESA letter, verify ESA letter online, real ESA letter, fake ESA letter, ESA letter verification, is my ESA letter legit, ESA registration scam, verify ESA letter QR code, licensed provider ESA letter"
+        content="how to verify ESA letter, verify ESA letter online, real ESA letter, fake ESA letter, ESA letter verification, is my ESA letter legit, ESA registration scam, verify ESA letter verification ID, licensed provider ESA letter"
       />
       <meta property="og:type" content="article" />
       <meta property="og:image" content="https://pawtenant.com/assets/brand/og-default.jpg" />
@@ -560,12 +560,12 @@ export default function HowToVerifyESALetterPage() {
         ]}
       />
 
-      {/* PAWTENANT VERIFICATION QR / APPROACH */}
+      {/* PAWTENANT PORTAL VERIFICATION / APPROACH */}
       <section className="py-14 sm:py-16 bg-white border-t border-gray-100">
         <div className="max-w-4xl mx-auto px-5 sm:px-6">
           <div className="text-center mb-9">
             <p className="text-[11px] font-bold uppercase tracking-widest text-orange-500 mb-2">
-              PawTenant scan-to-verify QR
+              PawTenant portal verification ID
             </p>
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">
               How PawTenant makes letters verifiable
@@ -637,6 +637,8 @@ export default function HowToVerifyESALetterPage() {
         <div className="px-5 sm:px-6">
           <RelatedResources
             links={[
+              { to: "/esa-letter-verification-id", title: "How ESA letter verification works", desc: "How a landlord confirms a PawTenant letter by entering its portal verification ID." },
+              { to: "/what-documents-can-landlord-ask-for-esa", title: "What documents can a landlord ask for?", desc: "What a landlord can reasonably request — and what they can't." },
               { to: "/esa-letter-for-landlord", title: "ESA letter for your landlord", desc: "How housing accommodation works and what to send." },
               { to: "/landlord-denied-esa-letter", title: "Landlord denied your ESA?", desc: "Your housing rights and calm next steps, by state." },
               { to: "/how-to-get-esa-letter-online", title: "How to get an ESA letter online", desc: "The step-by-step process from assessment to letter." },

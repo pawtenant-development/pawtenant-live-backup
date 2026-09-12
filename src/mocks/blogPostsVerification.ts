@@ -360,26 +360,26 @@ export const blogPostsVerification = [
     slug: "how-esa-letter-verification-works-pawtenant",
     title: "How ESA Letter Verification Works: PawTenant's Unique Landlord-Verifiable Letters",
     metaTitle: "How ESA Letter Verification Works | PawTenant's Unique Verifiable ESA Letters",
-    metaDesc: "PawTenant puts a discreet verification QR code on every letter. Learn how landlord verification works, why it matters, and how it protects your housing rights.",
+    metaDesc: "How PawTenant's portal verification ID helps customers and landlords confirm a letter without putting a verification identifier on the clinical document.",
     category: "Getting Started",
     date: "April 7, 2026",
     readTime: "7 min read",
     author: "Sarah Mitchell",
     authorTitle: "Licensed Clinical Psychologist",
     image: "/assets/ui/verification-screen-mockup.png",
-    excerpt: "PawTenant puts a discreet verification QR code on every letter — allowing landlords to instantly confirm authenticity without seeing any of your health information. Here is exactly how it works and why it matters.",
+    excerpt: "Eligible orders receive a verification ID inside the customer portal. Customers can share that ID with a landlord for a privacy-conscious authenticity check.",
     sections: [
       {
         heading: "What Makes PawTenant's ESA Letters Different",
-        content: "Every ESA and PSD letter issued by PawTenant carries something most ESA providers do not offer: a discreet verification QR code. It is placed directly on your letter document and allows any landlord, property manager, or housing provider to instantly verify that your letter is authentic — without calling anyone, without seeing your health records, and without any delay. This is PawTenant's exclusive feature, and it is the single most powerful tool available to ESA owners who want to present their documentation with maximum credibility. When a landlord scans the QR code on your letter, they land on pawtenant.com/esa-letter-verification and see one thing: that your letter is valid, who issued it, and when. Nothing about your diagnosis, your treatment, or your personal health information is ever disclosed."
+        content: "Every eligible ESA and PSD order receives a verification ID in the customer portal. The clinical letter stays plain and contains no embedded PawTenant verification identifier. If a customer wants a landlord or property manager to confirm authenticity, the customer can share the portal ID. The landlord enters it at pawtenant.com/verify to view a limited verification result without seeing diagnosis, treatment, or other private health information."
       },
       {
         heading: "The Problem This Solves: Landlord Skepticism About ESA Letters",
-        content: "ESA letter skepticism among landlords has grown significantly in recent years — and for understandable reasons. The ESA letter industry has a well-documented fraud problem: online services that sell auto-generated letters without real consultations, providers who are not actually licensed, and letters that lack the required elements to be legally valid. Landlords who have encountered fraudulent letters have become more cautious about accepting any ESA documentation. This skepticism creates a real problem for legitimate ESA owners who have obtained their letters through proper channels. Even a perfectly compliant letter from a licensed professional can face pushback from a landlord who has been burned by fraudulent documentation before. PawTenant's scan-to-verify system directly addresses this problem by giving landlords an instant, objective way to confirm that your letter is real — without requiring them to trust the document on its face."
+        content: "ESA letter skepticism has grown because some services sell auto-generated documents without a genuine clinical evaluation. PawTenant addresses that concern through licensed-provider review, provider credentials on the letter, and a separate portal verification record. The customer controls whether to share the verification ID with a landlord; the clinical document itself remains unmodified."
       },
       {
         heading: "How the Verification Process Works Step by Step",
-        content: "The verification process is designed to be simple for both you and your landlord. Step 1: You receive your ESA letter from PawTenant. The letter carries a discreet verification QR code — no reference code is printed on the page. Step 2: When presenting your letter to a landlord, you can point out the QR code and explain that they can verify the letter's authenticity instantly. Step 3: Your landlord scans it with any phone camera. Step 4: The scan opens pawtenant.com/esa-letter-verification. Step 5: The system instantly displays confirmation that the letter is valid, the date it was issued, and the type of letter (ESA or PSD). Step 6: The landlord sees only this confirmation — no health information, no diagnosis, no treatment details. The entire process takes under 30 seconds."
+        content: "The process is simple. Step 1: after an eligible order is finalized, the customer receives the provider's plain letter. Step 2: the customer opens My Orders and finds the verification ID beside the main letter. Step 3: if verification is requested, the customer shares that ID with the landlord. Step 4: the landlord enters it at pawtenant.com/verify. Step 5: the result confirms limited letter and provider details without exposing diagnosis, treatment, or other health information."
       },
       {
         heading: "What Information Is and Is Not Disclosed During Verification",
@@ -395,10 +395,10 @@ export const blogPostsVerification = [
       },
       {
         heading: "Getting Your Verifiable ESA Letter from PawTenant",
-        content: "Every ESA and PSD letter issued through PawTenant automatically carries the discreet verification QR code — there is no extra charge and no special request needed. The process is simple: complete PawTenant's online assessment, connect with a licensed mental health professional in your state via secure video consultation, receive your letter within 24 hours of your consultation. Your letter will carry the discreet verification QR code on the document. You can share the letter digitally or print it — the QR code works in both formats. PawTenant's 100% money-back guarantee applies: if a landlord unlawfully refuses your verified letter, we will refund your fee. Start your assessment at pawtenant.com and get the most credible ESA letter available — the only one your landlord can verify instantly."
+        content: "Eligible ESA and PSD orders receive a verification ID in the customer portal at no additional charge. Complete the assessment, consult with a licensed professional in your state, and—if clinically approved—receive the provider's plain letter. The ID remains separate from the PDF and can be shared for manual verification when needed."
       }
     ],
-    tags: ["ESA letter verification", "landlord verifiable ESA letter", "PawTenant verification", "ESA QR code", "verify ESA letter", "ESA letter authenticity"],
+    tags: ["ESA letter verification", "landlord verifiable ESA letter", "PawTenant verification", "verification ID", "verify ESA letter", "ESA letter authenticity"],
     relatedSlugs: ["why-pawtenant-best-verifiable-esa-letter-service", "what-landlords-cannot-legally-do-esa", "how-to-get-esa-letter-from-doctor"],
     ctaText: "Learn more about PawTenant's unique landlord verification system and get your verifiable ESA letter today.",
     ctaLink: "/esa-letter-verification"
@@ -419,11 +419,11 @@ export const blogPostsVerification = [
     sections: [
       {
         heading: "The ESA Letter Industry Has a Credibility Problem — PawTenant Solves It",
-        content: "The ESA letter industry is plagued by low-quality providers: websites that sell auto-generated letters without real consultations, services that use unlicensed 'coaches' instead of licensed mental health professionals, and platforms that offer instant approval in minutes without any genuine clinical assessment. These fraudulent services have created a crisis of credibility for legitimate ESA owners — landlords have become skeptical of all ESA letters because they have encountered so many fake ones. PawTenant was built specifically to solve this problem. Every element of our service is designed to produce the most credible, most defensible, and most landlord-accepted ESA letters available. Our scan-to-verify system is the most visible expression of this commitment — but it is backed by a comprehensive quality framework that starts with our licensed professionals and ends with our money-back guarantee."
+        content: "Low-quality services and documents issued without genuine consultations have made landlords more cautious. PawTenant's credibility starts with licensed professionals and real clinical review. For eligible completed orders, a separate portal verification ID provides an additional authenticity check without altering the clinician's letter."
       },
       {
-        heading: "What Makes PawTenant Unique: The Scan-To-Verify System",
-        content: "PawTenant puts a discreet verification QR code on every letter it issues. This is not a marketing feature — it is a fundamental quality assurance mechanism that serves both our clients and the housing providers who receive their letters. When a landlord scans the QR code on a PawTenant letter, they get instant, objective confirmation that the letter is authentic. The verification system is built on a secure, tamper-proof database that records every letter we issue. Each letter record is unique and cannot be duplicated or forged. When a landlord verifies a PawTenant letter, they are confirming that the letter was genuinely issued by a licensed mental health professional through our platform — not that someone printed a convincing-looking document. This is the difference between a letter that a landlord has to take on faith and a letter that a landlord can objectively confirm."
+        heading: "What Makes PawTenant Unique: Portal Verification",
+        content: "PawTenant keeps verification separate from the clinical document. An eligible completed order receives a unique verification ID in the customer's portal, while the provider's PDF stays plain. A customer may share the ID with a landlord, who can enter it at pawtenant.com/verify to confirm limited letter and provider details. The result does not expose diagnosis, treatment, or other private health information."
       },
       {
         heading: "Licensed Professionals in All 50 States",
@@ -467,7 +467,7 @@ export const blogPostsVerification = [
     sections: [
       {
         heading: "What Landlords Actually Check When They Receive an ESA Letter",
-        content: "Landlords who are familiar with fair housing law have developed systematic approaches to reviewing ESA letters. Here is what a sophisticated landlord or property manager typically checks: First, the provider's license. They look for the license number, license type, and state of licensure on the letter — then verify that license against the relevant state licensing board's public database. An unlicensed provider or an expired license is an immediate red flag. Second, the letter's completeness. They check that the letter includes all required elements: the provider's credentials, a statement of disability, a statement of medical necessity for the ESA, and a current date. Third, the provider's contact information. They may call or email the provider's office to confirm that the provider actually exists and has a clinical practice. Fourth, the overall presentation. Letters that look auto-generated, lack professional letterhead, or have inconsistent formatting raise suspicion. Fifth, and increasingly, verification systems. Landlords who have encountered PawTenant letters are now asking other ESA owners why their letters don't have a verification QR code — because they have come to expect it."
+        content: "A landlord reviewing an ESA letter may check the provider's license number, license type, state of licensure, issue date, accommodation language, and professional contact details. For eligible PawTenant orders, the customer may also share the separate verification ID from the customer portal. The ID is not printed on the letter and does not replace independent license or NPI checks."
       },
       {
         heading: "What Landlords Are Legally Allowed to Verify",
@@ -475,15 +475,15 @@ export const blogPostsVerification = [
       },
       {
         heading: "How PawTenant's Verification System Works for Landlords",
-        content: "PawTenant's verification system is designed to be as simple as possible for landlords. When a landlord receives a PawTenant ESA letter, they see a discreet QR code on the document. To verify: they scan it with any phone camera — no account required, no login needed — which opens pawtenant.com/esa-letter-verification; the system instantly displays confirmation that the letter is valid, the date it was issued, and the letter type (ESA or PSD). The entire process takes under 30 seconds. Landlords who have used the system consistently report that it eliminates their hesitation about accepting ESA documentation — because they can confirm authenticity themselves, instantly, without relying on the document's appearance alone. This is why PawTenant letters are accepted more consistently than letters from other providers."
+        content: "When verification is requested, the customer shares the verification ID shown in My Orders. The landlord enters it at pawtenant.com/verify—no account is required—and sees a limited authenticity result. The verification ID is not printed or encoded on the letter, and no diagnosis or clinical answers are displayed."
       },
       {
         heading: "How to Present Your ESA Letter for Maximum Credibility",
-        content: "Presenting your ESA letter effectively can make the difference between a smooth accommodation approval and a prolonged back-and-forth. Best practices for presenting your PawTenant letter: Submit in writing. Always submit your ESA letter as part of a formal written accommodation request — not just hand it over informally. Email is ideal because it creates a record. Point out the verification feature. When submitting your letter, mention that it carries a QR code the landlord can scan to instantly confirm its authenticity at pawtenant.com/esa-letter-verification. This proactively addresses the most common source of landlord hesitation. Include a brief accommodation request letter. Your submission should include a short letter citing the Fair Housing Act and requesting reasonable accommodation for your ESA — with your PawTenant letter attached. Keep copies of everything. Save your email submission, the letter itself, and any response from the landlord. This documentation is essential if you ever need to file a fair housing complaint."
+        content: "Present your ESA letter as part of a written reasonable-accommodation request and keep copies of the submission and response. If a landlord requests an authenticity check, share the verification ID from your customer portal and direct them to pawtenant.com/verify. The provider's license number and public licensing records remain available as independent checks."
       },
       {
         heading: "What to Do If a Landlord Questions Your Verified Letter",
-        content: "Even with a verified PawTenant letter, some landlords may still push back. Here is how to handle the most common situations. If a landlord says 'I don't recognize this verification system': explain that pawtenant.com/esa-letter-verification is PawTenant's official verification portal and that the QR code on your letter links directly to it. Offer to walk them through the verification process. If a landlord says 'I need to call the provider': explain that the verification portal provides instant confirmation without requiring a phone call, and that the portal is the official verification method for PawTenant letters. If a landlord says 'I still need more documentation': ask them to specify in writing exactly what additional documentation they require and why. Under the FHA, landlords can only request documentation that is reasonably necessary to evaluate your accommodation request — they cannot demand medical records or diagnosis details. If a landlord denies your accommodation after verifying your letter: this is a potential FHA violation. Document the denial in writing, send a formal response citing the FHA, and consider filing a complaint with HUD or your state fair housing agency."
+        content: "If a landlord questions a genuine letter, ask in writing what specifically concerns them. You can share the portal verification ID, point to the provider's license information, or direct them to the public NPI registry or state licensing board. Verification confirms limited authenticity details; it does not give access to diagnosis or clinical records."
       },
       {
         heading: "Landlord Verification and the Future of ESA Documentation",
@@ -527,7 +527,7 @@ export const blogPostsVerification = [
       },
       {
         heading: "Getting Your Verifiable ESA Letter Today",
-        content: "Every ESA and PSD letter issued through PawTenant carries the verification QR code automatically — no extra charge, no special request needed. The process takes about 20 minutes: complete the online assessment, connect with a licensed mental health professional in your state via secure video, receive your letter within 24 hours. Your letter will be the most credible ESA documentation available — backed by a licensed professional, compliant with your state's requirements, and instantly verifiable by any landlord. PawTenant's 100% money-back guarantee applies: if you don't qualify, you pay nothing; if a landlord unlawfully refuses your verified letter, we refund your fee. Start at pawtenant.com and get the housing protection you deserve."
+        content: "Eligible ESA and PSD orders receive a verification ID in the customer portal automatically. The provider's letter remains plain and unmodified. Customers may share the ID with a landlord for manual verification at pawtenant.com/verify after a genuine evaluation and clinical approval."
       }
     ],
     tags: ["ESA letter verification housing rights 2026", "verifiable ESA letter protection", "PawTenant verification housing", "ESA letter credibility housing", "Fair Housing Act ESA verification"],

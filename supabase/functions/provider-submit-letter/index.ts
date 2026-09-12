@@ -1,9 +1,4 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-// rgb/StandardFonts are gone with the printed verification box: this function
-// no longer draws any text of its own. PDFDocument is kept only for the page
-// -content reader the shared placement analyzer needs.
-import { PDFDocument, decodePDFRawStream } from "https://esm.sh/pdf-lib@1.17.1";
-import { buildQrVerificationPdf } from "../_shared/qrVerificationPdf.ts";
 import { applyVerificationPrefix, LETTER_LABELS } from "../_shared/letterType.ts";
 // RA-LIFECYCLE-001: the RA-completion earning is no longer created here. It is
 // created on the ADMIN APPROVAL transition in admin-review-document.
@@ -13,49 +8,6 @@ import { suppressForFixtureOrder } from "../_shared/testNotificationSuppression.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const VERIFY_BASE = Deno.env.get("PUBLIC_SITE_URL") ?? "https://pawtenant.com";
-
-// ── Page-content reader for the shared placement analyzer ────────────────────
-// Byte-for-byte the reader inject-pdf-footer uses. Kept local rather than
-// imported so that a change to one injector cannot silently alter the other;
-// both are covered by the same guards.
-async function inflate(raw: Uint8Array, format: "deflate" | "deflate-raw"): Promise<string> {
-  const ds = new DecompressionStream(format);
-  const buf = await new Response(new Blob([raw]).stream().pipeThrough(ds)).arrayBuffer();
-  return new TextDecoder("latin1").decode(new Uint8Array(buf));
-}
-
-async function readPageContent(doc: PDFDocument, index: number): Promise<string | null> {
-  try {
-    const page = doc.getPage(index);
-    // deno-lint-ignore no-explicit-any
-    const contents = (page as any).node.Contents();
-    // No /Contents at all means the page draws nothing — proof of a blank page,
-    // not a failure to read one.
-    if (!contents) return "";
-    const list = typeof contents.asArray === "function"
-      // deno-lint-ignore no-explicit-any
-      ? contents.asArray().map((r: any) => (doc as any).context.lookup(r))
-      : [contents];
-    let out = "";
-    for (const stream of list) {
-      let decoded: Uint8Array;
-      if (typeof stream?.getUnencodedContents === "function") {
-        decoded = stream.getUnencodedContents();
-      } else if (stream?.dict && stream?.contents) {
-        decoded = decodePDFRawStream(stream).decode();
-      } else {
-        return null;
-      }
-      // PDF content operators are ASCII-compatible. Avoid the unsupported
-      // "latin1" TextDecoder label in the Deno edge runtime.
-      out += new TextDecoder().decode(decoded);
-    }
-    return out;
-  } catch {
-    return null;
-  }
-}
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? SUPABASE_SERVICE_ROLE_KEY;
 
 const corsHeaders = {
@@ -72,29 +24,6 @@ function json(body: unknown, status = 200): Response {
 
 function toDateString(d: Date): string {
   return d.toISOString().slice(0, 10);
-}
-
-// RA-ADMIN-VISIBILITY-STORAGE-HARDENING-LIVE-001: download document bytes via a
-// service-role Storage download (parsed from the stored URL) so footer injection
-// works on the now-private provider-letters bucket; fall back to fetch for
-// external / non-Supabase URLs.
-const STORAGE_PATH_RE = /^\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)$/;
-async function downloadDocumentBytes(
-  supabase: ReturnType<typeof createClient>,
-  fileUrl: string,
-): Promise<ArrayBuffer> {
-  try {
-    const m = new URL(fileUrl).pathname.match(STORAGE_PATH_RE);
-    if (m) {
-      const bucket = decodeURIComponent(m[1]);
-      const path = decodeURIComponent(m[2]);
-      const { data, error } = await supabase.storage.from(bucket).download(path);
-      if (!error && data) return await data.arrayBuffer();
-    }
-  } catch { /* fall through to fetch */ }
-  const dlRes = await fetch(fileUrl);
-  if (!dlRes.ok) throw new Error(`Failed to download PDF: HTTP ${dlRes.status}`);
-  return await dlRes.arrayBuffer();
 }
 
 // ── PROVIDER-DOCUMENT-SINGLE-CURRENT-PENDING-VERSION-001 §2 ──────────────────
@@ -243,150 +172,6 @@ async function generateVerificationId(
     return null;
   }
 }
-async function injectPdfVerification(
-  supabase: ReturnType<typeof createClient>,
-  opts: {
-    orderId: string;
-    confirmationId: string;
-    documentId: string;
-    fileUrl: string;
-    letterId: string;
-    forceReInject?: boolean;
-  }
-): Promise<{ ok: boolean; processedUrl?: string; error?: string }> {
-  const { orderId, confirmationId, documentId, fileUrl, letterId, forceReInject } = opts;
-
-  try {
-    if (!forceReInject) {
-      const { data: docRecord } = await supabase
-        .from("order_documents")
-        .select("footer_injected, processed_file_url, footer_letter_id")
-        .eq("id", documentId)
-        .maybeSingle();
-
-      if (docRecord?.footer_injected && docRecord?.footer_letter_id === letterId && docRecord?.processed_file_url) {
-        return { ok: true, processedUrl: docRecord.processed_file_url as string };
-      }
-    }
-
-    const pdfBytes = await downloadDocumentBytes(supabase, fileUrl);
-
-    // ── QR-ONLY VERIFICATION COPY ────────────────────────────────────────────
-    // QR-LETTER-VERIFICATION-AND-SAMPLE-PARITY-001.
-    //
-    // This function used to draw its OWN verification box — "Verification ID:",
-    // the id, and pawtenant.com/verify/<id> — blindly at a fixed top-right
-    // position. That is the provider submission path, so it, not
-    // inject-pdf-footer, is what stamps most letters: a letter submitted after
-    // the QR-only injector shipped still came out with the printed block. The
-    // inline drawing is gone; both paths now go through the one shared,
-    // guard-covered module.
-    //
-    // The QR target prefers the opaque token when one exists, exactly as
-    // inject-pdf-footer does, so a scan never carries an enumerable id.
-    const { data: lv } = await supabase
-      .from("letter_verifications")
-      .select("public_token")
-      .eq("letter_id", letterId)
-      .maybeSingle();
-    const publicToken = (lv as { public_token: string | null } | null)?.public_token ?? null;
-    const verifyUrl = publicToken
-      ? `${VERIFY_BASE}/v/t/${publicToken}`
-      : `${VERIFY_BASE}/verify/${letterId}`;
-
-    let built: Awaited<ReturnType<typeof buildQrVerificationPdf>>;
-    try {
-      built = await buildQrVerificationPdf(pdfBytes, { letterId, verifyUrl }, readPageContent);
-    } catch (e) {
-      throw new Error(`QR build failed: ${e instanceof Error ? e.message : String(e)}`);
-    }
-
-    // FAIL CLOSED. A document whose structure or geometry we cannot verify, or
-    // for which no provably empty lower-right / upper-right space exists, is
-    // NOT published: nothing is uploaded, processed_file_url keeps its previous
-    // value, the provider's original and its row are untouched, and no success
-    // audit is written. `verified` must be explicitly true — an absent flag is
-    // a refusal, not consent.
-    if (built.placement.mode !== "inline" || built.verified !== true) {
-      const code = built.failure ?? "no_safe_qr_placement";
-      const detail = built.failureDetail ?? built.placement.reason;
-      console.error(`[injectPdf] refusing to publish ${documentId}: ${code} — ${detail}`);
-      await supabase.from("audit_logs").insert({
-        actor_name: "System", actor_role: "system",
-        object_type: "pdf_footer_injection", object_id: confirmationId,
-        action: "pdf_footer_injection_failed",
-        description: `QR verification copy refused for document ${documentId} (order ${confirmationId}): ${code}`,
-        metadata: {
-          order_id: orderId, confirmation_id: confirmationId, document_id: documentId,
-          letter_id: letterId, success: false, refused: true, reason: code, detail,
-          timestamp: new Date().toISOString(),
-        },
-      });
-      return { ok: false, error: `refused (${code}): ${detail}` };
-    }
-
-    const processedBytes = built.bytes;
-    const processedFileName = `${confirmationId}-${documentId}-verified.pdf`;
-
-    const { error: uploadErr } = await supabase.storage
-      .from("letters")
-      .upload(processedFileName, processedBytes, { contentType: "application/pdf", upsert: true });
-
-    if (uploadErr) throw new Error(`Storage upload failed: ${uploadErr.message}`);
-
-    // ── 2026-05-20 LETTERS-BUCKET-PRIVATE-SIGNED-URL-FIX ────────────────────
-    // `letters` is a PRIVATE bucket (migration 20260519140000 §4 sets
-    // public=false). getPublicUrl returns a /storage/v1/object/public/<...>
-    // URL that resolves to "Bucket not found" 404 for both admin and
-    // customer. Use createSignedUrl with a 10-year TTL — same pattern as
-    // admin-upload-document — so the URL stored in processed_file_url is
-    // immediately working. notify-patient-letter re-signs every URL at
-    // send time anyway, so email delivery is unaffected by the change.
-    const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 365 * 10;
-    const { data: signed, error: signErr } = await supabase.storage
-      .from("letters")
-      .createSignedUrl(processedFileName, SIGNED_URL_TTL_SECONDS);
-    if (signErr || !signed?.signedUrl) {
-      throw new Error(`Signed URL generation failed: ${signErr?.message ?? "no signed url"}`);
-    }
-    const processedUrl = signed.signedUrl;
-
-    await supabase.from("order_documents").update({
-      footer_injected: true,
-      processed_file_url: processedUrl,
-      footer_letter_id: letterId,
-    }).eq("id", documentId);
-
-    await supabase.from("audit_logs").insert({
-      actor_name: "System", actor_role: "system",
-      object_type: "pdf_footer_injection", object_id: confirmationId,
-      action: "pdf_footer_injected",
-      description: `QR verification copy generated for document ${documentId} (order ${confirmationId}) — letter_id: ${letterId}, ${built.placement.region ?? built.placement.mode}`,
-      metadata: {
-        order_id: orderId, confirmation_id: confirmationId, document_id: documentId,
-        letter_id: letterId, success: true,
-        placement_region: built.placement.region ?? null,
-        placement_reason: built.placement.reason,
-        timestamp: new Date().toISOString(),
-      },
-    });
-
-    return { ok: true, processedUrl };
-
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    console.error(`[injectPdf] Failed for doc ${documentId}:`, msg);
-    await supabase.from("audit_logs").insert({
-      actor_name: "System", actor_role: "system",
-      object_type: "pdf_footer_injection", object_id: confirmationId,
-      action: "pdf_footer_injection_failed",
-      description: `PDF header injection failed for document ${documentId} (order ${confirmationId}): ${msg}`,
-      metadata: { order_id: orderId, confirmation_id: confirmationId, document_id: documentId, letter_id: letterId, success: false, error: msg, timestamp: new Date().toISOString() },
-    });
-    return { ok: false, error: msg };
-  }
-}
-
 // ── Admin notification for provider_letter_submitted ─────────────────────────
 async function notifyAdminLetterSubmitted(opts: {
   confirmationId: string; providerName: string; documentLabel: string;
@@ -1132,21 +917,13 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    let pdfInjectionResult: { ok: boolean; processedUrl?: string; error?: string } = { ok: false };
+    // LETTER-PORTAL-ID-NO-QR-001: verification is a portal record only.
+    // Never stamp, rewrite, or create a second customer-facing PDF.
+    const pdfInjectionResult = { ok: false, processedUrl: undefined as string | undefined };
 
-    if (resolvedLetterId && documentId && documentUrl) {
-      pdfInjectionResult = await injectPdfVerification(supabase, {
-        orderId: order.id, confirmationId, documentId,
-        fileUrl: documentUrl, letterId: resolvedLetterId,
-      });
-    }
-
-    // The customer's authoritative delivered letter must be the FINALIZED (stamped)
-    // version, not the provider's original upload. Once the footer is injected,
-    // repoint orders.signed_letter_url to the processed URL so every consumer
-    // (customer portal, letter emails, legacy links) resolves the stamped letter
-    // (RA-LATE-UPLOAD-... blocker F). The original stays in provider-letters and is
-    // only reachable via the explicit admin/provider "Open Original" action.
+    // The customer's authoritative delivered letter is the provider's original,
+    // unmodified upload. Verification identity is stored separately for portal
+    // display and manual lookup; it is never printed or encoded into the PDF.
     // PROVIDER-LETTER-ADMIN-APPROVAL-GATE §8: orders.signed_letter_url is a
     // CUSTOMER-facing pointer (resolveCustomerDocuments falls back to it when no
     // finalized document row is visible). Repointing it here would deliver the
@@ -1176,7 +953,7 @@ Deno.serve(async (req: Request) => {
       // Use the SAME doc_type the document row was stored under. Housing
       // completions are not letters and are deliberately not versioned here.
       const versionDocType = storedDocType;
-      const finalUrl = pdfInjectionResult.processedUrl || documentUrl;
+      const finalUrl = documentUrl;
 
       if (isRevision) {
         // The revision's version row and ID were created above (before footer
@@ -1420,8 +1197,8 @@ Deno.serve(async (req: Request) => {
       patientNotified: autoDelivered,
       verificationIssued: !!resolvedLetterId,
       letterId: resolvedLetterId,
-      pdfFooterInjected: pdfInjectionResult?.ok === true,
-      processedPdfUrl: pdfInjectionResult?.processedUrl ?? null,
+      pdfFooterInjected: false,
+      processedPdfUrl: null,
       letterIssueDate: issueDate, letterExpiryDate: expiryDate,
       message: isReplay
         ? "This submission was already received and is awaiting review. Nothing was duplicated."

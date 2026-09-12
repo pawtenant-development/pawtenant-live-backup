@@ -48,10 +48,10 @@ const pillars = [
   },
   {
     icon: "ri-shield-keyhole-line",
-    title: "Scan-to-verify authenticity",
-    desc: "Each finalized letter carries a discreet verification QR code. Landlords scan it to confirm authenticity at /verify — no diagnosis, no health information shared.",
+    title: "Portal ID verification",
+    desc: "Each finalized order has a verification ID in the customer's portal. Landlords can enter it at pawtenant.com/verify to confirm authenticity — no diagnosis, no health information shared.",
     points: [
-      "Discreet QR code on the letter",
+      "Verification ID in the customer portal",
       "Instant landlord lookup",
       "Privacy-safe by design",
     ],

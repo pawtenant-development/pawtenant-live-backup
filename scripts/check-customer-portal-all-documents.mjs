@@ -409,7 +409,7 @@ async function runChecks() {
       !/\b(file_url|processed_file_url)\b/.test(code),
       "MyDocumentsCard must go through the signed-URL helper, never a stored URL");
     add("S2 letter cards provide a secure View letter action",
-      /const viewTarget = doc\.verificationDownload \?\? doc\.originalDownload;/.test(source) &&
+      /const viewTarget = doc\.originalDownload;/.test(source) &&
       /openSecureDocument\(viewTarget\.documentId/.test(source) &&
       source.includes('"View letter"'),
       "View letter must use the secure signed-document path");
@@ -548,7 +548,7 @@ const PLANTS = [
   {
     name: "remove the secure View letter target",
     file: "docsCard",
-    find: "const viewTarget = doc.verificationDownload ?? doc.originalDownload;",
+    find: "const viewTarget = doc.originalDownload;",
     replace: "const viewTarget = undefined;",
     expect: "S2 letter cards provide a secure View letter action",
   },

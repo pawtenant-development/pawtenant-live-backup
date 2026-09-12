@@ -16,7 +16,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
+import { applyVerificationPrefix } from "../_shared/letterType.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -45,109 +45,6 @@ async function resolveProfileId(
     .eq("user_id", doctorUserId)
     .maybeSingle();
   return (data?.id as string) ?? null;
-}
-
-async function injectPdf(
-  supabase: ReturnType<typeof createClient>,
-  orderId: string,
-  confirmationId: string,
-  documentId: string,
-  fileUrl: string,
-  letterId: string
-): Promise<{ ok: boolean; processedUrl?: string; error?: string }> {
-  try {
-    const dlRes = await fetch(fileUrl);
-    if (!dlRes.ok) throw new Error(`Download failed: HTTP ${dlRes.status}`);
-    const pdfBytes = await dlRes.arrayBuffer();
-
-    let pdfDoc: PDFDocument;
-    try {
-      pdfDoc = await PDFDocument.load(pdfBytes);
-    } catch {
-      pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    }
-
-    if (pdfDoc.getPageCount() === 0) throw new Error("PDF has no pages");
-
-    const firstPage = pdfDoc.getPage(0);
-    const { width, height } = firstPage.getSize();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-    const line1 = "Verification ID:";
-    const line2 = letterId;
-    const line3 = `pawtenant.com/verify/${letterId}`;
-
-    const sz1 = 8, sz2 = 11, sz3 = 7.5;
-    const w1 = font.widthOfTextAtSize(line1, sz1);
-    const w2 = fontBold.widthOfTextAtSize(line2, sz2);
-    const w3 = font.widthOfTextAtSize(line3, sz3);
-    const boxW = Math.max(w1, w2, w3) + 16;
-
-    const lineH1 = sz1 + 4, lineH2 = sz2 + 4, lineH3 = sz3 + 4;
-    const boxH = lineH1 + lineH2 + lineH3 + 8;
-    const boxX = width - 20 - boxW;
-    const boxY = height - 20 - boxH;
-
-    firstPage.drawRectangle({
-      x: boxX, y: boxY, width: boxW, height: boxH,
-      color: rgb(1, 1, 1),
-      borderColor: rgb(0.85, 0.45, 0.1),
-      borderWidth: 1, opacity: 0.97,
-    });
-
-    const y1 = boxY + boxH - 8 - sz1;
-    const y2 = y1 - lineH1 - 1;
-    const y3 = y2 - lineH2 + 2;
-
-    firstPage.drawText(line1, { x: boxX + boxW - 8 - w1, y: y1, size: sz1, font, color: rgb(0.4, 0.4, 0.4) });
-    firstPage.drawText(line2, { x: boxX + boxW - 8 - w2, y: y2, size: sz2, font: fontBold, color: rgb(0.85, 0.35, 0.05) });
-    firstPage.drawText(line3, { x: boxX + boxW - 8 - w3, y: y3, size: sz3, font, color: rgb(0.35, 0.35, 0.35) });
-
-    const processedBytes = await pdfDoc.save();
-    const processedFileName = `${confirmationId}-${documentId}-verified.pdf`;
-
-    const { error: uploadErr } = await supabase.storage
-      .from("letters")
-      .upload(processedFileName, processedBytes, { contentType: "application/pdf", upsert: true });
-
-    if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
-
-    // ── 2026-05-20 LETTERS-BUCKET-PRIVATE-SIGNED-URL-FIX ────────────────────
-    // `letters` is a private bucket — getPublicUrl returns a broken
-    // /storage/v1/object/public/letters/... URL. Use createSignedUrl
-    // (10-year TTL) instead so the stored processed_file_url works for
-    // admin "Open Verified PDF" and customer /my-orders without a click-
-    // time round-trip.
-    const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 365 * 10;
-    const { data: signed, error: signErr } = await supabase.storage
-      .from("letters")
-      .createSignedUrl(processedFileName, SIGNED_URL_TTL_SECONDS);
-    if (signErr || !signed?.signedUrl) {
-      throw new Error(`Signed URL generation failed: ${signErr?.message ?? "no signed url"}`);
-    }
-    const publicUrl = signed.signedUrl;
-
-    await supabase.from("order_documents").update({
-      footer_injected: true,
-      processed_file_url: publicUrl,
-      footer_letter_id: letterId,
-    }).eq("id", documentId);
-
-    await supabase.from("audit_logs").insert({
-      actor_name: "Admin", actor_role: "admin",
-      object_type: "pdf_footer_injection", object_id: confirmationId,
-      action: "pdf_footer_injected",
-      description: `[REPAIR] Verification header injected into document ${documentId} for order ${confirmationId} — letter_id: ${letterId}`,
-      metadata: { order_id: orderId, confirmation_id: confirmationId, document_id: documentId, letter_id: letterId, success: true, repair: true, timestamp: new Date().toISOString() },
-    });
-
-    return { ok: true, processedUrl: publicUrl };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    console.error(`[repair] PDF inject failed for doc ${documentId}:`, msg);
-    return { ok: false, error: msg };
-  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -260,34 +157,8 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { data: docs } = await supabase
-      .from("order_documents")
-      .select("id, file_url, doc_type, footer_injected")
-      .eq("order_id", order.id);
-
-    let documentsProcessed = 0;
-    const errors: string[] = [];
-
-    for (const doc of (docs ?? [])) {
-      const result = await injectPdf(
-        supabase,
-        order.id as string,
-        order.confirmation_id as string,
-        doc.id as string,
-        doc.file_url as string,
-        letterId!
-      );
-      if (result.ok) documentsProcessed++;
-      else errors.push(`Doc ${doc.id}: ${result.error}`);
-    }
-
-    return json({
-      ok: true,
-      letterId,
-      documentsProcessed,
-      errors: errors.length > 0 ? errors : undefined,
-      message: `Verification ID ${letterId} issued and injected into ${documentsProcessed} document(s)`,
-    });
+    return json({ ok: true, letterId, documentsProcessed: 0,
+      message: `Verification ID ${letterId} is available in the customer portal; no PDF was modified` });
   }
 
   // ── BULK MODE (service role only) ──────────────────────────────────────────
@@ -359,24 +230,7 @@ Deno.serve(async (req: Request) => {
       await supabase.from("orders").update({ letter_id: letterId }).eq("id", order.id);
     }
 
-    const { data: docs } = await supabase
-      .from("order_documents")
-      .select("id, file_url, doc_type")
-      .eq("order_id", order.id)
-      .eq("footer_injected", false);
-
-    const finalDocTypes = ["esa_letter", "psd_letter", "letter", "signed_letter"];
-    const errors: string[] = [];
-    let docsFixed = 0;
-
-    for (const doc of (docs ?? [])) {
-      if (!finalDocTypes.includes(doc.doc_type as string)) continue;
-      const result = await injectPdf(supabase, order.id as string, order.confirmation_id as string, doc.id as string, doc.file_url as string, letterId!);
-      if (result.ok) docsFixed++;
-      else errors.push(`Doc ${doc.id}: ${result.error}`);
-    }
-
-    results.push({ confirmationId: order.confirmation_id as string, letterId, docsFixed, errors });
+    results.push({ confirmationId: order.confirmation_id as string, letterId, docsFixed: 0, errors: [] });
   }
 
   const totalFixed = results.filter((r) => r.letterId).length;
@@ -384,7 +238,7 @@ Deno.serve(async (req: Request) => {
 
   return json({
     ok: true,
-    message: `Repaired ${totalFixed} orders, injected ${totalDocs} PDFs`,
+    message: `Repaired ${totalFixed} order verification IDs; modified ${totalDocs} PDFs`,
     results,
   });
 });

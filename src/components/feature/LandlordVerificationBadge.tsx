@@ -37,7 +37,7 @@ export default function LandlordVerificationBadge({
         <div className="min-w-0">
           <p className="text-sm font-extrabold text-gray-900">Landlord Verification Included</p>
           <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-            Every finalized letter carries a discreet verification QR code landlords can scan to check it online.
+            Every finalized order has a verification ID in the customer's portal. A landlord can enter it at pawtenant.com/verify to check the letter online.
           </p>
         </div>
       </div>
