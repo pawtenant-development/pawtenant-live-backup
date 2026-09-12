@@ -313,7 +313,6 @@ html,body{margin:0;padding:0}
 .pt-h-cta{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;width:100%;box-sizing:border-box;background:#f97316;color:#fff;font-weight:800;font-size:1rem;padding:1rem 2rem;border-radius:.375rem;text-decoration:none;box-shadow:0 10px 15px -3px rgba(249,115,22,.3)}
 .pt-h-refund{color:rgba(255,255,255,.9);font-size:.8125rem;font-weight:600;margin:.75rem 0 0}
 .pt-h-refund b{color:#6ee7b7;font-weight:800}
-.pt-h-refund-link{color:rgba(255,255,255,.75);font-size:.6875rem;font-weight:500;margin:.375rem 0 0;text-decoration:underline;text-underline-offset:2px}
 .pt-h-pill{display:inline-flex;align-items:center;gap:.625rem;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);padding:.625rem 1rem;border-radius:9999px;margin-top:1.75rem}
 .pt-h-pill span{color:#fff;font-size:.75rem;font-weight:600;white-space:nowrap}
 @media(min-width:640px){.pt-h-wrap{padding:7rem 1.25rem}.pt-h-h1{font-size:2.25rem}.pt-h-h1 em{font-style:italic}.pt-h-br{display:block}.pt-h-price{font-size:1.125rem}.pt-h-price strong{font-size:1.4375rem}.pt-h-cta{width:auto;min-width:260px}}
@@ -338,11 +337,10 @@ const HOME_HERO_SKELETON = `<section class="pt-h-hero" id="get-started">
   <div class="pt-h-wrap">
     <div class="pt-h-inner">
       <div class="pt-h-rating"><span class="pt-h-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span><span>4.9 &middot; Trusted by 15,000+ pet owners</span></div>
-      <h1 class="pt-h-h1">Get an <span>ESA Letter</span> Online<br class="pt-h-br" /> <em>Your Landlord Can Verify</em></h1>
+      <h1 class="pt-h-h1">Get Your <span>Emotional Support Animal Letter</span><br class="pt-h-br" /> Today</h1>
       <p class="pt-h-price">Start for as low as <strong>$32.25</strong></p>
       <a class="pt-h-cta" href="/assessment">Check If You Qualify</a>
       <p class="pt-h-refund"><b>&#10003;</b> Full refund if you don&rsquo;t qualify</p>
-      <a class="pt-h-refund-link" href="/refund-policy#services-fee">Refund &amp; cancellation policy</a>
       <div><div class="pt-h-pill"><span>Serving all 50 US states</span></div></div>
     </div>
   </div>

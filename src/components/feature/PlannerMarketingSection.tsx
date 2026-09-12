@@ -199,14 +199,14 @@ export default function PlannerMarketingSection({ family, className = "", id, co
             <div className="grid grid-cols-3 gap-3 sm:gap-4 items-start">
               {content.previews.map((p, i) => (
                 <figure key={p.src} className={`m-0 ${i === 1 && !isEsa ? "mt-6 sm:mt-8" : ""}`}>
-                  <div className={`rounded-xl overflow-hidden ring-1 ${t.ring} bg-white shadow-[0_10px_24px_-14px_rgba(15,23,42,0.35)]`}>
+                  <div className={`aspect-[3/4] rounded-xl overflow-hidden ring-1 ${t.ring} bg-white shadow-[0_10px_24px_-14px_rgba(15,23,42,0.35)]`}>
                     <ResponsiveImage
                       src={p.src}
                       alt={p.alt}
                       width={p.width}
                       height={p.height}
                       sizes="(max-width: 640px) 30vw, (max-width: 1024px) 28vw, 200px"
-                      className="w-full h-auto block"
+                      className="w-full h-full object-contain block"
                     />
                   </div>
                   <figcaption className="text-[11px] text-gray-500 text-center mt-2">{p.label}</figcaption>

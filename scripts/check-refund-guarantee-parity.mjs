@@ -227,11 +227,15 @@ function runChecks(f) {
   for (const re of BACKEND_FEE_FORBIDDEN)
     if (re.test(cr)) F.push(`16. ${CREATE_REFUND} appears to add an automatic refund-fee path (${re})`);
 
-  // 17. Homepage refund promise links to the detailed policy in both React and
-  //     the pre-hydration homepage skeleton.
+  // 17. Owner-directed homepage cleanup: keep the short qualification refund
+  //     reassurance, but do not show the detailed refund/cancellation-policy
+  //     link inside the hero or its pre-hydration skeleton.
   for (const src of [HOME_HERO, PRERENDER]) {
-    if (!/refund-policy#services-fee/.test(f[src] || ""))
-      F.push(`17. ${src} is missing the homepage refund-policy link`);
+    const txt = f[src] || "";
+    if (!/Full refund if you don(?:&rsquo;|&apos;|')?t qualify/i.test(txt))
+      F.push(`17. ${src} is missing the short homepage qualification-refund reassurance`);
+    if (/refund-policy#services-fee/.test(txt))
+      F.push(`17. ${src} reintroduces the removed hero refund/cancellation-policy link`);
   }
 
   return F;
@@ -260,8 +264,8 @@ async function selfTest(baseFiles) {
       mutate: (f) => { f["src/pages/faqs/page.tsx"] = (f["src/pages/faqs/page.tsx"] || "x") + "\nPawTenant confirms the unlawful denial before refunding."; } },
     { name: "provider non-qualification stops being fully refundable",
       mutate: (f) => { f[PLAN_CARDS] = (f[PLAN_CARDS] || "").replace(/Full refund if you don'?t qualify/gi, "Store credit only"); } },
-    { name: "remove the homepage refund-policy link",
-      mutate: (f) => { f[HOME_HERO] = (f[HOME_HERO] || "").replace(/refund-policy#services-fee/g, "terms-of-use"); } },
+    { name: "reintroduce the removed homepage refund-policy link",
+      mutate: (f) => { f[HOME_HERO] = (f[HOME_HERO] || "") + '\n<a href="/refund-policy#services-fee">Refund & cancellation policy</a>'; } },
   ];
 
   const baseFailures = runChecks(baseFiles).length;

@@ -72,9 +72,8 @@ export default function HeroSection() {
             className="text-[34px] leading-[1.15] sm:text-4xl lg:text-[54px] lg:leading-[1.12] font-semibold text-white mb-5"
             style={{ fontFamily: '"Source Serif 4", Georgia, "Times New Roman", serif' }}
           >
-            Get an <span className="text-orange-400">ESA Letter</span> Online
-            <br className="hidden sm:block" />
-            <em className="not-italic sm:italic"> Your Landlord Can Verify</em>
+            Get Your <span className="text-orange-400">Emotional Support Animal Letter</span>
+            <br className="hidden sm:block" /> Today
           </h1>
 
           {/* Installment anchor — the ONLY price signal in the hero. */}
@@ -101,12 +100,6 @@ export default function HeroSection() {
               <i className="ri-checkbox-circle-fill text-emerald-300" aria-hidden></i>
               Full refund if you don&rsquo;t qualify
             </p>
-            <a
-              href="/refund-policy#services-fee"
-              className="text-white/75 text-[11px] font-medium mt-1.5 underline underline-offset-2 hover:text-white transition-colors"
-            >
-              Refund &amp; cancellation policy
-            </a>
           </div>
 
           {/* Coverage pill — preserved trust copy. */}

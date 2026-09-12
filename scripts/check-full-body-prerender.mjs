@@ -86,10 +86,10 @@ const SPIKE = [
   {
     path: "/", file: "index.html", homepage: true,
     titleHas: "ESA Letter Online",
-    h1Has: "Get an ESA Letter Online",
+    h1Has: "Get Your Emotional Support Animal Letter Today",
     minText: 120,
     mustLink: ["/assessment"],
-    mustText: ["ESA Letter"],
+    mustText: ["Emotional Support Animal Letter"],
   },
   {
     path: "/how-to-get-esa-letter", file: "how-to-get-esa-letter/index.html",
