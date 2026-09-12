@@ -360,14 +360,27 @@ Deno.serve(async (req: Request) => {
       const ALLOWED_MIME = new Set([
         "application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp",
       ]);
-      const mime = uploadedFile.type || "application/octet-stream";
-      if (!ALLOWED_MIME.has(mime)) {
-        return json({ ok: false, error: `Unsupported file type: ${mime}. Upload a PDF or image.` }, 415);
-      }
-      const MAX_BYTES = 25 * 1024 * 1024;
+      // Browsers and PDF generators do not consistently populate File.type.
+      // In particular, valid provider PDFs can arrive as an empty string,
+      // application/octet-stream or application/x-pdf. Read the bytes first and
+      // recognise a PDF by its standard header within the first 1024 bytes.
+      // This keeps validation fail-closed: renaming an arbitrary file to .pdf is
+      // not enough to make it pass.
+      const declaredMime = (uploadedFile.type || "").split(";", 1)[0].trim().toLowerCase();
       const buf = new Uint8Array(await uploadedFile.arrayBuffer());
       if (buf.byteLength === 0) return json({ ok: false, error: "The uploaded file is empty." }, 400);
-      if (buf.byteLength > MAX_BYTES) return json({ ok: false, error: "File exceeds the 25MB limit." }, 413);
+      const MAX_BYTES = 50 * 1024 * 1024;
+      if (buf.byteLength > MAX_BYTES) return json({ ok: false, error: "File exceeds the 50MB limit." }, 413);
+
+      const pdfHeader = new TextDecoder().decode(buf.subarray(0, Math.min(buf.byteLength, 1024)));
+      const isPdfByBytes = pdfHeader.includes("%PDF-");
+      const mime = isPdfByBytes ? "application/pdf" : declaredMime;
+      if (!ALLOWED_MIME.has(mime)) {
+        return json({
+          ok: false,
+          error: "This file format could not be recognized. Upload a PDF, JPG, PNG, or WebP file up to 50MB.",
+        }, 415);
+      }
 
       // Hashed BEFORE the upload, from the bytes the provider actually sent, so
       // the identity of the submission is independent of the object path.
