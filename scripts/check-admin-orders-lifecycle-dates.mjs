@@ -436,13 +436,22 @@ function runStatic() {
   // anchoring on the OLD "Lead (Unpaid)" silently matched the status-tab option
   // list further down the file and reported 17 cards, so the anchor label must
   // stay in lock-step with the first card.
-  const gridAt = page.indexOf("lg:grid-cols-5");
+  // ADMIN-ORDERS-CLICKABLE-KPI-CARD-COUNT-TO-LIST-PARITY-001 — the cards are
+  // declared by KEY now; their human labels live in one place
+  // (orderFacetCounts.KPI_CARD_LABEL) so the card, the tab and the result
+  // summary can never disagree about what a queue is called. The contract this
+  // check protects is unchanged: EXACTLY these five workflow queues, in order,
+  // and none of the banned secondary metrics.
+  // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — a sixth card, Partner
+  // Orders (a COUNT of partner-funded orders received in the period, never a
+  // money figure), sits after Completed. The grid is 6-wide to match.
+  const gridAt = page.indexOf("lg:grid-cols-6");
   const cardsAt = gridAt === -1 ? -1 : page.indexOf('key: "lead_unpaid"', gridAt);
   const kpiBlock = cardsAt === -1 ? "" : page.slice(cardsAt, page.indexOf("].map((s) =>", cardsAt));
   const kpiLabels = [...kpiBlock.matchAll(/key: "([^"]+)" as KpiCardKey/g)].map((m) => m[1]);
-  const EXPECTED_KPI = ["lead_unpaid", "paid_unassigned", "under_review", "pending_delivery", "completed"];
-  if (kpiLabels.length !== 5) {
-    failures.push(`KPI CARD CONTRACT: the permanent banner must have EXACTLY 5 visible cards, found ${kpiLabels.length}: ${JSON.stringify(kpiLabels)}`);
+  const EXPECTED_KPI = ["lead_unpaid", "paid_unassigned", "under_review", "pending_delivery", "completed", "partner_orders"];
+  if (kpiLabels.length !== 6) {
+    failures.push(`KPI CARD CONTRACT: the permanent banner must have EXACTLY 6 visible cards, found ${kpiLabels.length}: ${JSON.stringify(kpiLabels)}`);
   }
   if (JSON.stringify(kpiLabels) !== JSON.stringify(EXPECTED_KPI)) {
     failures.push(`KPI CARD CONTRACT: expected ${JSON.stringify(EXPECTED_KPI)}, found ${JSON.stringify(kpiLabels)}`);
@@ -451,10 +460,10 @@ function runStatic() {
     if (kpiLabels.includes(banned)) failures.push(`KPI CARD CONTRACT: forbidden top card "${banned}"`);
   }
   // The grid column count must AGREE with the card count, or the last card is
-  // clipped on desktop. Replaces the old "must not be lg:grid-cols-5" rule, which
-  // existed only because the 5th card at the time was an illegitimate one.
-  if (!/lg:grid-cols-5/.test(page)) {
-    failures.push("KPI CARD CONTRACT: five cards but the banner grid is not lg:grid-cols-5 - the last card will be clipped");
+  // clipped on desktop. Replaces the old "must not be lg:grid-cols-5" rule,
+  // which existed only because the 5th card at the time was an illegitimate one.
+  if (!/lg:grid-cols-6/.test(page)) {
+    failures.push("KPI CARD CONTRACT: six cards but the banner grid is not lg:grid-cols-6 - the last card will be clipped");
   }
   // Payment Failed must remain reachable as a filter TAB (no summary chip).
   if (!/\{ value: "payment_failed", label: "Payment Failed" \}/.test(page)) {

@@ -1,23 +1,32 @@
 /**
- * Admin Subdomain Routing — Feature Flag
+ * Dedicated portal hostnames.
  *
- * Flip ADMIN_SUBDOMAIN_ENABLED to `true` once both of these are done:
- *   1. DNS CNAME: admin.pawtenant.com → your Vercel deployment
- *   2. Domain added in Vercel project settings (Settings → Domains)
- *
- * While false, all routes stay on pawtenant.com — zero behaviour change.
+ * Routing is activated only by an exact hostname match. Until a hostname is
+ * attached to the Vercel project and DNS points at it, these checks are inert
+ * and the existing pawtenant.com routes keep working.
  */
-export const ADMIN_SUBDOMAIN_ENABLED = false;
-
 export const ADMIN_HOSTNAME = "admin.pawtenant.com";
+export const CUSTOMER_HOSTNAME = "customer.pawtenant.com";
+export const PARTNER_HOSTNAME = "partner.pawtenant.com";
 export const PUBLIC_HOSTNAME = "pawtenant.com";
 
-/**
- * Returns true only when the feature flag is on AND the current hostname
- * matches admin.pawtenant.com.
- */
-export function isAdminSubdomain(): boolean {
-  if (!ADMIN_SUBDOMAIN_ENABLED) return false;
-  return typeof window !== "undefined" &&
-    window.location.hostname === ADMIN_HOSTNAME;
+export type PortalHostname = "admin" | "customer" | "partner";
+
+export function getPortalHostname(): PortalHostname | null {
+  if (typeof window === "undefined") return null;
+  switch (window.location.hostname.toLowerCase()) {
+    case ADMIN_HOSTNAME:
+      return "admin";
+    case CUSTOMER_HOSTNAME:
+      return "customer";
+    case PARTNER_HOSTNAME:
+      return "partner";
+    default:
+      return null;
+  }
 }
+
+export function isAdminSubdomain(): boolean {
+  return getPortalHostname() === "admin";
+}
+

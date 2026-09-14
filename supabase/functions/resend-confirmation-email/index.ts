@@ -2,6 +2,8 @@ import Stripe from "https://esm.sh/stripe@14.21.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 import { renderOrderConfirmationContent } from "../_shared/orderConfirmationLayout.ts";
+// Slice 6: partner-managed orders never receive PawTenant order confirmations.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 import { DELIVERY_PROMISE_LABEL, deliveryPromiseLabel } from "../_shared/deliveryPromise.ts";
 
 const CORS_HEADERS = {
@@ -277,6 +279,27 @@ Deno.serve(async (req: Request) => {
     .eq("confirmation_id", confirmationId).maybeSingle();
 
   if (orderErr || !order) return json({ ok: false, error: `Order not found: ${orderErr?.message ?? "no row"}` }, 404);
+
+  // ── Slice 6 partner boundary ─────────────────────────────────────────────
+  // Order confirmations are retail checkout messages. A partner customer
+  // bought from the PARTNER; a PawTenant confirmation (with a PawTenant price)
+  // would be wrong twice over. Enforced here so `force:true`, manual retries
+  // and webhook replays are all covered — not just the hidden UI button.
+  {
+    const gate = await gateCustomerContact(supabase, { confirmationId }, {
+      channel: "email",
+      event: "order_confirmation",
+      source: "resend-confirmation-email",
+    });
+    if (!gate.allowed) {
+      return json({
+        ok: false,
+        code: "partner_policy_suppressed",
+        reason: gate.reason,
+        error: "This order's customer communication is owned by the partner — PawTenant does not send order confirmations for it.",
+      }, 409);
+    }
+  }
 
   const email = order.email as string;
   if (!email) return json({ ok: false, error: "Order has no email address" }, 400);

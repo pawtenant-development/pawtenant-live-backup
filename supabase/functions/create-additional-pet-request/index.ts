@@ -33,6 +33,8 @@ import {
   completeAdditionalPetPayment,
   sendAdditionalPetEmail,
 } from "../_shared/completeAdditionalPetPayment.ts";
+// Slice 6: partner-managed orders never receive PawTenant payment flows.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -153,6 +155,27 @@ Deno.serve(async (req) => {
   // Ownership. A cross-customer request is refused outright.
   if (!isAdmin && (!callerEmail || callerEmail !== orderEmail)) {
     return json(403, { ok: false, error: "Not authorized for this order" });
+  }
+
+  // ── Slice 6 partner boundary ───────────────────────────────────────────────
+  // Additional Pet is a retail upsell: a Stripe checkout plus customer emails.
+  // A partner-managed order gets neither — scope changes on partner cases are
+  // partner-contract matters. Refused before any request row or Stripe object
+  // exists.
+  {
+    const gate = await gateCustomerContact(admin, { orderId: o.id }, {
+      channel: "payment_link",
+      event: "additional_pet_request",
+      source: "create-additional-pet-request",
+    });
+    if (!gate.allowed) {
+      return json(409, {
+        ok: false,
+        code: "partner_policy_suppressed",
+        reason: gate.reason,
+        error: "This order is partner-managed — additional pets are handled through the partner, not a PawTenant payment.",
+      });
+    }
   }
 
   const stripe = stripeKey

@@ -143,10 +143,14 @@ function runChecks(f) {
   // PERIOD-EVENT names and replaced the queue-depth aggregate with the single
   // period aggregate. Pending Delivery still has its OWN card on the five-column
   // grid — which is all this check was ever protecting.
-  add("P6", "the banner renders five cards on a five-column grid",
+  // PARTNER-PLATFORM-LIVE-FOUNDATION-ROLLOUT-004 (mirrors TEST
+  // check-pending-delivery-admin-orders.mjs): a sixth card (Partner Orders)
+  // sits after Completed, so the grid is six columns wide.
+  add("P6", "the banner renders six cards on a six-column grid",
     has(f.page, 'key: "pending_delivery" as KpiCardKey')
+    && has(f.page, 'key: "partner_orders" as KpiCardKey')
     && has(f.page, "kpiCounts?.counts[s.key]")
-    && hasRe(f.page, /lg:grid-cols-5/));
+    && hasRe(f.page, /lg:grid-cols-6/));
 
   // Customer must NEVER see the internal label, and must not be told the
   // provider is still reviewing after the provider has finished.
@@ -435,8 +439,8 @@ const CONTROLS = [
     (f) => ({ ...f, stateSql: f.stateSql.replace("     and public.order_workflow_state(o) <> 'pending_delivery';", ";") })],
   ["P5", "the Pending Delivery tab falls through to the else fallback",
     (f) => ({ ...f, page: f.page.replace('matchStatus = isPendingDelivery(o);', 'matchStatus = false;') })],
-  ["P6", "the banner keeps four columns so the fifth card is clipped",
-    (f) => ({ ...f, page: f.page.replace("lg:grid-cols-5", "lg:grid-cols-4") })],
+  ["P6", "the banner keeps five columns so the sixth card is clipped",
+    (f) => ({ ...f, page: f.page.replace("lg:grid-cols-6", "lg:grid-cols-5") })],
   ["P7", "the customer is shown the internal Pending Delivery label",
     (f) => ({ ...f, customer: f.customer.replace('return { label: "Under Review"', 'return { label: "Pending Delivery"') })],
   ["P8", "the provider keeps the order in the In Progress queue",

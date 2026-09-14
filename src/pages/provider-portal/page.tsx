@@ -57,6 +57,9 @@ interface Order {
   preferred_provider_contact_window?: string | null;
   preferred_provider_contact_note?: string | null;
   preferred_provider_contact_timezone?: string | null;
+  // PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002: no order origin,
+  // partner id or partner reference is selected into the provider's shape.
+  // The provider portal treats every assigned case identically.
 }
 
 // ─── PSD order detection helper ──────────────────────────────────────────────
@@ -932,6 +935,9 @@ export default function ProviderPortalPage({ previewContext }: { previewContext?
                   // card — Refund Only (partial OR full) keeps the case active.
                   const isRefunded = order.status === "cancelled" || order.status === "refunded";
                   const isPSD = isPSDOrder(order);
+                  // PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002: a
+                  // provider is never told where a case came from. Every case
+                  // uses the same card, chips, status and actions.
 
                   return (
                     <div key={order.id}

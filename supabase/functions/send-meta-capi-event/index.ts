@@ -840,11 +840,26 @@ Deno.serve(async (req: Request) => {
     if (mode === "single" && body.confirmationId) {
       const { data: order } = await supabase
         .from("orders")
-        .select("id, confirmation_id, email, phone, first_name, last_name, letter_type, price, paid_at, created_at, fbclid, attribution_json, meta_capi_status, meta_capi_event_id, phone_sha256")
+        .select("id, confirmation_id, email, phone, first_name, last_name, letter_type, price, paid_at, created_at, fbclid, attribution_json, meta_capi_status, meta_capi_event_id, phone_sha256, order_origin")
         .eq("confirmation_id", body.confirmationId)
         .maybeSingle();
 
       if (!order) return json({ ok: false, error: "Order not found" }, 404);
+
+      // ── Slice 6 partner boundary ───────────────────────────────────────────
+      // The sweep/retry cohorts already require a Stripe payment, which no
+      // partner order has — but mode:single had no filter at all, so one manual
+      // push could hand a partner customer's hashed PII to Meta and inject
+      // wholesale fulfillment into paid-media ROAS. Only a provably direct
+      // order may be pushed (fail closed on anything else).
+      if ((order as { order_origin?: string }).order_origin !== "direct") {
+        return json({
+          ok: false,
+          mode: "single",
+          code: "partner_policy_suppressed",
+          error: "Not a direct retail order — partner orders are never sent to ad platforms.",
+        }, 409);
+      }
 
       const result = await processOrder(order as OrderRow, supabase, dryRun, testEventCode);
       return json({

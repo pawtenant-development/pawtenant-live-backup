@@ -13,12 +13,14 @@ import { Routes, Route, Navigate } from "react-router-dom";
 
 const AdminLoginPage        = lazy(() => import("../pages/admin-login/page"));
 const AdminOrdersPage       = lazy(() => import("../pages/admin-orders/page"));
+const AdminPartnersRedirect = lazy(() => import("../pages/admin-orders/components/partner-platform/AdminPartnersRedirect"));
 const AdminDoctorsPage      = lazy(() => import("../pages/admin-doctors/page"));
 const AdminGuidePage        = lazy(() => import("../pages/admin-guide/page"));
 const AdminLiveVisitorsPage = lazy(() => import("../pages/admin-live/page"));
 const ResetPasswordPage = lazy(() => import("../pages/reset-password/page"));
 const ProviderLoginPage  = lazy(() => import("../pages/provider-login/page"));
 const ProviderPortalPage = lazy(() => import("../pages/provider-portal/page"));
+const PartnerPortalPage  = lazy(() => import("../pages/partner-portal/page"));
 
 function PageLoader() {
   return (
@@ -52,6 +54,9 @@ export function AdminSubdomainRoutes() {
           here also keeps it visually grouped with the orders surface. */}
       <Route path="/admin-orders/live"  element={<P C={AdminLiveVisitorsPage} />} />
       <Route path="/admin-orders"       element={<P C={AdminOrdersPage} />} />
+      {/* PARTNER-PLATFORM-ADMIN-WORKSPACE-001 — redirects into ?tab=partners
+          on the shell, the same pattern as /admin-chats below. */}
+      <Route path="/admin-partners"     element={<P C={AdminPartnersRedirect} />} />
       <Route path="/admin-doctors"      element={<P C={AdminDoctorsPage} />} />
       <Route path="/admin-guide"        element={<P C={AdminGuidePage} />} />
 
@@ -65,6 +70,9 @@ export function AdminSubdomainRoutes() {
       {/* Provider portal — accessible from admin subdomain */}
       <Route path="/provider-login"  element={<P C={ProviderLoginPage} />} />
       <Route path="/provider-portal" element={<P C={ProviderPortalPage} />} />
+
+      {/* Partner portal — invite-only partner organization workspace */}
+      <Route path="/partner-portal" element={<P C={PartnerPortalPage} />} />
 
       {/* Catch-all: redirect any unknown path to login rather than 404 */}
       <Route path="*" element={<Navigate to="/admin-login" replace />} />

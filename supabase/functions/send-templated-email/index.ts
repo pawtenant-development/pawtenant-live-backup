@@ -12,6 +12,8 @@ import { sendEmailViaResend } from "../_shared/resendClient.ts";
 import { renderOrderConfirmationContent } from "../_shared/orderConfirmationLayout.ts";
 import { DELIVERY_PROMISE_LABEL } from "../_shared/deliveryPromise.ts";
 import { issueResumeLink } from "../_shared/resumeLink.ts";
+// Slice 6: partner-managed orders never receive PawTenant customer templates.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -106,6 +108,28 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // ── Slice 6 partner boundary ─────────────────────────────────────────────
+    // This is the generic "email any customer any template" endpoint, so it is
+    // exactly where a partner customer would get an accidental PawTenant
+    // message from a well-meaning admin. Any send that names an order is
+    // policy-gated from the database row; a refusal is an explicit 409 the
+    // Comms UI can show honestly.
+    if (body.confirmationId) {
+      const gate = await gateCustomerContact(supabase, { confirmationId: body.confirmationId }, {
+        channel: "email",
+        event: `template:${body.slug}`,
+        source: "send-templated-email",
+      });
+      if (!gate.allowed) {
+        return json({
+          ok: false,
+          code: "partner_policy_suppressed",
+          reason: gate.reason,
+          error: "This order's customer communication is owned by the partner — PawTenant does not email this customer.",
+        }, 409);
+      }
+    }
 
     // PROVIDER-LETTER-ADMIN-APPROVAL-GATE-AND-AUDIT-UX-001 §16 — the sender is
     // resolved from the caller's JWT. This endpoint previously hard-coded

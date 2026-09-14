@@ -108,3 +108,12 @@ export function evaluateNotificationSuppression(
     checks,
   };
 }
+
+/** True only when this function is running on the TEST Supabase project. */
+export function isTestProject(): boolean {
+  try {
+    return (Deno.env.get("SUPABASE_URL") ?? "").includes(TEST_PROJECT_REF);
+  } catch {
+    return false;
+  }
+}

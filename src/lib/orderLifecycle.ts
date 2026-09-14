@@ -161,6 +161,10 @@ export function lifecycleEventIcon(v: string | null | undefined): string {
 export interface LifecycleOrder extends ClassifiableOrder, ServiceFamilyFields {
   created_at?: string | null;
   paid_at?: string | null;
+  // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001: origin decides whether
+  // `paid_at` alone counts as confirmed payment (partner-funded orders never
+  // carry a customer PaymentIntent). Mirrors order_workflow_state().
+  order_origin?: string | null;
   last_payment_at?: string | null;
   first_completed_at?: string | null;
   last_completed_at?: string | null;
@@ -472,7 +476,10 @@ const WORKFLOW_LABEL: Record<WorkflowState, string> = {
  */
 export function orderWorkflowState(o: LifecycleOrder): WorkflowState {
   if (isOperationallyCancelled(o)) return "cancelled";
-  if (!o.payment_intent_id || o.status === "lead") return "lead";
+  // A partner-funded order is paid by the PARTNER at acceptance (paid_at) and
+  // has no PaymentIntent by design — it is never a lead. Same rule as SQL.
+  const partnerPaid = o.order_origin === "partner" && Boolean(o.paid_at);
+  if ((!o.payment_intent_id && !partnerPaid) || o.status === "lead") return "lead";
   if (o.doctor_status === "patient_notified") return "completed";
   if (o.doctor_status === "pending_admin_approval") return "pending_delivery";
   // ESA-ONLY: the 30-day reopen marker is believed only on an ESA order.

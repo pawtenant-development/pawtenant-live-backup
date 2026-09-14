@@ -60,6 +60,7 @@ const DELIVERY_CARD = "src/pages/my-orders/components/LetterDeliveryCard.tsx";
 const CUSTOMER_DOCS = "src/lib/customerDocuments.ts";
 const LIFECYCLE = "src/lib/orderLifecycle.ts";
 const ADMIN_PAGE = "src/pages/admin-orders/page.tsx";
+const PARTNER_TAB = "src/pages/admin-orders/components/PartnerOrdersTab.tsx";
 const PORTAL_PAGE = "src/pages/my-orders/page.tsx";
 
 let checks = 0;
@@ -750,6 +751,25 @@ function runWiring(root) {
     /(?:hasCustomerDeliverable|hasFinalCustomerDocument)/.test(portalPage)
     || "my-orders/page.tsx does not use a shared customer-document check");
 
+  // ── Partner projection ─────────────────────────────────────────────────────
+  // public.partner_clinical_state() reaches `correction_required` by COMPOSING
+  // public.order_workflow_state(), whose 30-day arm is now ESA-only. The client
+  // mirror in PartnerOrdersTab must carry the same gate or the two classifiers
+  // disagree for a non-ESA partner order holding a stale reopen marker.
+  const partner = codeOnly(read(root, PARTNER_TAB));
+  check("E3. the partner mirror imports the shared 30-day marker gate", () =>
+    /thirtyDayMarkersApply/.test(partner)
+    || "PartnerOrdersTab does not use the shared gate — it will drift from partner_clinical_state()");
+  check("E3. the partner mirror gates its reopen branch on the ESA marker rule", () => {
+    // String literals are stripped, so the branch is located by the COLUMN it
+    // tests, not by the label it returns. The gate must sit in the same
+    // condition, immediately before it.
+    const at = partner.indexOf("official_letter_reopened_at");
+    if (at < 0) return "the reopen branch could not be located in PartnerOrdersTab";
+    const condition = partner.slice(Math.max(0, at - 140), at);
+    return /thirtyDayMarkersApply\(o\)\s*$|thirtyDayMarkersApply\(o\)[\s\S]{0,40}$/.test(condition)
+      || `the reopen branch is still reached without the ESA gate: …${condition.trim().slice(-90)}`;
+  });
 }
 
 async function runAll(root) {
@@ -985,6 +1005,13 @@ const CONTROLS = [
     apply: (s) => s.replace(
       '{order.doctor_status === "patient_notified" && hasFinalCustomerDocument(order) && (',
       '{order.doctor_status === "patient_notified" && ('),
+  },
+  {
+    name: "N31 — the partner mirror drifts from partner_clinical_state() again",
+    file: PARTNER_TAB,
+    apply: (s) => s.replace(
+      "  if (thirtyDayMarkersApply(o)\n      && o.official_letter_reopened_at && !o.official_letter_final_completed_at) return \"correction_required\";",
+      "  if (o.official_letter_reopened_at && !o.official_letter_final_completed_at) return \"correction_required\";"),
   },
   {
     name: "N30 — the reason stops being required",

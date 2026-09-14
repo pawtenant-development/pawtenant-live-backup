@@ -14,6 +14,8 @@ import PaymentsAccountsPanel, { DEFAULT_PKR_PER_USD, type CompanyTotals } from "
 import AccountsReconciliationBridge, { type BridgeResult } from "./AccountsReconciliationBridge";
 import ChannelContributionPanel, { type ChannelTotalsResult } from "./ChannelContributionPanel";
 import MarketingROIHealthPanel, { type MarketingHealthResult } from "./MarketingROIHealthPanel";
+// PARTNER-MULTI-BRAND-MANUAL-PDF-ORDER-INGESTION-001 — separately reconcilable partner economics.
+import PartnerContributionPanel from "./PartnerContributionPanel";
 import AccountsCollapsibleSection from "./AccountsCollapsibleSection";
 import AccountsHeader from "./AccountsHeader";
 import AccountsSectionNav, { ACCOUNTS_SECTIONS, sectionId, type AccountsSection } from "./AccountsSectionNav";
@@ -864,6 +866,18 @@ export default function PaymentsTab() {
                         onSyncNow={syncAds}
                         reloadSignal={syncSignal}
                         onHealth={handleMarketingHealth}
+                      />
+                    </div>
+                    {/* Partner Contribution — B2B fulfilment economics from the partner
+                        finance ledger. Separate from the Stripe bridge above: it never
+                        alters Gross Charged, Net Revenue, Provider Payments, Channel
+                        Contribution, Marketing or closed periods. */}
+                    <div id={sectionId("partners")} className="scroll-mt-4">
+                      <PartnerContributionPanel
+                        from={accountsFrom}
+                        to={accountsTo}
+                        rangeLabel={rangeLabel}
+                        reloadSignal={syncSignal}
                       />
                     </div>
                   </>

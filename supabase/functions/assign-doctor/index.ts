@@ -5,6 +5,21 @@ import { DELIVERY_TURNAROUND_CLAUSE } from "../_shared/deliveryPromise.ts";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
 import { notifyProviderAdditionalDoc } from "../_shared/notifyProviderAdditionalDoc.ts";
 import { resolveAuditActor } from "../_shared/auditActor.ts";
+// PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 · Slice 6 — partner orders keep
+// the provider assignment but the CUSTOMER must hear nothing from PawTenant:
+// the partner owns customer communication. The decision comes from the order's
+// own policy snapshot (canonical resolver), never from a partner name.
+import {
+  PARTNER_POLICY_COLUMNS,
+  type PolicyDecision,
+  resolveOrderPolicy,
+  resolveOrderPolicySafe,
+} from "../_shared/partnerPolicy.ts";
+import {
+  auditSuppressedCustomerContact,
+  PARTNER_COMMS_REFUSAL,
+  PARTNER_COMMS_UNRESOLVED,
+} from "../_shared/partnerCommsGate.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -20,6 +35,19 @@ const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
+}
+
+// Slice 6: patient fields in the provider email arrive from checkout for
+// direct orders and from the PARTNER API for partner orders — external text
+// either way, and this is the one communication surface partner-controlled
+// text still reaches. Rendered inert, same rule as the Slice 4 assessment PDF.
+function escapeHtml(v: unknown): string {
+  return String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 interface AdditionalDocRequest {
@@ -62,11 +90,15 @@ async function sendProviderEmail(opts: {
   const letterTypeLabel = opts.isPSD ? "PSD Letter" : "ESA Letter";
   const portalLabel = opts.isPSD ? "PSD Provider Portal" : "ESA Provider Portal";
 
+  // PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002: the assignment email
+  // carries no order-origin disclosure and no "Case Source" row. A provider is
+  // handed a case, never told where it came from. External text is rendered
+  // inert (escapeHtml) — fix(partners) 90b56e5.
   const incompletePsdHtml = opts.incompletePsd ? `<tr><td style="padding:14px 24px;border-top:1px solid #e5e7eb;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:14px 18px;"><tr><td><p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:0.08em;">Incomplete PSD intake — follow-up required</p><p style="margin:0;font-size:13px;color:#7c2d12;line-height:1.55;">This owner-approved case contains ${opts.incompletePsd.answered} of ${opts.incompletePsd.requiredTotal} required answers (${opts.incompletePsd.missingCount} missing). Contact the customer and confirm the missing clinical information before approving or issuing documentation. The system has not fabricated or marked those answers complete.</p></td></tr></table></td></tr>` : "";
 
-  const additionalDocsHtml = hasExtraDocs ? `<tr><td style="padding:14px 24px;border-top:1px solid #e5e7eb;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:14px 18px;"><tr><td><p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.08em;">Additional Documents Requested</p><p style="margin:0 0 8px;font-size:13px;color:#78350f;">This patient has requested the following additional documentation:</p><ul style="margin:0 0 8px;padding-left:16px;">${extraDocs.map((doc) => `<li style="font-size:13px;color:#78350f;font-weight:600;margin-bottom:4px;">${doc}</li>`).join("")}</ul>${opts.additionalDocs?.otherDescription ? `<p style="margin:8px 0 0;font-size:12px;color:#92400e;font-style:italic;background:#fde68a;padding:8px 12px;border-radius:6px;">Patient note: "${opts.additionalDocs.otherDescription}"</p>` : ""}<p style="margin:8px 0 0;font-size:12px;color:#92400e;">Please prepare all requested documents alongside the ${letterTypeLabel} for this patient.</p></td></tr></table></td></tr>` : "";
+  const additionalDocsHtml = hasExtraDocs ? `<tr><td style="padding:14px 24px;border-top:1px solid #e5e7eb;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:14px 18px;"><tr><td><p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.08em;">Additional Documents Requested</p><p style="margin:0 0 8px;font-size:13px;color:#78350f;">This patient has requested the following additional documentation:</p><ul style="margin:0 0 8px;padding-left:16px;">${extraDocs.map((doc) => `<li style="font-size:13px;color:#78350f;font-weight:600;margin-bottom:4px;">${escapeHtml(doc)}</li>`).join("")}</ul>${opts.additionalDocs?.otherDescription ? `<p style="margin:8px 0 0;font-size:12px;color:#92400e;font-style:italic;background:#fde68a;padding:8px 12px;border-radius:6px;">Patient note: "${escapeHtml(opts.additionalDocs.otherDescription)}"</p>` : ""}<p style="margin:8px 0 0;font-size:12px;color:#92400e;">Please prepare all requested documents alongside the ${letterTypeLabel} for this patient.</p></td></tr></table></td></tr>` : "";
 
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 20px;"><tr><td align="center"><table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;"><tr><td style="background:${HEADER_BG};padding:28px 32px;"><img src="${LOGO_URL}" alt="PawTenant" width="160" style="display:block;margin:0 auto 12px;height:auto;" /><p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;text-align:center;">New Case Assigned</p><p style="margin:6px 0 0;font-size:13px;color:${HEADER_SUB};text-align:center;">PawTenant — ${portalLabel}</p></td></tr><tr><td style="padding:28px 32px;"><p style="margin:0 0 16px;font-size:15px;color:#374151;">Hi <strong>${opts.providerName.split(" ")[0]}</strong>,</p><p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">A new ${letterTypeLabel} evaluation case has just been assigned to you. Click below to open it directly in your portal.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:10px;margin-bottom:24px;"><tr><td style="padding:20px 24px;"><p style="margin:0 0 12px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Case Details</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;width:130px;">Order ID</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${opts.confirmationId}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Letter Type</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">${letterTypeLabel}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Patient Name</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${opts.patientFirstName} ${opts.patientLastName}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Patient Email</td><td style="padding:5px 0;font-size:13px;color:#111827;">${opts.patientEmail}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Patient Phone</td><td style="padding:5px 0;font-size:13px;color:#111827;">${opts.patientPhone || "—"}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">State</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${opts.patientState}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Documents Needed</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">${letterTypeLabel}${hasExtraDocs ? ` + ${extraDocs.join(", ")}` : ""}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Status</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">Pending Your Review</td></tr></table></td></tr></table><table cellpadding="0" cellspacing="0" style="margin-bottom:16px;"><tr><td style="background:${ACCENT};border-radius:8px;"><a href="${opts.portalUrl}" style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Assigned Order &rarr;</a></td></tr></table><p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">Please complete your review and upload all required documents within the agreed timeframe.</p></td></tr>${incompletePsdHtml}${additionalDocsHtml}<tr><td style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:16px 32px;"><p style="margin:0;font-size:12px;color:#9ca3af;">PawTenant &mdash; Provider Notification &mdash; Do not reply to this email.</p></td></tr></table></td></tr></table></body></html>`.trim();
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 20px;"><tr><td align="center"><table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;"><tr><td style="background:${HEADER_BG};padding:28px 32px;"><img src="${LOGO_URL}" alt="PawTenant" width="160" style="display:block;margin:0 auto 12px;height:auto;" /><p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;text-align:center;">New Case Assigned</p><p style="margin:6px 0 0;font-size:13px;color:${HEADER_SUB};text-align:center;">PawTenant — ${portalLabel}</p></td></tr><tr><td style="padding:28px 32px;"><p style="margin:0 0 16px;font-size:15px;color:#374151;">Hi <strong>${escapeHtml(opts.providerName.split(" ")[0])}</strong>,</p><p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">A new ${letterTypeLabel} evaluation case has just been assigned to you. Click below to open it directly in your portal.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:10px;margin-bottom:24px;"><tr><td style="padding:20px 24px;"><p style="margin:0 0 12px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Case Details</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;width:130px;">Order ID</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${opts.confirmationId}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Letter Type</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">${letterTypeLabel}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Patient Name</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${escapeHtml(opts.patientFirstName)} ${escapeHtml(opts.patientLastName)}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Patient Email</td><td style="padding:5px 0;font-size:13px;color:#111827;">${escapeHtml(opts.patientEmail)}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Patient Phone</td><td style="padding:5px 0;font-size:13px;color:#111827;">${escapeHtml(opts.patientPhone || "—")}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">State</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:#111827;">${escapeHtml(opts.patientState)}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Documents Needed</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">${letterTypeLabel}${hasExtraDocs ? ` + ${extraDocs.join(", ")}` : ""}</td></tr><tr><td style="padding:5px 0;font-size:13px;color:#6b7280;">Status</td><td style="padding:5px 0;font-size:13px;font-weight:700;color:${ACCENT};">Pending Your Review</td></tr></table></td></tr></table><table cellpadding="0" cellspacing="0" style="margin-bottom:16px;"><tr><td style="background:${ACCENT};border-radius:8px;"><a href="${opts.portalUrl}" style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">View Assigned Order &rarr;</a></td></tr></table><p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">Please complete your review and upload all required documents within the agreed timeframe.</p></td></tr>${incompletePsdHtml}${additionalDocsHtml}<tr><td style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:16px 32px;"><p style="margin:0;font-size:12px;color:#9ca3af;">PawTenant &mdash; Provider Notification &mdash; Do not reply to this email.</p></td></tr></table></td></tr></table></body></html>`.trim();
 
   return sendViaResend({
     to: opts.providerEmail,
@@ -88,7 +120,7 @@ async function sendCustomerAssignedEmail(opts: {
   const firstName = opts.customerFirstName || "there";
   const letterTypeLabel = opts.isPSD ? "PSD" : "ESA";
 
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 20px;"><tr><td align="center"><table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;"><tr><td style="background:${HEADER_BG};padding:28px 32px;text-align:center;"><img src="${LOGO_URL}" alt="PawTenant" width="180" style="margin-bottom:14px;display:block;margin-left:auto;margin-right:auto;" /><div style="display:inline-block;background:rgba(255,255,255,0.22);color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:5px 14px;border-radius:999px;">Case Update</div><h1 style="margin:14px 0 4px;font-size:22px;font-weight:700;color:#ffffff;">Your provider has been assigned</h1><p style="margin:0;font-size:13px;color:${HEADER_SUB};">Your ${letterTypeLabel} evaluation is now actively in progress</p></td></tr><tr><td style="padding:32px 32px 24px;"><p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">Hi <strong>${firstName}</strong>,</p><p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">Great news — a licensed professional has been assigned to your ${letterTypeLabel} case and is actively reviewing your information.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:12px;margin-bottom:24px;"><tr><td style="padding:20px 24px;"><p style="margin:0 0 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Your Case Status</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:6px 0;font-size:13px;color:#6b7280;width:140px;">Order ID</td><td style="padding:6px 0;font-size:13px;font-weight:700;color:#111827;font-family:monospace;">${opts.confirmationId}</td></tr><tr><td style="padding:6px 0;font-size:13px;color:#6b7280;">Assigned Provider</td><td style="padding:6px 0;font-size:13px;font-weight:700;color:${ACCENT};">${opts.providerName}</td></tr><tr><td style="padding:6px 0;font-size:13px;color:#6b7280;">Expected Delivery</td><td style="padding:6px 0;font-size:13px;font-weight:700;color:#111827;">${turnaroundLabel}</td></tr></table></td></tr></table><table cellpadding="0" cellspacing="0" style="margin:0 auto 8px;"><tr><td style="background:${ORANGE};border-radius:10px;"><a href="${opts.portalUrl}" style="display:inline-block;padding:14px 30px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">Track My Order &rarr;</a></td></tr></table></td></tr><tr><td style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:18px 32px;text-align:center;"><p style="margin:0;font-size:12px;color:#9ca3af;">Questions? <a href="mailto:hello@pawtenant.com" style="color:${ACCENT};">hello@pawtenant.com</a></p></td></tr></table></td></tr></table></body></html>`.trim();
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:40px 20px;"><tr><td align="center"><table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;"><tr><td style="background:${HEADER_BG};padding:28px 32px;text-align:center;"><img src="${LOGO_URL}" alt="PawTenant" width="180" style="margin-bottom:14px;display:block;margin-left:auto;margin-right:auto;" /><div style="display:inline-block;background:rgba(255,255,255,0.22);color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:5px 14px;border-radius:999px;">Case Update</div><h1 style="margin:14px 0 4px;font-size:22px;font-weight:700;color:#ffffff;">Your provider has been assigned</h1><p style="margin:0;font-size:13px;color:${HEADER_SUB};">Your ${letterTypeLabel} evaluation is now actively in progress</p></td></tr><tr><td style="padding:32px 32px 24px;"><p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">Hi <strong>${escapeHtml(firstName)}</strong>,</p><p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.7;">Great news — a licensed professional has been assigned to your ${letterTypeLabel} case and is actively reviewing your information.</p><table width="100%" cellpadding="0" cellspacing="0" style="background:#f0faf7;border:1px solid #b8ddd5;border-radius:12px;margin-bottom:24px;"><tr><td style="padding:20px 24px;"><p style="margin:0 0 14px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Your Case Status</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:6px 0;font-size:13px;color:#6b7280;width:140px;">Order ID</td><td style="padding:6px 0;font-size:13px;font-weight:700;color:#111827;font-family:monospace;">${opts.confirmationId}</td></tr><tr><td style="padding:6px 0;font-size:13px;color:#6b7280;">Assigned Provider</td><td style="padding:6px 0;font-size:13px;font-weight:700;color:${ACCENT};">${escapeHtml(opts.providerName)}</td></tr><tr><td style="padding:6px 0;font-size:13px;color:#6b7280;">Expected Delivery</td><td style="padding:6px 0;font-size:13px;font-weight:700;color:#111827;">${turnaroundLabel}</td></tr></table></td></tr></table><table cellpadding="0" cellspacing="0" style="margin:0 auto 8px;"><tr><td style="background:${ORANGE};border-radius:10px;"><a href="${opts.portalUrl}" style="display:inline-block;padding:14px 30px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;">Track My Order &rarr;</a></td></tr></table></td></tr><tr><td style="background:#f9fafb;border-top:1px solid #f3f4f6;padding:18px 32px;text-align:center;"><p style="margin:0;font-size:12px;color:#9ca3af;">Questions? <a href="mailto:hello@pawtenant.com" style="color:${ACCENT};">hello@pawtenant.com</a></p></td></tr></table></td></tr></table></body></html>`.trim();
 
   return sendViaResend({
     to: opts.customerEmail,
@@ -162,6 +194,11 @@ Deno.serve(async (req: Request) => {
         missingCount: gate.missingCount,
         // Question IDs only — never answer values.
         missing: gate.missing,
+        // Slice 6 closure: distinguishes "form unfinished" from "answer schema
+        // has no approved mapping" — the latter is a Slice 7 contract gap, not
+        // something an admin can chase the customer for.
+        unmappedVersion: gate.unmappedVersion === true,
+        ...(gate.judgedVersion ? { judgedVersion: gate.judgedVersion } : {}),
       }, 409);
       }
     }
@@ -229,8 +266,21 @@ Deno.serve(async (req: Request) => {
   if (doctorAvailabilityStatus === "at_capacity") return json({ error: `Provider ${doctorName} (${normalizedEmail}) is currently at capacity and not accepting new assignments.`, availability_status: "at_capacity" }, 400);
   if (isPortalProvider && !doctorPortalAccessed) return json({ error: `Provider ${doctorName} must complete account setup and access the portal before receiving orders.`, reason: "pending_account_setup" }, 400);
 
-  const { data: order, error: orderErr } = await supabase.from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, doctor_name, doctor_email, additional_documents_requested, delivery_speed, price, payment_intent_id, paid_at, status, letter_type, addon_services").eq("confirmation_id", confirmationId).maybeSingle();
+  const { data: order, error: orderErr } = await supabase.from("orders").select(`id, confirmation_id, email, first_name, last_name, phone, state, doctor_user_id, doctor_name, doctor_email, additional_documents_requested, delivery_speed, price, payment_intent_id, paid_at, status, letter_type, addon_services, ${PARTNER_POLICY_COLUMNS}`).eq("confirmation_id", confirmationId).maybeSingle();
   if (orderErr || !order) return json({ error: `Order not found: ${confirmationId}` }, 404);
+
+  // ── Slice 6: resolve the partner policy ONCE, from the row itself ──────────
+  // An order whose policy cannot be established is treated as the maximally
+  // restrictive case (no customer contact, no retail order value) rather than
+  // waved through — resolveOrderPolicySafe fails closed by construction.
+  let policy: PolicyDecision;
+  let policyUnresolved = false;
+  try {
+    policy = resolveOrderPolicy(order);
+  } catch {
+    policyUnresolved = true;
+    policy = resolveOrderPolicySafe(order);
+  }
 
   // ORDER-PAYMENT-GATING: skipPaymentCheck is intentionally NO LONGER honored — an
   // unpaid base order is never assignable via ANY path. Key ONLY on canonical
@@ -342,7 +392,13 @@ Deno.serve(async (req: Request) => {
 
   let earningsAction = "none";
   const patientName = `${order.first_name ?? ""} ${order.last_name ?? ""}`.trim() || (order.email as string);
-  const orderAmount = (order.price as number) ?? null;
+  // Slice 6 provider-earnings safety: order_amount is the RETAIL order value
+  // snapshot, admin-display only. A partner case has no PawTenant retail value —
+  // the partner's price is not our revenue and the wholesale fee is not the
+  // provider's business — so anything except a proven-direct order records
+  // NULL. The provider's own compensation is doctorRate
+  // (doctor_profiles.per_order_rate — the one payout truth) for BOTH origins.
+  const orderAmount = policy.origin === "direct" ? ((order.price as number) ?? null) : null;
 
   // Guard against duplicate BASE earnings: filter to the base earning only (an add-on row
   // shares the same confirmation_id and would break a bare .maybeSingle() with a
@@ -396,29 +452,57 @@ Deno.serve(async (req: Request) => {
     incompletePsd: incompletePsdOverride,
   });
 
-  const customerEmailSent = await sendCustomerAssignedEmail({
-    customerEmail: order.email as string, customerFirstName: order.first_name ?? "", confirmationId,
-    providerName: doctorName, deliverySpeed: order.delivery_speed ?? null, portalUrl: `${siteUrl}/my-orders`, isPSD,
-  });
+  // ── Slice 6: the customer branch is POLICY-GATED ────────────────────────────
+  // For a partner-managed order the customer email is never composed, never
+  // logged as a communication attempt (a row would falsely claim PawTenant owed
+  // this customer a message), and the suppression is audited without body/PHI.
+  // Everything above this line — assignment, audit, earning, provider email,
+  // in-portal notification — already happened for BOTH origins.
+  const customerContactAllowed = !policy.suppressCustomerCommunication;
+  let customerEmailSent = false;
+  if (customerContactAllowed) {
+    customerEmailSent = await sendCustomerAssignedEmail({
+      customerEmail: order.email as string, customerFirstName: order.first_name ?? "", confirmationId,
+      providerName: doctorName, deliverySpeed: order.delivery_speed ?? null, portalUrl: `${siteUrl}/my-orders`, isPSD,
+    });
+  } else {
+    await auditSuppressedCustomerContact(supabase, {
+      orderId: order.id as string,
+      confirmationId,
+      channel: "email",
+      event: "provider_assigned_customer",
+      source: "assign-doctor",
+      reason: policyUnresolved ? PARTNER_COMMS_UNRESOLVED : PARTNER_COMMS_REFUSAL,
+    });
+  }
 
-  await appendEmailLog(supabase, confirmationId, [
-    { type: "provider_assigned_customer", sentAt: now, to: order.email as string, success: customerEmailSent },
+  const emailLogEntries: EmailLogEntry[] = [
     { type: "provider_assigned_provider", sentAt: now, to: normalizedEmail, success: emailSent },
-  ]);
+  ];
+  if (customerContactAllowed) {
+    emailLogEntries.unshift(
+      { type: "provider_assigned_customer", sentAt: now, to: order.email as string, success: customerEmailSent },
+    );
+  }
+  await appendEmailLog(supabase, confirmationId, emailLogEntries);
 
-  // Primary log → communications (both customer + provider notifications)
-  await logEmailComm({
-    supabase,
-    orderId: order.id as string,
-    confirmationId,
-    to: order.email as string,
-    from: "PawTenant <hello@pawtenant.com>",
-    subject: `Your ${isPSD ? "PSD" : "ESA"} Provider Has Been Assigned — Order ${confirmationId}`,
-    body: null,
-    slug: "provider_assigned_customer",
-    sentBy: "system_assign_doctor",
-    success: customerEmailSent,
-  });
+  // Primary log → communications. The customer row exists only when a customer
+  // message was actually attempted — a suppressed message is an audit event,
+  // not a communication.
+  if (customerContactAllowed) {
+    await logEmailComm({
+      supabase,
+      orderId: order.id as string,
+      confirmationId,
+      to: order.email as string,
+      from: "PawTenant <hello@pawtenant.com>",
+      subject: `Your ${isPSD ? "PSD" : "ESA"} Provider Has Been Assigned — Order ${confirmationId}`,
+      body: null,
+      slug: "provider_assigned_customer",
+      sentBy: "system_assign_doctor",
+      success: customerEmailSent,
+    });
+  }
   await logEmailComm({
     supabase,
     orderId: order.id as string,
@@ -436,29 +520,45 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
   // ── Fire GHL doctor_assigned event with exact 8-field payload ────────────
-  fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
-    body: JSON.stringify({
-      webhookType: "main",
-      eventType: "doctor_assigned",
-      firstName: order.first_name ?? "",
-      lastName: order.last_name ?? "",
-      email: order.email,
-      phone: order.phone ?? "",
-      state: order.state ?? "",
+  // Slice 6: partner customers are never synchronised into the PawTenant CRM —
+  // no contact upsert, no workflow trigger. Same policy bit as the email:
+  // partner_managed means the partner owns every customer touchpoint.
+  // (ghl-webhook-proxy re-derives this from the database as the sink-side
+  // boundary; this caller-side skip keeps the intent readable and audited.)
+  if (customerContactAllowed) {
+    fetch(`${supabaseUrl}/functions/v1/ghl-webhook-proxy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceKey}` },
+      body: JSON.stringify({
+        webhookType: "main",
+        eventType: "doctor_assigned",
+        firstName: order.first_name ?? "",
+        lastName: order.last_name ?? "",
+        email: order.email,
+        phone: order.phone ?? "",
+        state: order.state ?? "",
+        confirmationId,
+        amount: (order.price as number) ?? 0,
+        // Additional context fields
+        letterType: isPSD ? "psd" : "esa",
+        addonServices,
+        assignedDoctor: doctorName,
+        doctorTitle,
+        additionalDocsRequested: additionalDocs?.types ?? [],
+        leadStatus: isPSD ? "PSD — Doctor Assigned — Pending Review" : "ESA — Doctor Assigned — Pending Review",
+        tags: ["Doctor Assigned", "Pending Review"],
+      }),
+    }).catch(() => {});
+  } else {
+    await auditSuppressedCustomerContact(supabase, {
+      orderId: order.id as string,
       confirmationId,
-      amount: (order.price as number) ?? 0,
-      // Additional context fields
-      letterType: isPSD ? "psd" : "esa",
-      addonServices,
-      assignedDoctor: doctorName,
-      doctorTitle,
-      additionalDocsRequested: additionalDocs?.types ?? [],
-      leadStatus: isPSD ? "PSD — Doctor Assigned — Pending Review" : "ESA — Doctor Assigned — Pending Review",
-      tags: ["Doctor Assigned", "Pending Review"],
-    }),
-  }).catch(() => {});
+      channel: "ghl",
+      event: "doctor_assigned",
+      source: "assign-doctor",
+      reason: policyUnresolved ? PARTNER_COMMS_UNRESOLVED : PARTNER_COMMS_REFUSAL,
+    });
+  }
 
   // ── Pending additional-documentation handoff (ADDITIONAL-DOCUMENTATION-
   // PROVIDER-NOTIFICATION-001) ──────────────────────────────────────────────
@@ -481,7 +581,14 @@ Deno.serve(async (req: Request) => {
     message: `Order ${confirmationId} assigned to ${doctorName} (${normalizedEmail})`,
     doctorName, doctorUserId: doctorUserId ?? "no-portal-account",
     hasPortalLogin: !!doctorUserId, notificationSent: !!doctorUserId,
-    emailSent, customerEmailSent, additionalDocsIncluded: !!(additionalDocs?.types?.length),
+    emailSent, customerEmailSent,
+    // Slice 6: a suppressed customer message is a POLICY OUTCOME, not a
+    // delivery failure — callers must not render it as an error.
+    customerEmailSuppressed: !customerContactAllowed,
+    ...(customerContactAllowed ? {} : {
+      customerEmailPolicy: policyUnresolved ? PARTNER_COMMS_UNRESOLVED : PARTNER_COMMS_REFUSAL,
+    }),
+    additionalDocsIncluded: !!(additionalDocs?.types?.length),
     earningsRecord: { action: earningsAction, rateApplied: doctorRate, rateSet: doctorRate != null },
     portalUrl,
     warning: incompletePsdOverride

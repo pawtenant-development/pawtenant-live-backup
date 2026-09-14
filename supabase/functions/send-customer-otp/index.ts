@@ -26,6 +26,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendGhlSms, normalizeE164 } from "../_shared/ghlSms.ts";
 import { decideOtpDelivery } from "../_shared/otpDeliveryPolicy.ts";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — customer-notification firewall.
+import { gateCustomerContact, gateCustomerContactIdentity } from "../_shared/partnerCommsGate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -97,6 +99,16 @@ Deno.serve(async (req) => {
     const admin = createClient(supabaseUrl, serviceRoleKey);
 
     // Soft rate limit — refuse a fresh send if one was issued very recently.
+    // Partner firewall: a partner's customer has no PawTenant portal. A sign-in
+    // code is a customer communication and a portal invitation in one, so it
+    // is refused for any identity carried by a partner-managed order.
+    const contactGate = body.confirmationId
+      ? await gateCustomerContact(admin, { confirmationId: body.confirmationId }, { channel: "email", event: "portal_sign_in_code", source: "send-customer-otp" })
+      : await gateCustomerContactIdentity(admin, { email, phone }, { channel: "email", event: "portal_sign_in_code", source: "send-customer-otp" });
+    if (!contactGate.allowed) {
+      return json({ ok: false, error: "This email is managed by a partner organization. Please contact the organization you ordered through.", reason: contactGate.reason }, 409);
+    }
+
     const { data: recent } = await admin
       .from("customer_otp_codes")
       .select("created_at")

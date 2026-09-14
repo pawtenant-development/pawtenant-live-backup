@@ -499,8 +499,15 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
 
   // Filter orders by audience — also exclude opted-out and legacy customers
   const audienceOrders = useMemo(() => {
-    // Always exclude legacy/imported orders first
-    const nonLegacy = orders.filter((o) => !isLegacyOrder(o));
+    // Always exclude legacy/imported orders first.
+    // PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 · Slice 6: broadcasts reach
+    // only provably DIRECT retail customers. The whole-table snapshot feeding
+    // this modal deliberately includes partner orders (dashboards need them),
+    // and a partner order has no payment_intent_id — without this filter it
+    // would land in "All Leads (Unpaid)" and be sent lead-recovery copy for an
+    // order it already paid the partner for. `=== "direct"` (not `!== "partner"`)
+    // so an unknown origin fails closed.
+    const nonLegacy = orders.filter((o) => !isLegacyOrder(o) && o.order_origin === "direct");
 
     let filtered: Order[] = [];
     switch (audience) {
@@ -544,7 +551,8 @@ export default function BroadcastModal({ orders: rawOrders, adminName, adminEmai
 
   // Count opted-out customers in the current audience (before filtering)
   const optOutCount = useMemo(() => {
-    const nonLegacy = orders.filter((o) => !isLegacyOrder(o));
+    // Same direct-only scope as audienceOrders, so the count matches the list.
+    const nonLegacy = orders.filter((o) => !isLegacyOrder(o) && o.order_origin === "direct");
     let base: Order[] = [];
     switch (audience) {
       case "all_paid": base = nonLegacy.filter((o) => !!o.payment_intent_id && o.status !== "cancelled"); break;

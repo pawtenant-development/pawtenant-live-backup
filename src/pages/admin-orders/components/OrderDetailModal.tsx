@@ -16,7 +16,11 @@ import ApprovalRequestModal from "./ApprovalRequestModal";
 import CommunicationTab from "./CommunicationTab";
 import AttributionJourneyTab from "./AttributionJourneyTab";
 import TrustpilotReviewPanel from "./TrustpilotReviewPanel";
-import PSDAssessmentView from "./PSDAssessmentView";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — neutral (unbranded) on-screen
+// assessment for partner orders. PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-
+// REPAIR-002 — the same neutral renderer for EVERY order (admin audience).
+// Isolated component mount; tracker row 210.
+import PartnerNeutralAssessment from "../../../components/partner/PartnerNeutralAssessment";
 import SharedNotesPanel from "../../../components/feature/SharedNotesPanel";
 import PaymentHistoryTab from "./PaymentHistoryTab";
 // ADMIN-ORDER-DISCOUNT-DISPLAY 2026-07-04 (fix: show order discounts in admin):
@@ -73,16 +77,7 @@ import {
   visualFor as visualForAcquisition,
   explain as explainAcquisition,
 } from "../../../lib/acquisitionClassifier";
-import {
-  LOGO_URL as ASSESSMENT_LOGO,
-  STATE_NAMES,
-  QUESTIONNAIRE_ITEMS,
-  PetInfo,
-  resolveLabel,
-  formatDob,
-  formatSubmitDate,
-  buildPrintHTML,
-} from "./assessmentUtils";
+import { buildPrintHTML } from "./assessmentUtils";
 
 /**
  * ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — the shape returned by
@@ -216,6 +211,14 @@ interface Order {
   // order_status_logs/audit_logs; surfaced here only if present on the row.
   archived_at?: string | null;
   archive_reason?: string | null;
+  // PARTNER-ORDER-MODAL-SEGREGATION-001: order origin + the partner reference.
+  // Identity ONLY. Partner economics (wholesale fee, provider-earning snapshot,
+  // fulfillment margin) live in partner_order_financials behind an admin-only
+  // RLS policy and are deliberately NOT part of this type, so they cannot be
+  // rendered here by accident.
+  order_origin?: "direct" | "partner" | null;
+  partner_id?: string | null;
+  partner_order_id?: string | null;
 }
 
 type EmailLogEntry = { type: string; sentAt: string; to: string; success: boolean };
@@ -315,7 +318,32 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 // ─── 4-stage display status helper ──────────────────────────────────────────
+// PARTNER-ORDER-MODAL-SEGREGATION-001
+//
+// THE partner-origin test for this modal. It reads ONLY the authoritative
+// canonical columns written by the partner intake API. Partner origin must
+// never be inferred from a customer name, an email domain, a confirmation id
+// or a price: those are coincidence- or caller-controlled, and a false positive
+// would silence PawTenant's own payment and communication controls on a real
+// retail order.
+function isPartnerOriginOrder(order: {
+  order_origin?: string | null;
+  partner_id?: string | null;
+}): boolean {
+  return order.order_origin === "partner" && Boolean(order.partner_id);
+}
+
 function getModalDisplayStatus(order: Order): { label: string; color: string } {
+  // A partner order IS paid -- by the partner, to the partner. It carries
+  // paid_at but deliberately no payment_intent_id, so the retail arm below
+  // would label it "Lead (Unpaid)": a fulfillment case in progress rendered as
+  // a lost sale. This arm sits first because ORIGIN decides which vocabulary is
+  // applicable at all.
+  if (isPartnerOriginOrder(order)) {
+    if (order.status === "cancelled") return { label: "Cancelled", color: "bg-red-100 text-red-600" };
+    if (order.doctor_status === "patient_notified") return { label: "Order (Completed)", color: "bg-emerald-100 text-emerald-700" };
+    return { label: "Partner Order", color: "bg-indigo-100 text-indigo-700" };
+  }
   // OPS-ORDER-ARCHIVE-VOID-FLOW: archived/voided takes precedence over lead
   // labels but stays below disputed/fraud/refunded so financial states still
   // show first if both apply.
@@ -1195,6 +1223,27 @@ export default function OrderDetailModal({
   onNavigate,
 }: OrderDetailModalProps) {
   const [order, setOrder] = useState<Order>(initialOrder);
+
+  // PARTNER-ORDER-MODAL-SEGREGATION-001: the partner's DISPLAY NAME, resolved
+  // from partner_organizations by the order's authoritative partner_id. Read
+  // generically so a second partner shows its own name -- the modal never
+  // hard-codes a partner. Only display identity is selected; credentials live
+  // in the private schema and partner economics live in
+  // partner_order_financials, and neither is read here.
+  const [partnerDisplayName, setPartnerDisplayName] = useState<string>("Partner");
+  useEffect(() => {
+    let cancelled = false;
+    if (!isPartnerOriginOrder(order) || !order.partner_id) return;
+    void (async () => {
+      const { data } = await supabase
+        .from("partner_organizations")
+        .select("display_name")
+        .eq("id", order.partner_id as string)
+        .maybeSingle();
+      if (!cancelled && data?.display_name) setPartnerDisplayName(data.display_name as string);
+    })();
+    return () => { cancelled = true; };
+  }, [order.partner_id, order.order_origin]);
   // initialSection only seeds the FIRST render. It is deliberately not synced in
   // an effect: doing so would yank the operator back to the notification's tab
   // every time the prop re-identified while they were reading another tab.
@@ -3256,7 +3305,16 @@ export default function OrderDetailModal({
   // the order is unpaid/unlinked and a repair tool would be useful.
   // Used by the compact warning card on Overview and by the full
   // repair panel rendered at the top of the Payments tab.
+  // PARTNER-ORDER-MODAL-SEGREGATION-001: ONE canonical partner read for every
+  // presentation gate in this component.
+  const isPartnerOrder = isPartnerOriginOrder(order);
+
   const paymentRepairNeeded =
+    // A partner order has no Stripe payment to "repair" -- the partner
+    // collected the money. Offering Stripe remediation here invites an admin to
+    // attach a payment that does not exist. This single gate suppresses BOTH
+    // the compact Overview warning and the full Payments-tab repair panel.
+    !isPartnerOrder &&
     !order.payment_intent_id &&
     order.status !== "refunded" &&
     !isOperationallyCancelled &&
@@ -3424,6 +3482,15 @@ export default function OrderDetailModal({
                     </span>
                   );
                 })()}
+                {/* PARTNER-ORDER-MODAL-SEGREGATION-001: partner attribution is
+                    LABELLED, never hidden -- concealing partner-origin work
+                    would defeat the contractual provider authorization. */}
+                {isPartnerOrder && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200">
+                    <i className="ri-briefcase-line" style={{ fontSize: "10px" }}></i>
+                    {partnerDisplayName}
+                  </span>
+                )}
                 {/* VIP or provider status badge */}
                 {Array.isArray(order.addon_services) && order.addon_services.length > 0 ? (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold bg-gradient-to-r from-amber-400 to-orange-400 text-white">
@@ -3547,11 +3614,15 @@ export default function OrderDetailModal({
                         mount. A distinct action — deliberately NOT folded into
                         Resume Checkout Email, normal checkout, the refund modal
                         or either add-on flow. The child owns everything. */}
+                    {/* PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002 (row 210): customer
+                        payment / communication actions are never offered on a partner order. */}
+                    {!isPartnerOrder && (
                     <OrderCustomPaymentMenuAction
                       orderId={order.id}
                       confirmationId={order.confirmation_id}
                       onCloseMenu={() => setShowHeaderMore(false)}
                     />
+                    )}
                     {/* LEAD-FOLLOWUP-GHL-DELIVERY-AND-ADMIN-RESUME-CHECKOUT-EMAIL-002:
                         isolated component mount. Server-ruled eligibility,
                         confirmation dialog, idempotency, cooldown and comms
@@ -3559,11 +3630,15 @@ export default function OrderDetailModal({
                         only the mount. The child fails closed and renders a
                         DISABLED item with a reason for paid / completed /
                         cancelled / refunded / archived / no-email orders. */}
+                    {/* PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002 (row 210): customer
+                        payment / communication actions are never offered on a partner order. */}
+                    {!isPartnerOrder && (
                     <OrderResumeCheckoutEmailAction
                       orderId={order.id}
                       confirmationId={order.confirmation_id}
                       onCloseMenu={() => setShowHeaderMore(false)}
                     />
+                    )}
                     {/* RA-LIFECYCLE-001 step E: isolated component mount. All
                         entitlement proving, confirmation, evidence selection and
                         submission live in the child, which fails closed and
@@ -3628,6 +3703,7 @@ export default function OrderDetailModal({
                         </button>
                       </>
                     )}
+                    {!isPartnerOrder && (
                     <button
                       type="button"
                       onClick={() => { setShowHeaderMore(false); handleSendPortalReset(); }}
@@ -3638,6 +3714,7 @@ export default function OrderDetailModal({
                       <i className={portalResetSending ? "ri-loader-4-line animate-spin" : "ri-key-line"}></i>
                       <span className="flex-1 text-left">{portalResetSending ? "Sending reset..." : "Send Portal Reset"}</span>
                     </button>
+                    )}
 
                     {/* CONSULTATION-INVITE-MANUAL — unpaid lead recovery. Only
                         surfaces on UNPAID, non-cancelled, non-archived orders
@@ -3645,7 +3722,8 @@ export default function OrderDetailModal({
                         send-templated-email edge function + seeded
                         "consultation_window_offer" template. 24h cooldown is
                         a client-side soft guard read from `communications`. */}
-                    {!order.payment_intent_id &&
+                    {!isPartnerOrder &&
+                     !order.payment_intent_id &&
                      !order.paid_at &&
                      order.status !== "cancelled" &&
                      order.status !== "archived" &&
@@ -3677,7 +3755,7 @@ export default function OrderDetailModal({
                         )}
                       </button>
                     )}
-                    {(order.payment_intent_id || order.paid_at) && (
+                    {!isPartnerOrder && (order.payment_intent_id || order.paid_at) && (
                       <>
                         <button
                           type="button"
@@ -3688,6 +3766,9 @@ export default function OrderDetailModal({
                           <i className="ri-vip-crown-line"></i>
                           <span className="flex-1 text-left">Upgrade to Annual</span>
                         </button>
+                        {/* PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002 (row 210):
+                            a partner order never offers a new customer ESA order. */}
+                        {!isPartnerOrder && (
                         <button
                           type="button"
                           onClick={() => { setShowHeaderMore(false); spawnReturningOrder(order.id, "repeat"); }}
@@ -3697,6 +3778,7 @@ export default function OrderDetailModal({
                           <i className="ri-add-circle-line"></i>
                           <span className="flex-1 text-left">Start New ESA Order</span>
                         </button>
+                        )}
                       </>
                     )}
                     {order.doctor_user_id && (
@@ -3884,11 +3966,16 @@ export default function OrderDetailModal({
                   icon-only buttons on mobile. The Comms tab already owns these
                   workflows on mobile; keeping a duplicate header pair created
                   the same Call/SMS quick-action duplication owners flagged. */}
+              {/* PARTNER-ORDER-MODAL-SEGREGATION-001: header SMS/Call pair is
+                  hidden for partner orders -- the partner owns the customer
+                  relationship. Browser QA caught these: they are a SECOND
+                  contact affordance, separate from the Customer Communications
+                  quick-action row. */}
               <button
                 type="button"
                 onClick={() => setSection("comms")}
                 title={order.phone ? `SMS ${order.phone}` : "No phone on file"}
-                className={`hidden sm:flex whitespace-nowrap w-8 h-8 items-center justify-center rounded-lg text-sm border transition-colors cursor-pointer ${order.phone ? "border-[#b8cce4] text-[#3b6ea5] hover:bg-[#e8f0f9]" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
+                className={`${isPartnerOrder ? "hidden" : "hidden sm:flex"} whitespace-nowrap w-8 h-8 items-center justify-center rounded-lg text-sm border transition-colors cursor-pointer ${order.phone ? "border-[#b8cce4] text-[#3b6ea5] hover:bg-[#e8f0f9]" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
               >
                 <i className="ri-message-3-line"></i>
               </button>
@@ -3896,7 +3983,7 @@ export default function OrderDetailModal({
                 type="button"
                 onClick={() => setSection("comms")}
                 title={order.phone ? `Call ${order.phone}` : "No phone on file"}
-                className={`hidden sm:flex whitespace-nowrap w-8 h-8 items-center justify-center rounded-lg text-sm border transition-colors cursor-pointer ${order.phone ? "border-sky-200 text-sky-600 hover:bg-sky-50" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
+                className={`${isPartnerOrder ? "hidden" : "hidden sm:flex"} whitespace-nowrap w-8 h-8 items-center justify-center rounded-lg text-sm border transition-colors cursor-pointer ${order.phone ? "border-sky-200 text-sky-600 hover:bg-sky-50" : "border-gray-200 text-gray-300 cursor-not-allowed"}`}
               >
                 <i className="ri-phone-line"></i>
               </button>
@@ -4032,9 +4119,14 @@ export default function OrderDetailModal({
               {/* ORDER-ADDITIONAL-PET-UI-STRIPE-QA-CLOSURE-001 §8: the Additional
                   Pet add-on is a SEPARATE transaction and is deliberately not
                   merged into the original order price above. */}
+              {/* PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001: customer card-payment
+                  panels never mount on a partner-funded order (the backend refuses
+                  them anyway; mounting them only produced a 409 on load). */}
+              {!isPartnerOrder && (
               <div className="mt-3">
                 <OrderAdditionalPetPanel orderId={order.id} variant="payments" />
               </div>
+              )}
 
               {/* ORDER-LINKED-CUSTOM-STRIPE-INVOICE-001: isolated panel mount.
                   Custom payment requests are separate Stripe invoices raised
@@ -4042,15 +4134,18 @@ export default function OrderDetailModal({
                   the order's PaymentIntent, so they belong beside the add-on
                   rather than inside the order's own payment history. Deliberately
                   NOT on Overview. The child owns loading, actions and state. */}
+              {!isPartnerOrder && (
               <div className="mt-3">
                 <OrderCustomPaymentPanel orderId={order.id} variant="payments" />
               </div>
+              )}
             </div>
           )}
 
           {/* ── COMMUNICATIONS (includes email log) ── */}
           {section === "comms" && (
             <CommunicationTab
+              partnerManaged={isPartnerOrder}
               orderId={order.id}
               confirmationId={order.confirmation_id}
               phone={order.phone ?? null}
@@ -4081,9 +4176,11 @@ export default function OrderDetailModal({
                 {[
                   {
                     label: "Payment",
-                    value: order.payment_intent_id ? "Paid" : "Unpaid",
+                    value: isPartnerOrder ? "Partner funded" : (order.payment_intent_id ? "Paid" : "Unpaid"),
                     icon: "ri-bank-card-line",
-                    color: order.payment_intent_id ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-amber-700 bg-amber-50 border-amber-200",
+                    color: isPartnerOrder
+                      ? "text-indigo-700 bg-indigo-50 border-indigo-200"
+                      : (order.payment_intent_id ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-amber-700 bg-amber-50 border-amber-200"),
                   },
                   {
                     label: "Provider",
@@ -4182,7 +4279,10 @@ export default function OrderDetailModal({
                           mini-button row on mobile. Mobile-only Communications
                           tab/card handles these workflows; the row caused
                           duplicate quick-action UX vs the Comms tab itself. */}
-                      <div className="hidden sm:flex items-center gap-1.5">
+                      {/* PARTNER-ORDER-MODAL-SEGREGATION-001: the partner owns
+                          the customer relationship, so PawTenant offers no
+                          SMS / Email / Call affordance on a partner order. */}
+                      <div className={`${isPartnerOrder ? "hidden" : "hidden sm:flex"} items-center gap-1.5`}>
                         <button
                           type="button"
                           onClick={() => setSection("comms")}
@@ -4216,6 +4316,7 @@ export default function OrderDetailModal({
                         The dedicated Comms tab still exists for full history. */}
                     <div className="max-h-[60vh] overflow-y-auto">
                       <CommunicationTab
+              partnerManaged={isPartnerOrder}
                         orderId={order.id}
                         confirmationId={order.confirmation_id}
                         phone={order.phone ?? null}
@@ -4349,8 +4450,10 @@ export default function OrderDetailModal({
                     {/* Payment status */}
                     <div>
                       <p className="text-xs text-gray-400 mb-0.5">Payment Status</p>
-                      <p className={`text-sm font-semibold ${order.payment_intent_id ? "text-emerald-600" : "text-orange-500"}`}>
-                        {order.payment_intent_id ? "Paid" : "No payment"}
+                      <p className={`text-sm font-semibold ${isPartnerOrder ? "text-indigo-700" : (order.payment_intent_id ? "text-emerald-600" : "text-orange-500")}`}>
+                        {isPartnerOrder
+                          ? `Payment collected by ${partnerDisplayName}`
+                          : (order.payment_intent_id ? "Paid" : "No payment")}
                       </p>
                     </div>
                     {/* OPS-ORDER-MODAL-V2-LAYOUT: Patient Notified moved out of
@@ -4388,7 +4491,11 @@ export default function OrderDetailModal({
                       Contact ID, Linked badge, Open in GHL link, and Sync History
                       moved into the collapsible "CRM Details" panel below this grid
                       to keep Overview focused on customer/order state. */}
-                  <div className="col-span-2 sm:col-span-3 md:col-span-4">
+                  {/* PARTNER-ORDER-MODAL-SEGREGATION-001: GHL is PawTenant's
+                      RETAIL CRM. A partner order must never be pushed into it,
+                      so neither the state pill nor the Re-sync action is
+                      offered. */}
+                  <div className={`col-span-2 sm:col-span-3 md:col-span-4 ${isPartnerOrder ? "hidden" : ""}`}>
                     <p className="text-xs text-gray-400 mb-1.5 flex items-center gap-1">
                       <i className="ri-refresh-line text-gray-400"></i>
                       GHL Sync
@@ -4588,8 +4695,19 @@ export default function OrderDetailModal({
                     or abandoned attempt on an order that HAS since paid is not an
                     active warning. The attempt itself is untouched and still
                     listed in the Payments tab + audit history. */}
+                {/* PARTNER-ORDER-MODAL-SEGREGATION-001: a partner order has no
+                    PawTenant payment to fail, so payment-failure remediation —
+                    and its "Send Recovery" action, which would email the
+                    PARTNER'S customer — is suppressed rather than left merely
+                    incidentally absent because payment_failed_at happens to be
+                    NULL today.
+                    The gate is on the CONTAINER, not the condition: the
+                    condition string is the exact anchor asserted by
+                    check-order-paid-stale-failure-suppression.mjs
+                    (ORDER-PAID-STALE-FAILURE-SUPPRESSION-001), and editing it
+                    would break that guard. */}
                 {order.payment_failed_at && !isStalePaymentFailure(order as LifecycleOrder) && (
-                  <div className="mt-4 pt-4 border-t border-red-200">
+                  <div className={`mt-4 pt-4 border-t border-red-200 ${isPartnerOrder ? "hidden" : ""}`}>
                     <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
                       <div className="flex items-start gap-3">
                         <div className="w-7 h-7 flex items-center justify-center bg-red-100 rounded-lg flex-shrink-0 mt-0.5">
@@ -5460,6 +5578,10 @@ export default function OrderDetailModal({
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Letters &amp; Documents</p>
                 <div className="flex items-center gap-2 flex-wrap">
                   {/* ── Test Email button — fires notify-patient-letter and links to Resend ── */}
+                  {/* PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002 (row 210): every
+                      customer-send control below is hidden on a partner order. The
+                      server refuses these sends regardless; the UI must not offer them. */}
+                  {!isPartnerOrder && (
                   <button
                     type="button"
                     onClick={handleSendTestEmail}
@@ -5472,6 +5594,7 @@ export default function OrderDetailModal({
                       : <><i className="ri-test-tube-line"></i>Send Test Email</>
                     }
                   </button>
+                  )}
                   {/* Re-inject All Footers — only available for orders that already have a verification ID from the live flow */}
                   {order.letter_id && orderDocs.length > 0 && (
                     <button
@@ -5537,6 +5660,7 @@ export default function OrderDetailModal({
                       email carrying ZERO documents, before any approval. It is
                       disabled in exactly that case; an order that already has a
                       released document can still be resent normally. */}
+                  {!isPartnerOrder && (
                   <button type="button" onClick={handleSendAllToCustomer}
                     disabled={sendingAll || (orderDocs.length > 0 && !hasDeliverableDocument(orderDocs))}
                     title={orderDocs.length > 0 && !hasDeliverableDocument(orderDocs)
@@ -5545,6 +5669,7 @@ export default function OrderDetailModal({
                     className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 bg-[#3b6ea5] text-white text-xs font-bold rounded-lg hover:bg-[#2d5a8e] disabled:opacity-50 cursor-pointer transition-colors">
                     {sendingAll ? <><i className="ri-loader-4-line animate-spin"></i>Sending...</> : <><i className="ri-mail-send-line"></i>Send All to Customer</>}
                   </button>
+                  )}
                   <button type="button" onClick={() => setShowAddDocForm((v) => !v)}
                     className="whitespace-nowrap flex items-center gap-1.5 px-3 py-2 border border-[#1a5c4f] text-[#3b6ea5] text-xs font-bold rounded-lg hover:bg-[#e8f0f9] cursor-pointer transition-colors">
                     <i className={showAddDocForm ? "ri-close-line" : "ri-add-line"}></i>
@@ -5866,7 +5991,7 @@ export default function OrderDetailModal({
                           pending document can be stamped. This shortcut must
                           carry the same deliverable-document gate as the banner
                           below it, or it re-opens the bypass one level down. */}
-                      {(reinjectFooterMsg.includes("success") || reinjectFooterMsg.includes("stamped")) && hasDeliverableDocument(orderDocs) && (
+                      {!isPartnerOrder && (reinjectFooterMsg.includes("success") || reinjectFooterMsg.includes("stamped")) && hasDeliverableDocument(orderDocs) && (
                         <button
                           type="button"
                           onClick={handleNotifyPatientFromDocs}
@@ -5882,8 +6007,9 @@ export default function OrderDetailModal({
                     </div>
                   )}
 
-                  {/* ── Notify Patient banner — always visible when docs exist and footer injected ── */}
-                  {orderDocs.some((d) => d.footer_injected && d.customer_visible === true) && !reinjectFooterMsg && (
+                  {/* ── Notify Patient banner — always visible when docs exist and footer injected ──
+                      PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002 (row 210): never on a partner order. */}
+                  {!isPartnerOrder && orderDocs.some((d) => d.footer_injected && d.customer_visible === true) && !reinjectFooterMsg && (
                     <div className="flex items-center gap-3 px-4 py-3 bg-[#e8f0f9] border border-[#b8cce4] rounded-xl">
                       <div className="w-8 h-8 flex items-center justify-center bg-[#dbeafe] rounded-lg flex-shrink-0">
                         <i className="ri-mail-send-line text-[#3b6ea5] text-sm"></i>
@@ -5960,10 +6086,10 @@ export default function OrderDetailModal({
               {/* Action bar */}
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">
-                  {isPSDOrder(order) ? "PSD Psychiatric Service Dog Evaluation" : "ESA Intake Form"}
+                  {isPSDOrder(order) ? "PSD Assessment" : "ESA Assessment"}
                 </p>
-                {/* Download PDF — only for ESA orders with assessment data */}
-                {!isPSDOrder(order) && order.assessment_answers && assessmentCount > 0 && (
+                {/* Download PDF — the neutral document, for every order with assessment data */}
+                {order.assessment_answers && assessmentCount > 0 && (
                   <button
                     type="button"
                     onClick={() => {
@@ -5983,147 +6109,12 @@ export default function OrderDetailModal({
                 )}
               </div>
 
-              {isPSDOrder(order) ? (
-                <PSDAssessmentView
-                  progress={(order.assessment_progress ?? null) as never}
-                  answers={order.assessment_answers}
-                  orderInfo={{
-                    firstName: order.first_name,
-                    lastName: order.last_name,
-                    email: order.email,
-                    phone: order.phone,
-                    state: order.state,
-                    confirmationId: order.confirmation_id,
-                    createdAt: order.created_at,
-                  }}
-                />
-              ) : !order.assessment_answers || assessmentCount === 0 ? (
-                <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-10 text-center">
-                  <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full mx-auto mb-3">
-                    <i className="ri-questionnaire-line text-gray-400 text-xl"></i>
-                  </div>
-                  <p className="text-sm font-bold text-gray-600 mb-1">No assessment data</p>
-                  <p className="text-xs text-gray-400">Assessment answers haven&apos;t been recorded for this order.</p>
-                </div>
-              ) : (() => {
-                const a = order.assessment_answers as Record<string, unknown>;
-                const pets = (a.pets as PetInfo[]) ?? [];
-                const dob = a.dob as string | undefined;
-                const stateName = STATE_NAMES[order.state ?? ""] ?? order.state ?? "—";
-                const fullName = [order.first_name, order.last_name].filter(Boolean).join(" ") || "—";
-
-                return (
-                  <div className="space-y-8">
-
-                    {/* Branded form header */}
-                    <div className="text-center bg-gray-50 rounded-2xl border border-gray-100 px-6 py-6">
-                      <img src={ASSESSMENT_LOGO} alt="PawTenant" className="h-10 mx-auto mb-2 object-contain" />
-                      <h2 className="text-xl font-extrabold text-orange-500 mb-1">PawTenant ESA Intake Form</h2>
-                      <p className="text-xs text-gray-500 max-w-xs mx-auto">
-                        Kindly provide as much accurate information as possible to enable the provider to approve your request.
-                      </p>
-                    </div>
-
-                    {/* Section 1: Owner Info */}
-                    <div>
-                      <h3 className="text-sm font-extrabold text-orange-500 pb-2 border-b-2 border-orange-500 mb-4">
-                        Pet and Owner Information
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2.5">
-                        {[
-                          { label: "Full Name", value: fullName },
-                          { label: "State", value: stateName },
-                          { label: "Email", value: order.email || "—" },
-                          { label: "Phone", value: order.phone || "—" },
-                          ...(dob ? [{ label: "Date of Birth", value: formatDob(dob) }] : []),
-                          { label: "Order ID", value: order.confirmation_id },
-                          { label: "Submitted", value: formatSubmitDate(order.created_at) },
-                        ].map(({ label, value }) => (
-                          <div key={label} className="flex items-start gap-2">
-                            <span className="text-xs text-gray-500 w-28 flex-shrink-0 mt-0.5">{label}:</span>
-                            <span className="text-sm font-semibold text-gray-900 break-all">{value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Section 2: Pet Information */}
-                    <div>
-                      <h3 className="text-sm font-extrabold text-orange-500 pb-2 border-b-2 border-orange-500 mb-4">
-                        Pet Information
-                      </h3>
-                      <p className="text-sm font-bold text-gray-700 mb-3">How many emotional support animals are you certifying today?</p>
-                      {pets.length > 0 ? (
-                        <div className="overflow-x-auto rounded-xl border border-gray-200">
-                          <table className="w-full text-sm min-w-[480px]">
-                            <thead>
-                              <tr className="bg-orange-50">
-                                {["Pet Name", "Type", "Age", "Breed", "Weight"].map((h) => (
-                                  <th key={h} className="text-left px-4 py-2.5 text-xs font-bold text-orange-600 uppercase tracking-wide border-b border-orange-100">
-                                    {h}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {pets.map((pet, idx) => (
-                                <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                                  <td className="px-4 py-2.5 text-gray-900 font-semibold border-b border-gray-100">{pet.name || "—"}</td>
-                                  <td className="px-4 py-2.5 text-gray-700 border-b border-gray-100">{pet.type || "—"}</td>
-                                  <td className="px-4 py-2.5 text-gray-700 border-b border-gray-100">
-                                    {pet.age ? `${pet.age} yr${pet.age !== "1" ? "s" : ""}` : "—"}
-                                  </td>
-                                  <td className="px-4 py-2.5 text-gray-700 border-b border-gray-100">{pet.breed || "—"}</td>
-                                  <td className="px-4 py-2.5 text-gray-700 border-b border-gray-100">
-                                    {pet.weight ? `${pet.weight} lbs` : "—"}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-6 text-center">
-                          <p className="text-sm text-gray-400">No pet information recorded.</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Section 3: Questionnaire */}
-                    <div>
-                      <h3 className="text-sm font-extrabold text-orange-500 pb-2 border-b-2 border-orange-500 mb-4">
-                        Mental Health Questionnaire
-                      </h3>
-                      <div className="space-y-5">
-                        {QUESTIONNAIRE_ITEMS.map(({ label, key }, idx) => {
-                          const val = a[key];
-                          const isEmpty = val === undefined || val === null || val === "" || (Array.isArray(val) && (val as unknown[]).length === 0);
-                          if (isEmpty) return null;
-                          return (
-                            <div key={key} className="flex gap-3">
-                              <div className="w-6 h-6 flex items-center justify-center bg-orange-500 text-white text-xs font-bold rounded-full flex-shrink-0 mt-0.5">
-                                {idx + 1}
-                              </div>
-                              <div>
-                                <p className="text-sm font-bold text-gray-800 mb-1">{label}</p>
-                                <p className="text-sm text-orange-600 font-semibold leading-relaxed">
-                                  {resolveLabel(key, val)}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Footer branding */}
-                    <div className="border-t border-gray-100 pt-4 text-center">
-                      <p className="text-xs text-gray-400">PawTenant &bull; Secure ESA Consultation Support &bull; pawtenant.com</p>
-                    </div>
-
-                  </div>
-                );
-              })()}
+              {/* PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002 (tracker row 210):
+                  ONE neutral black-and-white assessment for every order — direct
+                  ESA, direct PSD and partner — built from the same document
+                  model as the downloadable PDF. The admin audience additionally
+                  sees the authorization record (never shown to providers). */}
+              <PartnerNeutralAssessment order={order} audience="admin" />
 
             </div>
           )}

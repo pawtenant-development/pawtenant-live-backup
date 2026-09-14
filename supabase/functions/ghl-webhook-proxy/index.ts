@@ -1,5 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 · Slice 6 — this function is the
+// SINK for every GHL contact upsert and workflow trigger (15+ callers, several
+// of them browser-reachable). The partner boundary therefore lives HERE, not
+// only in the callers: the order is re-read from the database by its
+// confirmation id, so a forged retail-looking payload cannot reclassify a
+// partner order — the payload's email/amount/status fields are never trusted
+// for the policy decision.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -443,6 +451,40 @@ Deno.serve(async (req: Request) => {
   const triggeredBy = authHeader.includes("Bearer ") ? "admin" : "system";
 
   const eventName = ((payload.eventType as string) ?? (payload.event as string) ?? "").trim();
+
+  // ── Slice 6 partner boundary — BEFORE any GHL side effect ─────────────────
+  // Any event that names an order is classified from the DATABASE row, never
+  // from the payload. Refusal is fail-closed: a confirmation id that cannot be
+  // resolved (missing order, read error, unknown policy) is suppressed too,
+  // because we cannot prove it is a direct order. The response is a SUCCESS
+  // (ok:true, skipped) so no caller retries a message that was deliberately
+  // withheld. Sits ahead of the TEST-isolation skip so the policy behaviour is
+  // observable — and provable — on the TEST project itself.
+  {
+    const gateConfId = ((payload.confirmationId as string) ?? "").trim();
+    if (gateConfId) {
+      const gateClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const gateMeta = { channel: "ghl" as const, event: eventName || "unknown_event", source: "ghl-webhook-proxy" };
+      let gate = await gateCustomerContact(gateClient, { confirmationId: gateConfId }, gateMeta);
+      // LIVE ADAPTATION (PARTNER-PLATFORM-LIVE-FOUNDATION-ROLLOUT-004): the first
+      // browser event of a brand-new lead (assessment_started) can reach this
+      // proxy in the same second the lead row is inserted. A partner order always
+      // exists before any event can name it, so "order not found" here is either
+      // that insert race or garbage; one bounded re-read absorbs the race. If the
+      // row is still absent the gate stays fail-closed exactly as before.
+      if (!gate.allowed && gate.reason === "partner_policy_unresolved" && /order not found/.test(gate.detail ?? "")) {
+        await new Promise((resolve) => setTimeout(resolve, 750));
+        gate = await gateCustomerContact(gateClient, { confirmationId: gateConfId }, gateMeta);
+      }
+      if (!gate.allowed) {
+        console.warn(`[GHL-PROXY] SUPPRESSED (${gate.reason}) — event="${eventName}" order="${gateConfId}"`);
+        return new Response(
+          JSON.stringify({ ok: true, skipped: "partner_policy_suppressed", reason: gate.reason }),
+          { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+        );
+      }
+    }
+  }
 
   // ── Determine which webhook URL to use ───────────────────────────────────
   const isCommsEvent = COMMS_EVENT_TYPES.has(eventName) || webhookType === "comms";

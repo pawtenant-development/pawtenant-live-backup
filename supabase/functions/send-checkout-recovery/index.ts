@@ -3,6 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
 import { sendEmailViaResend } from "../_shared/resendClient.ts";
 import { issueResumeLink } from "../_shared/resumeLink.ts";
+// Slice 6: partner-managed orders never receive PawTenant recovery messages.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -306,6 +308,27 @@ serve(async (req) => {
       return new Response(JSON.stringify({ ok: false, error: "Order not found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // ── Slice 6 partner boundary ──────────────────────────────────────────────
+    // A checkout-recovery email tells the customer to pay PawTenant. A partner
+    // customer already paid the PARTNER — this message would be both a policy
+    // breach and a lie about money. Refused server-side (the UI hiding is not
+    // the enforcement), audited, and surfaced to the admin as a policy refusal
+    // rather than a delivery failure. Classification comes from the database
+    // row, so body.email / body.price cannot reclassify the order.
+    {
+      const gate = await gateCustomerContact(supabase, { confirmationId }, {
+        channel: "email",
+        event: "checkout_recovery",
+        source: "send-checkout-recovery",
+      });
+      if (!gate.allowed) {
+        return new Response(
+          JSON.stringify({ ok: false, code: "partner_policy_suppressed", reason: gate.reason, error: "This order's customer communication is owned by the partner — PawTenant does not send recovery messages for it." }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     const email = (body.email || order.email || "").trim();

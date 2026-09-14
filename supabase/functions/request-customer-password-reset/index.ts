@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildScannerSafeRecoveryUrl } from "../_shared/customerPasswordRecovery.ts";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — customer-notification firewall.
+import { gateCustomerContactIdentity } from "../_shared/partnerCommsGate.ts";
 
 /**
  * Public self-serve password reset for the customer portal.
@@ -185,6 +187,15 @@ serve(async (req) => {
         if (orderRow?.first_name) firstName = String(orderRow.first_name).trim() || "there";
       } catch { /* non-fatal */ }
 
+      // Partner firewall: an identity carried by a partner-managed order is
+      // never emailed by PawTenant. The response stays enumeration-safe.
+      const contactGate = await gateCustomerContactIdentity(adminClient, { email: targetEmail }, {
+        channel: "email", event: "password_reset", source: "request-customer-password-reset",
+      });
+      if (!contactGate.allowed) {
+        await audit("reset_requested_partner_suppressed", "Reset requested for a partner-managed customer — send suppressed.", { stage: "partner_firewall" });
+        return okResponse();
+      }
       const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
         type: "recovery",
         email: targetEmail,

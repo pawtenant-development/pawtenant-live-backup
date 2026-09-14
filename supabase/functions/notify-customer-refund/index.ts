@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — customer-notification firewall.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -234,6 +236,15 @@ Deno.serve(async (req: Request) => {
 
   const { data: order, error: orderErr } = await adminClient.from("orders").select("id, confirmation_id, email, first_name, last_name, phone, state, price, plan_type, doctor_name, status").eq("confirmation_id", confirmationId).maybeSingle();
   if (orderErr || !order) return json({ error: `Order not found: ${confirmationId}` }, 404);
+
+  // Partner firewall: refunds on a partner-funded order are the partner's
+  // conversation with its customer, never PawTenant's.
+  const contactGate = await gateCustomerContact(adminClient, { orderId: order.id as string, confirmationId }, {
+    channel: "email", event: "refund_notification", source: "notify-customer-refund",
+  });
+  if (!contactGate.allowed) {
+    return json({ ok: false, sent: false, reason: contactGate.reason, error: contactGate.detail }, 409);
+  }
 
   const patientName = `${order.first_name ?? ""} ${order.last_name ?? ""}`.trim() || order.email;
   const formattedAmount = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(refundAmount);

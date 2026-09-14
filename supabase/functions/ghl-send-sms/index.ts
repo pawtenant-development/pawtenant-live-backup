@@ -6,6 +6,8 @@ import { issueResumeLink } from "../_shared/resumeLink.ts";
 // recovery sequence — rather than only to the endpoint that remembered to
 // import it. On LIVE it is inert (it stands down outside the TEST project).
 import { sendGhlSms } from "../_shared/ghlSms.ts";
+// Slice 6: partner-managed orders never receive PawTenant SMS.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 // Task 1C — the SAME reservation the email paths use, so SMS idempotency is one
 // system rather than a second competing one.
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/reserveEmailSend.ts";
@@ -91,6 +93,32 @@ Deno.serve(async (req: Request) => {
       status: 400,
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
+  }
+
+  // ── Slice 6 partner boundary ───────────────────────────────────────────────
+  // Any SMS that names an order is policy-gated from the database row — a
+  // partner-managed customer is never texted by PawTenant, whether the send
+  // came from Order Details, the Command Center composer, or an automated
+  // caller. (A send with NO order reference stays contact-scoped and is the
+  // admin's judgement call — an order-less payload cannot be classified and
+  // also cannot claim to be about a partner order.)
+  if (orderId || confirmationId) {
+    const gate = await gateCustomerContact(supabase, { orderId, confirmationId }, {
+      channel: "sms",
+      event: "manual_admin_sms",
+      source: "ghl-send-sms",
+    });
+    if (!gate.allowed) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          code: "partner_policy_suppressed",
+          reason: gate.reason,
+          error: "This order's customer communication is owned by the partner — PawTenant does not text this customer.",
+        }),
+        { status: 409, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
+      );
+    }
   }
 
   // ── {resume_url} is resolved HERE, server-side ───────────────────────────

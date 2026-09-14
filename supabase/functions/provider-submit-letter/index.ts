@@ -5,6 +5,10 @@ import { applyVerificationPrefix, LETTER_LABELS } from "../_shared/letterType.ts
 // evaluateNotificationSuppression moved with the customer email to
 // admin-review-document; only the admin-alert fixture gate is still used here.
 import { suppressForFixtureOrder } from "../_shared/testNotificationSuppression.ts";
+// PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 Slice 5: this function mints the
+// verification ID and stamps the QR INLINE (it does not call the edge functions
+// that do the same job), so it needs the gate directly.
+import { mayBrandOrderDocuments } from "../_shared/partnerDocumentGate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -780,7 +784,41 @@ Deno.serve(async (req: Request) => {
 
     const state = ((order.state as string) ?? "").toUpperCase().trim().slice(0, 2);
 
+    // ── PARTNER DOCUMENT ISOLATION GATE ───────────────────────────────────────
+    //
+    // PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 Slice 5.
+    //
+    // Direct-customer letters receive a verification ID for portal/manual lookup.
+    // The clinical PDF itself is never modified. Partner-origin orders retain the
+    // existing identity-isolation rule and receive no PawTenant verification ID.
+    //
+    // Resolved ONCE and applied to both identity operations below:
+    //   • generateVerificationId()            — first letter
+    //   • ensure_revision_verification_id()   — revisions / Additional Pet
+    //
+    // The gate re-reads the order by id rather than reusing the row fetched
+    // above: that row is selected with a narrow column list which does not carry
+    // the policy columns, and partnerPolicy refuses to decide for an
+    // under-selected row. Re-reading is one cheap query and removes the whole
+    // class of "someone added a column to the projection and forgot this one".
+    //
+    // Refusal is NOT an error for the provider. The clinical work is real, the
+    // document is stored, and admin approval proceeds normally — the order simply
+    // never acquires PawTenant verification identity. Failing the whole
+    // submission would strand legitimate partner clinical work.
+    const brandingGate = await mayBrandOrderDocuments(supabase, order.id as string);
+    const mayBrand = brandingGate.allowed;
+    if (!mayBrand) {
+      console.log(
+        `[provider-submit-letter] partner isolation for ${confirmationId}: ${brandingGate.reason} — ${brandingGate.detail}`,
+      );
+    }
+
     let resolvedLetterId: string | null = (order.letter_id as string | null) ?? null;
+    // A partner order must not surface a PawTenant verification ID even if one is
+    // somehow cached on the row: it is the value that would be stamped into the
+    // PDF and returned to the caller.
+    if (!mayBrand) resolvedLetterId = null;
 
     // DOCUMENT-REVISION-ID-AND-CUSTOMER-QA-CLOSURE-001 §7:
     // Decide FIRST LETTER vs REVISION entirely server-side. No request field,
@@ -813,7 +851,7 @@ Deno.serve(async (req: Request) => {
     // revision ID is instead minted atomically per-version by
     // ensure_revision_verification_id() AFTER create_document_version()
     // (DOCUMENT-REVISION-ID-AND-CUSTOMER-QA-CLOSURE-001 §8).
-    if (state && state.length === 2 && !isRevision) {
+    if (mayBrand && state && state.length === 2 && !isRevision) {
       const generatedId = await generateVerificationId(
         supabase, order.id, confirmationId, state, letterType, user.id
       );
@@ -913,17 +951,24 @@ Deno.serve(async (req: Request) => {
           console.error("[revision] create_document_version failed:", revErr.message);
         } else if (revVersion?.id) {
           revisionVersionId = revVersion.id as string;
-          const { data: mintedId, error: mintErr } = await supabase.rpc(
-            "ensure_revision_verification_id",
-            {
-              p_version_id: revisionVersionId,
-              p_state: state,
-              p_letter_type: letterType,
-              p_provider_id: revProviderId,
-            },
-          );
-          if (mintErr) console.error("[revision] mint failed:", mintErr.message);
-          else if (mintedId) resolvedLetterId = mintedId as string;
+          // Slice 5: the VERSION row is created for partner orders exactly as it
+          // is for direct ones — revision history, supersession and the Additional
+          // Pet pipeline are clinical mechanics, not PawTenant identity. Only the
+          // VERIFICATION ID is withheld. Gating the version row instead would
+          // break partner revisions outright.
+          if (mayBrand) {
+            const { data: mintedId, error: mintErr } = await supabase.rpc(
+              "ensure_revision_verification_id",
+              {
+                p_version_id: revisionVersionId,
+                p_state: state,
+                p_letter_type: letterType,
+                p_provider_id: revProviderId,
+              },
+            );
+            if (mintErr) console.error("[revision] mint failed:", mintErr.message);
+            else if (mintedId) resolvedLetterId = mintedId as string;
+          }
         }
       } catch (err) {
         console.error("[revision] unexpected error:", err instanceof Error ? err.message : err);

@@ -3,20 +3,38 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { openSecureDocument, downloadSecureDocument } from "../../../lib/openSecureDocument";
 import SharedNotesPanel from "../../../components/feature/SharedNotesPanel";
-import {
-  LOGO_URL as ASSESSMENT_LOGO,
-  STATE_NAMES,
-  QUESTIONNAIRE_ITEMS,
-  PetInfo,
-  resolveLabel,
-  formatDob,
-  formatSubmitDate,
-  buildPrintHTML,
-} from "../../admin-orders/components/assessmentUtils";
-import PSDAssessmentView from "../../admin-orders/components/PSDAssessmentView";
+import { buildPrintHTML } from "../../admin-orders/components/assessmentUtils";
+// PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002 — the ONE neutral
+// on-screen assessment, for every order, sharing its document model with the
+// downloadable PDF.
+import PartnerNeutralAssessment from "../../../components/partner/PartnerNeutralAssessment";
 
 import ProviderAdditionalPetReview from "./ProviderAdditionalPetReview";
-import MissingProfessionalContactNotice from "@/components/feature/MissingProfessionalContactNotice";
+
+// PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002 — upload failures are
+// explained, never collapsed into the browser's bare "Failed to fetch".
+//
+// A `TypeError` from fetch() means the request never received a CORS-valid
+// response: the upload service was unreachable, or it failed before it could
+// answer (its preflight returned an error). Neither is something the provider
+// can fix by re-selecting the file, so the message says what happened and what
+// to do, and keeps the underlying text for the support conversation.
+export function describeUploadException(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err ?? "Unknown error");
+  if (err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(raw)) {
+    return `The document could not reach the upload service (${raw}). Check your connection and try again; if it keeps happening, contact the PawTenant team — nothing was submitted.`;
+  }
+  return raw;
+}
+
+/** An HTTP failure whose body carried no server message. */
+export function describeUploadHttpFailure(status: number): string {
+  if (status === 401 || status === 403) return "Your session is no longer valid for this upload. Sign in again and retry.";
+  if (status === 413) return "This file is larger than the upload service accepts.";
+  if (status === 415) return "This file format could not be recognized. Upload a PDF, JPG, PNG or WebP file.";
+  if (status >= 500) return `The upload service reported an error (HTTP ${status}). Nothing was submitted — try again in a moment.`;
+  return `The upload was refused (HTTP ${status}).`;
+}
 
 interface Order {
   id: string;
@@ -39,6 +57,8 @@ interface Order {
   patient_notification_sent_at: string | null;
   created_at: string;
   letter_type?: string | null;
+  // No origin, partner identity, reference or economics are selected into
+  // this shape — the provider works every case the same way.
   refunded_at?: string | null;
   refund_amount?: number | null;
   addon_services?: string[] | null;
@@ -406,7 +426,17 @@ export default function ProviderOrderDetail({
             }),
           });
         }
-        const result = await res.json() as { ok: boolean; error?: string };
+        // PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002: read the body
+        // defensively. A gateway/runtime failure answers with a non-JSON body
+        // (or none), and `res.json()` throwing used to collapse every such
+        // case into an unexplained error. The server message is preferred
+        // when it exists; otherwise the HTTP status is named.
+        const rawBody = await res.text();
+        let result: { ok?: boolean; error?: string } = {};
+        try { result = rawBody ? (JSON.parse(rawBody) as { ok?: boolean; error?: string }) : {}; } catch { result = {}; }
+        if (!res.ok && !result.error) {
+          result = { ok: false, error: describeUploadHttpFailure(res.status) };
+        }
         if (result.ok) {
           updateQueueItem(item.id, { done: true, uploading: false });
           successCount++;
@@ -421,8 +451,7 @@ export default function ProviderOrderDetail({
           failCount++;
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        updateQueueItem(item.id, { error: msg, uploading: false });
+        updateQueueItem(item.id, { error: describeUploadException(err), uploading: false });
         failCount++;
       }
     }
@@ -483,6 +512,15 @@ export default function ProviderOrderDetail({
   const doctorStatus = order.doctor_status ?? "pending_review";
   const assessmentAnswers = order.assessment_answers as Record<string, unknown> | null;
   const assessmentCount = assessmentAnswers ? Object.keys(assessmentAnswers).length : 0;
+  // PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002: the provider surface
+  // does not know — and does not need to know — where an order came from.
+  // Every case uses the same tabs, labels, assessment and submission flow.
+  const openNeutralDocument = () => {
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(buildPrintHTML(order as Parameters<typeof buildPrintHTML>[0]));
+    w.document.close();
+  };
   const isLetterSubmitted = doctorStatus === "letter_sent" || doctorStatus === "patient_notified";
   // PROVIDER-LETTER-ADMIN-APPROVAL-GATE — read the release state off the
   // documents, not off doctor_status, so a correction on ONE document is visible
@@ -1184,14 +1222,9 @@ export default function ProviderOrderDetail({
                     <i className="ri-close-circle-line"></i>Reject Order
                   </button>
                 )}
-                {!isPSDOrder(order) && assessmentCount > 0 && (
+                {assessmentCount > 0 && (
                   <button type="button"
-                    onClick={() => {
-                      const w = window.open("", "_blank");
-                      if (!w) return;
-                      w.document.write(buildPrintHTML(order as Parameters<typeof buildPrintHTML>[0]));
-                      w.document.close();
-                    }}
+                    onClick={openNeutralDocument}
                     className="whitespace-nowrap flex items-center gap-2 px-4 py-2.5 bg-orange-500 text-white text-sm font-bold rounded-xl hover:bg-orange-600 cursor-pointer transition-colors">
                     <i className="ri-download-line"></i>Download PDF
                   </button>
@@ -1206,139 +1239,31 @@ export default function ProviderOrderDetail({
               {/* Action bar */}
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">
-                  {isPSDOrder(order) ? "PSD Psychiatric Service Dog Evaluation" : "ESA Intake Form"}
+                  {isPSDOrder(order) ? "PSD Assessment" : "ESA Assessment"}
                 </p>
-                {/* Download PDF — ESA only */}
-                {!isPSDOrder(order) && assessmentCount > 0 && (
+                {/* Download PDF — the neutral document, for every order with answers */}
+                {assessmentCount > 0 && (
                   <button type="button"
-                    onClick={() => {
-                      const w = window.open("", "_blank");
-                      if (!w) return;
-                      w.document.write(buildPrintHTML(order as Parameters<typeof buildPrintHTML>[0]));
-                      w.document.close();
-                    }}
+                    onClick={openNeutralDocument}
                     className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-orange-500 text-white text-sm font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors">
                     <i className="ri-download-line"></i>Download PDF
                   </button>
                 )}
               </div>
 
-              {/* ── PSD Assessment ── */}
-              {isPSDOrder(order) ? (
-                <PSDAssessmentView
-                  audience="provider"
-                  answers={order.assessment_answers}
-                  orderInfo={{
-                    firstName: order.first_name,
-                    lastName: order.last_name,
-                    email: order.email,
-                    phone: order.phone,
-                    state: order.state,
-                    confirmationId: order.confirmation_id,
-                    createdAt: order.created_at,
-                  }}
-                />
-              ) : !assessmentAnswers || assessmentCount === 0 ? (
-                <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-10 text-center">
-                  <i className="ri-questionnaire-line text-gray-300 text-3xl block mb-2"></i>
-                  <p className="text-sm font-bold text-gray-600">No assessment data available</p>
-                </div>
-              ) : (() => {
-                const a = assessmentAnswers;
-                const pets = (a.pets as PetInfo[]) ?? [];
-                const dob = a.dob as string | undefined;
-                const stateName = STATE_NAMES[order.state ?? ""] ?? order.state ?? "—";
+              {/* PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002 — ONE neutral
+                  black-and-white assessment for every order (direct ESA, direct
+                  PSD, partner). It renders the same document model the
+                  downloadable PDF is built from, so screen and PDF cannot drift.
+                  No consent / attestation rows reach a provider. */}
+              <PartnerNeutralAssessment order={order} />
 
-                return (
-                  <div className="space-y-7">
-                    {/* Header */}
-                    <div className="text-center bg-gray-50 rounded-2xl border border-gray-100 px-6 py-5">
-                      <img src={ASSESSMENT_LOGO} alt="PawTenant" className="h-10 mx-auto mb-2 object-contain" />
-                      <h2 className="text-xl font-extrabold text-orange-500 mb-1">PawTenant ESA Intake Form</h2>
-                      <p className="text-xs text-gray-400 max-w-xs mx-auto">Submitted by patient for ESA evaluation</p>
-                    </div>
-
-                    {/* Owner Info */}
-                    <div>
-                      <h3 className="text-sm font-extrabold text-orange-500 pb-2 border-b-2 border-orange-500 mb-4">Patient &amp; Owner Information</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2.5">
-                        {[
-                          { label: "Full Name", value: fullName },
-                          { label: "State", value: stateName },
-                          { label: "Email", value: order.email },
-                          { label: "Phone", value: order.phone || "—" },
-                          ...(dob ? [{ label: "Date of Birth", value: formatDob(dob) }] : []),
-                          { label: "Order ID", value: order.confirmation_id },
-                          { label: "Submitted", value: formatSubmitDate(order.created_at) },
-                        ].map(({ label, value }) => (
-                          <div key={label} className="flex items-start gap-2">
-                            <span className="text-xs text-gray-500 w-28 flex-shrink-0 mt-0.5">{label}:</span>
-                            <span className="text-sm font-semibold text-gray-900 break-all">{value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Pet Information */}
-                    <div>
-                      <h3 className="text-sm font-extrabold text-orange-500 pb-2 border-b-2 border-orange-500 mb-4">Pet Information</h3>
-                      {pets.length > 0 ? (
-                        <div className="overflow-x-auto rounded-xl border border-gray-200">
-                          <table className="w-full text-sm min-w-[400px]">
-                            <thead>
-                              <tr className="bg-orange-50">
-                                {["Pet Name", "Type", "Age", "Breed", "Weight"].map((h) => (
-                                  <th key={h} className="text-left px-4 py-2.5 text-xs font-bold text-orange-600 uppercase tracking-wide border-b border-orange-100">{h}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {pets.map((pet, idx) => (
-                                <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                                  <td className="px-4 py-2.5 text-gray-900 font-semibold border-b border-gray-100">{pet.name || "—"}</td>
-                                  <td className="px-4 py-2.5 text-gray-700 border-b border-gray-100">{pet.type || "—"}</td>
-                                  <td className="px-4 py-2.5 text-gray-700 border-b border-gray-100">{pet.age ? `${pet.age} yr${pet.age !== "1" ? "s" : ""}` : "—"}</td>
-                                  <td className="px-4 py-2.5 text-gray-700 border-b border-gray-100">{pet.breed || "—"}</td>
-                                  <td className="px-4 py-2.5 text-gray-700 border-b border-gray-100">{pet.weight ? `${pet.weight} lbs` : "—"}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : <p className="text-sm text-gray-400">No pet information recorded.</p>}
-                    </div>
-
-                    {/* ORDER-ADDITIONAL-PET-UI-STRIPE-QA-CLOSURE-001 §9: Additional
-                        Pet review, directly beneath the pets it extends. Renders
-                        nothing unless a request is awaiting or has been decided.
-                        Reads only the provider-safe projection — no financial field. */}
-                    <ProviderAdditionalPetReview orderId={order.id} />
-
-                    {/* Questionnaire */}
-                    <div>
-                      <h3 className="text-sm font-extrabold text-orange-500 pb-2 border-b-2 border-orange-500 mb-4">Mental Health Questionnaire</h3>
-                      <div className="space-y-4">
-                        {QUESTIONNAIRE_ITEMS.map(({ label, key }, idx) => {
-                          const val = a[key];
-                          const isEmpty = val === undefined || val === null || val === "" || (Array.isArray(val) && (val as unknown[]).length === 0);
-                          if (isEmpty) return null;
-                          return (
-                            <div key={key} className="flex gap-3">
-                              <div className="w-6 h-6 flex items-center justify-center bg-orange-500 text-white text-xs font-bold rounded-full flex-shrink-0 mt-0.5">
-                                {idx + 1}
-                              </div>
-                              <div>
-                                <p className="text-sm font-bold text-gray-800 mb-1">{label}</p>
-                                <p className="text-sm text-orange-600 font-semibold">{resolveLabel(key, val)}</p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+              {/* ORDER-ADDITIONAL-PET-UI-STRIPE-QA-CLOSURE-001 §9: Additional
+                  Pet review. Renders nothing unless a request is awaiting or has
+                  been decided. Reads only the provider-safe projection — no
+                  financial field. (LIVE keeps this mount beneath the neutral
+                  assessment; the provider decision flow is unchanged.) */}
+              <ProviderAdditionalPetReview orderId={order.id} />
             </div>
           )}
 
@@ -1346,11 +1271,11 @@ export default function ProviderOrderDetail({
           {section === "upload" && (
             <div className="p-6 space-y-5">
 
-              {/* PROVIDER-PROFESSIONAL-CONTACT-PUBLIC-CONSENT-001 — informational
-                  only. This is the eligible final ESA/PSD letter surface, so the
-                  provider learns here (not after issuance) that a verification
-                  result will omit a contact row. It blocks nothing. */}
-              <MissingProfessionalContactNotice providerUserId={providerUserId} />
+              {/* PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002: the
+                  "Professional contact is not configured" notice no longer
+                  renders here. Verification is portal-ID based, so the note
+                  described an outcome this workflow no longer produces. The
+                  provider's professional-profile fields themselves are untouched. */}
 
               {/* ── READ-ONLY PREVIEW MODE ── */}
               {readOnly && (
@@ -1601,10 +1526,10 @@ export default function ProviderOrderDetail({
                       ))}
 
                       <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-1.5">Personal Note to Patient (Optional)</label>
+                        <label className="block text-xs font-bold text-gray-600 mb-1.5">Internal Note (Optional)</label>
                         <textarea value={providerNote} onChange={(e) => setProviderNote(e.target.value)}
                           rows={2} maxLength={500}
-                          placeholder="A short personal note included in the patient's notification email..."
+                          placeholder="An internal note for the reviewing team. It is never sent to the customer."
                           className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2c5282] resize-none transition-colors" />
                         <p className="text-xs text-gray-400 text-right mt-0.5">{providerNote.length}/500</p>
                       </div>
@@ -1614,7 +1539,7 @@ export default function ProviderOrderDetail({
                           className="whitespace-nowrap w-full flex items-center justify-center gap-2 py-3 bg-[#2c5282] text-white text-sm font-extrabold rounded-xl hover:bg-[#1e3a5f] disabled:opacity-50 cursor-pointer transition-colors">
                           {submittingQueue
                             ? <><i className="ri-loader-4-line animate-spin"></i>Submitting documents...</>
-                            : <><i className="ri-send-plane-line"></i>Submit {fileQueue.filter((i) => !i.done).length} Document{fileQueue.filter((i) => !i.done).length !== 1 ? "s" : ""} &amp; Notify Patient</>
+                            : <><i className="ri-send-plane-line"></i>Submit {fileQueue.filter((i) => !i.done).length} Document{fileQueue.filter((i) => !i.done).length !== 1 ? "s" : ""} for Review</>
                           }
                         </button>
                       )}
@@ -1650,9 +1575,9 @@ export default function ProviderOrderDetail({
                 <i className="ri-send-plane-fill text-[#2c5282] text-lg"></i>
               </div>
               <div>
-                <p className="text-sm font-extrabold text-gray-900">Submit Documents &amp; Complete Order?</p>
+                <p className="text-sm font-extrabold text-gray-900">Submit Documents for Review?</p>
                 <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                  This will submit the uploaded document{fileQueue.filter((i) => !i.done).length !== 1 ? "s" : ""} to the patient, send them a notification email, and <strong>mark this order as completed</strong>.
+                  This will submit the uploaded document{fileQueue.filter((i) => !i.done).length !== 1 ? "s" : ""} for PawTenant review. Nothing is sent to the customer from here — the reviewing team handles release and completion.
                 </p>
               </div>
             </div>
@@ -1662,12 +1587,8 @@ export default function ProviderOrderDetail({
                 {fileQueue.filter((i) => !i.done).length} document{fileQueue.filter((i) => !i.done).length !== 1 ? "s" : ""} ready to submit
               </p>
               <p className="text-xs text-[#2c5282] font-semibold flex items-center gap-1.5">
-                <i className="ri-mail-send-line"></i>
-                Patient will receive an email notification
-              </p>
-              <p className="text-xs text-[#2c5282] font-semibold flex items-center gap-1.5">
-                <i className="ri-checkbox-circle-line"></i>
-                Order will be marked as <strong>Completed</strong>
+                <i className="ri-shield-check-line"></i>
+                Sent for internal review — no customer notification from here
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -1677,7 +1598,7 @@ export default function ProviderOrderDetail({
                 disabled={submittingQueue}
                 className="whitespace-nowrap flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#2c5282] text-white text-sm font-bold rounded-lg hover:bg-[#1e3a5f] cursor-pointer transition-colors disabled:opacity-50"
               >
-                <i className="ri-send-plane-line"></i>Yes, Submit &amp; Complete
+                <i className="ri-send-plane-line"></i>Yes, Submit for Review
               </button>
               <button
                 type="button"

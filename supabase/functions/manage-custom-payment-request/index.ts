@@ -23,6 +23,8 @@ import { resolveAuditActor } from "../_shared/auditActor.ts";
 import { reconcileCustomPaymentInvoice } from "../_shared/reconcileCustomPayment.ts";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/reserveEmailSend.ts";
 import { sendEmailViaResend } from "../_shared/resendClient.ts";
+// Slice 6: partner-managed orders never receive PawTenant payment requests.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 import {
   evaluateNotificationSuppression,
   suppressForFixtureOrder,
@@ -215,6 +217,25 @@ Deno.serve(async (req) => {
     .select("email, first_name").eq("id", orderId).maybeSingle();
   const order = orderRaw as { email: string | null; first_name: string | null } | null;
   if (!order?.email) return json(409, { ok: false, error: "Order has no customer email" });
+
+  // ── Slice 6 partner boundary ───────────────────────────────────────────────
+  // A payment link asks the customer to pay PawTenant. A partner-managed
+  // customer never pays PawTenant — money flows through the partner invoice.
+  {
+    const gate = await gateCustomerContact(admin, { orderId }, {
+      channel: "payment_link",
+      event: "custom_payment_request",
+      source: "manage-custom-payment-request",
+    });
+    if (!gate.allowed) {
+      return json(409, {
+        ok: false,
+        code: "partner_policy_suppressed",
+        reason: gate.reason,
+        error: "This order's customer communication is owned by the partner — PawTenant does not send payment requests for it.",
+      });
+    }
+  }
 
   const amountLabel = `$${((cpr.amount_cents as number) / 100).toFixed(2)}`;
   const subject = `Payment request for your PawTenant order ${confirmationId}`;

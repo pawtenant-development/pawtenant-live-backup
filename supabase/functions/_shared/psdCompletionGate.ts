@@ -33,6 +33,16 @@ export interface PsdGateResult {
   missingCount: number;
   /** Question IDs only — never values. */
   missing: string[];
+  /**
+   * Slice 6 closure: the order's stored answer-version is not in the
+   * question catalog (e.g. the partner intake constant). The order is judged
+   * against judgedVersion with NOTHING counted as answered — no answer set
+   * can satisfy the gate until an explicit, clinically-approved mapping
+   * exists. Always blocked; the distinction is diagnostic, never permissive.
+   */
+  unmappedVersion?: boolean;
+  /** The catalog version the requirement set was taken from. */
+  judgedVersion?: string;
   /** Safe to show a customer. */
   customerMessage?: string;
   /** Safe to show Admin/staff. */
@@ -42,6 +52,11 @@ export interface PsdGateResult {
 const CUSTOMER_MESSAGE =
   "Please complete the remaining assessment questions before continuing to payment.";
 const ADMIN_MESSAGE = "PSD assessment incomplete — required answers missing.";
+const ADMIN_MESSAGE_UNMAPPED =
+  "PSD assessment schema is not mapped: this order's answers were collected under a " +
+  "schema the PawTenant PSD questionnaire does not recognise, so no answer can count " +
+  "toward clinical eligibility. The case cannot be assigned until an approved partner " +
+  "PSD answer mapping exists (Slice 7).";
 
 /**
  * Evaluate the gate for an order.
@@ -65,6 +80,7 @@ export async function checkPsdAssessmentComplete(
   type PsdStatus = {
     is_psd?: boolean; required_total?: number; answered?: number;
     missing_count?: number; missing?: string[]; complete?: boolean;
+    unmapped_version?: boolean; judged_version?: string;
   };
 
   const readStatus = async (): Promise<PsdStatus | null> => {
@@ -132,15 +148,23 @@ export async function checkPsdAssessmentComplete(
 
     const missing = Array.isArray(s.missing) ? s.missing : [];
     const complete = s.complete === true;
+    // Slice 6 closure: an unmapped stored version is ALWAYS blocked (the RPC
+    // counts nothing as answered for it); the flag only makes the refusal
+    // name its real cause instead of reading like an unfinished form.
+    const unmappedVersion = s.unmapped_version === true;
     return {
-      allowed: complete,
+      // Belt on the RPC's own guarantee: an unmapped stored version may NEVER
+      // pass this gate, whatever the status row claims about completeness.
+      allowed: complete && !unmappedVersion,
       isPsd: true,
       requiredTotal: Number(s.required_total ?? 0),
       answered: Number(s.answered ?? 0),
       missingCount: Number(s.missing_count ?? missing.length),
       missing,
+      unmappedVersion,
+      judgedVersion: typeof s.judged_version === "string" ? s.judged_version : undefined,
       customerMessage: complete ? undefined : CUSTOMER_MESSAGE,
-      adminMessage: complete ? undefined : ADMIN_MESSAGE,
+      adminMessage: complete ? undefined : (unmappedVersion ? ADMIN_MESSAGE_UNMAPPED : ADMIN_MESSAGE),
     };
   } catch (e) {
     console.error("[psdCompletionGate] threw:", String(e));

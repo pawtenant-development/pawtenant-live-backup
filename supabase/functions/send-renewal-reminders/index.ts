@@ -187,9 +187,16 @@ Deno.serve(async (req: Request) => {
     const windowStart = new Date(now - 340 * 24 * 60 * 60 * 1000).toISOString(); // oldest eligible
     const windowEnd = new Date(now - 330 * 24 * 60 * 60 * 1000).toISOString();   // newest eligible
 
+    // PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 · Slice 6: renewal marketing
+    // is DIRECT-only, by predicate. `.eq("order_origin","direct")` rather than
+    // `.neq(...,"partner")` so anything not provably a direct retail order is
+    // excluded (fail closed). Belt: partner completions no longer stamp
+    // patient_notification_sent_at at all, but this cron must not depend on
+    // that accident eleven months from now.
     const { data: orders, error } = await supabase
       .from("orders")
-      .select("id, email, first_name, last_name, patient_notification_sent_at, email_log, plan_type")
+      .select("id, email, first_name, last_name, patient_notification_sent_at, email_log, plan_type, order_origin")
+      .eq("order_origin", "direct")
       .eq("status", "completed")
       .not("patient_notification_sent_at", "is", null)
       .gte("patient_notification_sent_at", windowStart)

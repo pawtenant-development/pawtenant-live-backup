@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Slice 6: partner-managed orders never receive PawTenant lifecycle emails.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 import { DELIVERY_TURNAROUND_CLAUSE } from "../_shared/deliveryPromise.ts";
 import { classifyServiceFamily, SERVICE_FAMILY_COLUMNS } from "../_shared/serviceFamily.ts";
 
@@ -53,6 +55,25 @@ serve(async (req) => {
 
     if (!order.email) {
       return new Response(JSON.stringify({ ok: false, error: "No customer email on this order" }), { status: 400, headers: { ...CORS, "Content-Type": "application/json" } });
+    }
+
+    // ── Slice 6 partner boundary ────────────────────────────────────────────
+    // This fires unattended from the 30-day reopen cron. A partner customer
+    // must never hear from PawTenant about their review cycle — the partner
+    // owns that conversation. Returned as a SUCCESS so the DB caller does not
+    // treat the suppression as a delivery failure and retry it.
+    {
+      const gate = await gateCustomerContact(supabase, { confirmationId }, {
+        channel: "email",
+        event: "thirty_day_review_started",
+        source: "notify-thirty-day-customer",
+      });
+      if (!gate.allowed) {
+        return new Response(
+          JSON.stringify({ ok: true, sent: false, skipped: "partner_policy_suppressed", reason: gate.reason }),
+          { status: 200, headers: { ...CORS, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");

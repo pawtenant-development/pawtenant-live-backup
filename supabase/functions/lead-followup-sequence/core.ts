@@ -801,9 +801,17 @@ export async function runLeadFollowupSequence(
     const now = new Date();
     const maxAgeDate = new Date(now.getTime() - SEQUENCE_LOOKBACK_DAYS * 86400000).toISOString();
 
+    // PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 · Slice 6: the recovery drip
+    // is DIRECT-only, by predicate. `.eq("order_origin","direct")` rather than
+    // `.neq(...,"partner")` so anything that is not provably a direct retail
+    // order — a partner case, a future third origin, a malformed value — is
+    // excluded (fail closed). Until now this cohort survived on `paid_at IS
+    // NULL` alone, which happens to exclude partner orders only because the
+    // intake stamps paid_at; that is an accident, not a policy.
     const { data: leads, error } = await supabase
       .from("orders")
-      .select("id, confirmation_id, email, first_name, phone, letter_type, created_at, seq_30min_sent_at, seq_24h_sent_at, seq_3day_sent_at, sms_5min_sent_at, sms_opted_out, assessment_answers, payment_intent_id, status, paid_at, followup_opt_out")
+      .select("id, confirmation_id, email, first_name, phone, letter_type, created_at, seq_30min_sent_at, seq_24h_sent_at, seq_3day_sent_at, sms_5min_sent_at, sms_opted_out, assessment_answers, payment_intent_id, status, paid_at, followup_opt_out, order_origin")
+      .eq("order_origin", "direct")
       .is("payment_intent_id", null)
       .is("paid_at", null)
       .neq("status", "completed")
@@ -829,6 +837,9 @@ export async function runLeadFollowupSequence(
     }
 
     for (const lead of (leads ?? [])) {
+      // Belt to the cohort predicate above: only a provably direct order may
+      // enter a stage. Fail closed on anything else.
+      if ((lead as { order_origin?: string }).order_origin !== "direct") { results.skipped++; continue; }
       if (lead.payment_intent_id || lead.paid_at || lead.status === "completed") { results.skipped++; continue; }
       if (lead.followup_opt_out) { results.opted_out++; continue; }
 

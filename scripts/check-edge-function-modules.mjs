@@ -56,6 +56,37 @@ const ENTRIES = [
   "supabase/functions/notify-order-status/index.ts",
   "supabase/functions/notify-thirty-day-customer/index.ts",
   "supabase/functions/notify-thirty-day-reissue/index.ts",
+  // PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 Slice 5: these four import
+  // _shared/partnerDocumentGate.ts (which itself imports _shared/partnerPolicy.ts),
+  // so they have a local module graph that must parse and link. Edge functions are
+  // outside tsconfig, so this guard is the ONLY static proof that the gate's
+  // imported symbols actually resolve.
+  "supabase/functions/provider-submit-letter/index.ts",
+  "supabase/functions/inject-pdf-footer/index.ts",
+  "supabase/functions/issue-letter-verification/index.ts",
+  "supabase/functions/generate-qr-verification-pdf/index.ts",
+  // PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 Slice 6: every emitter that now
+  // imports _shared/partnerCommsGate.ts (which imports _shared/partnerPolicy.ts)
+  // gains a module graph that must parse and link. (notify-order-status and
+  // notify-thirty-day-customer are already listed above.)
+  "supabase/functions/assign-doctor/index.ts",
+  "supabase/functions/ghl-webhook-proxy/index.ts",
+  "supabase/functions/backfill-order-ghl/index.ts",
+  "supabase/functions/lead-followup-sequence/index.ts",
+  "supabase/functions/send-checkout-recovery/index.ts",
+  "supabase/functions/resend-confirmation-email/index.ts",
+  "supabase/functions/notify-patient-letter/index.ts",
+  "supabase/functions/send-renewal-reminders/index.ts",
+  "supabase/functions/send-templated-email/index.ts",
+  "supabase/functions/ghl-send-sms/index.ts",
+  "supabase/functions/send-review-request/index.ts",
+  "supabase/functions/manage-custom-payment-request/index.ts",
+  "supabase/functions/create-additional-doc-invoice/index.ts",
+  "supabase/functions/send-meta-capi-event/index.ts",
+  // Slice 7: the partner API gained the canonical PSD contract (validate.ts
+  // imports the shared schema constants; index.ts imports the duplicate-key
+  // scanner) — its module graph must parse and link.
+  "supabase/functions/partner-orders-v1/index.ts",
 ];
 
 /** Treat every remote specifier as external — we check the LOCAL graph. */

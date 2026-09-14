@@ -10,6 +10,7 @@ export type AccountsSection =
   | "channels"
   | "marketing"
   | "expenses"
+  | "partners"
   | "reconciliation";
 
 // Order mirrors the page order (correction addendum §4): Overview →
@@ -19,6 +20,9 @@ export const ACCOUNTS_SECTIONS: { key: AccountsSection; label: string; icon: str
   { key: "expenses",       label: "Expenses & P&L",      icon: "ri-wallet-3-line" },
   { key: "channels",       label: "Channel Contribution", icon: "ri-pie-chart-line" },
   { key: "marketing",      label: "Marketing",           icon: "ri-megaphone-line" },
+  // PARTNER-MULTI-BRAND-MANUAL-PDF-ORDER-INGESTION-001 — B2B fulfilment
+  // economics, kept separate from the Stripe-based company bridge.
+  { key: "partners",       label: "Partner Contribution", icon: "ri-building-2-line" },
   { key: "reconciliation", label: "Reconciliation",      icon: "ri-scales-3-line" },
 ];
 

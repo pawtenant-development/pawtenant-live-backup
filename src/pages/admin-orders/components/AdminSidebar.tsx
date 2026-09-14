@@ -2,7 +2,7 @@
 import { useAdminChat } from "../../../context/AdminChatContext";
 
 type TabKey =
-  | "dashboard" | "orders" | "analytics" | "communications" | "comms" | "chats" | "contacts" | "customers" | "doctors"
+  | "dashboard" | "orders" | "partners" | "analytics" | "communications" | "comms" | "chats" | "contacts" | "customers" | "doctors"
   | "earnings" | "payments" | "team" | "attendance" | "shifts" | "audit" | "settings" | "health";
 
 interface AdminSidebarProps {
@@ -19,6 +19,9 @@ interface AdminSidebarProps {
 const TAB_CONFIG: { key: TabKey; label: string; icon: string }[] = [
   { key: "dashboard",     label: "Dashboard",     icon: "ri-dashboard-3-line" },
   { key: "orders",        label: "Orders",        icon: "ri-file-list-3-line" },
+  // PARTNER-PLATFORM-ADMIN-WORKSPACE-001 — the dedicated B2B workspace
+  // (partner orders, finance, integration, API keys & webhooks).
+  { key: "partners",      label: "Partner Platform", icon: "ri-building-2-line" },
   { key: "analytics",     label: "Analytics",     icon: "ri-bar-chart-2-line" },
   // Phase I — legacy "Comms", "Chats", "Contacts" entries removed from
   // the sidebar. The keys remain valid in TabKey + getVisibleTabs so
@@ -104,7 +107,7 @@ export default function AdminSidebar({
   ];
   // Desktop order: ungrouped top-levels, with the two group blocks slotted in.
   const DESKTOP_ORDER: (TabKey | "group:hr" | "group:accounts")[] = [
-    "dashboard", "orders", "analytics", "communications", "customers", "doctors",
+    "dashboard", "orders", "partners", "analytics", "communications", "customers", "doctors",
     "group:hr", "group:accounts", "audit", "settings", "health",
   ];
 

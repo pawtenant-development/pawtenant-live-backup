@@ -104,6 +104,7 @@ export type Capability =
   | "admin.dashboard.view"
   | "orders.view"
   | "orders.manage"
+  | "partners.view"
   | "analytics.view"
   | "communications.view"
   | "communications.send"
@@ -176,6 +177,7 @@ export function canManageProviders(role: AdminRole): boolean {
 export const TAB_VIEW_CAPABILITY: Readonly<Record<string, Capability>> = {
   dashboard: "admin.dashboard.view",
   orders: "orders.view",
+  partners: "partners.view",
   analytics: "analytics.view",
   communications: "communications.view",
   comms: "communications.view",

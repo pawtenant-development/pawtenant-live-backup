@@ -1,0 +1,526 @@
+openapi: "3.1.0"
+info:
+  title: PawTenant Partner Clinical Fulfillment API
+  version: "1.2.0"
+  description: |
+    Server-to-server intake and status API for wholesale clinical fulfillment
+    partners. The partner owns customer payment, support and communication;
+    PawTenant performs the licensed clinical work.
+
+    SANDBOX ONLY: this document describes the sandbox environment. Production
+    activation is a separate, owner-approved onboarding step and uses separate
+    credentials.
+
+    All examples are synthetic. No live values appear in this document.
+servers:
+  - url: https://{sandbox-project}.supabase.co/functions/v1/partner-orders-v1
+    description: Sandbox (TEST). The concrete host is issued during onboarding.
+security:
+  - partnerKeyId: []
+    partnerSecret: []
+components:
+  securitySchemes:
+    partnerKeyId:
+      type: apiKey
+      in: header
+      name: X-Partner-Key-Id
+      description: Credential key id (e.g. pk_sandbox_...). Rotatable.
+    partnerSecret:
+      type: apiKey
+      in: header
+      name: X-Partner-Secret
+      description: >
+        Credential secret. Verified in-database against a SHA-256 digest;
+        never stored or logged in clear. Rotate by requesting a new key pair,
+        cutting traffic over, then asking PawTenant to revoke the old key id
+        (status flips to revoked; no grace reuse).
+  headers:
+    RequestId:
+      description: Echoed correlation id for support/escalation.
+      schema: { type: string, format: uuid }
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >
+        Required on every create. Same key + byte-identical canonical payload
+        replays the original outcome (200, idempotent_replay=true). Same key +
+        different payload is refused with 409 idempotency_conflict. Keys are
+        scoped per partner; max 255 chars.
+      schema: { type: string, maxLength: 255 }
+  schemas:
+    Consent:
+      type: object
+      required: [accepted, at]
+      properties:
+        accepted: { type: boolean, const: true }
+        at: { type: string, format: date-time }
+        evidence: { type: string, description: "Opaque partner-side evidence ref." }
+    Animal:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string }
+        type: { type: string }
+        breed: { type: string }
+        age: { type: string }
+        weight: { type: string }
+    Customer:
+      type: object
+      required: [legal_first_name, legal_last_name, email, current_physical_state]
+      properties:
+        legal_first_name: { type: string }
+        legal_last_name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        date_of_birth:
+          type: string
+          format: date
+          description: Required unless adult_confirmed is true.
+        adult_confirmed: { type: boolean }
+        current_physical_state:
+          type: string
+          description: Two-letter US state where the customer physically is at evaluation time (governs licensure).
+        residence_state: { type: string }
+    EsaAssessment:
+      type: object
+      required: [schema_version, answers]
+      properties:
+        schema_version:
+          type: string
+          const: partner.assessment.v1
+        answers:
+          type: object
+          minProperties: 1
+          maxProperties: 200
+          description: >
+            Free-form partner intake summary for ESA orders. Not used for
+            clinical eligibility decisions.
+    PsdAssessment:
+      type: object
+      required: [schema_version, answers]
+      properties:
+        schema_version:
+          type: string
+          const: partner.assessment.psd.v1
+          description: >
+            PSD orders are refused (422 assessment_schema_unsupported) under
+            any other version, including partner.assessment.v1.
+        answers:
+          type: object
+          description: >
+            EXACTLY the canonical psd_v1 clinical question set. All 16 required
+            questions must be present; only catalog question ids are accepted
+            (unknown ids are refused); duplicate JSON keys anywhere in the
+            payload are refused; no field may claim eligibility (keys such as
+            eligible/approved/qualified/complete are refused outright —
+            eligibility is determined solely by PawTenant clinicians).
+            conditions and dogTasks are non-empty string arrays; every other
+            answer is a non-empty string (max 4000 chars).
+          required:
+            - conditions
+            - currentTreatment
+            - dailyImpact
+            - dogDuration
+            - dogHelpDescription
+            - dogTasks
+            - emotionalFrequency
+            - housingType
+            - lifeChangeStress
+            - medication
+            - priorDiagnosis
+            - safetyCheck
+            - taskDescription
+            - taskPublicAccess
+            - taskReliability
+            - taskTraining
+          properties:
+            conditions: { type: array, items: { type: string }, minItems: 1 }
+            currentTreatment: { type: string }
+            dailyImpact: { type: string }
+            dogDuration: { type: string }
+            dogHelpDescription: { type: string }
+            dogTasks: { type: array, items: { type: string }, minItems: 1 }
+            emotionalFrequency: { type: string }
+            housingType: { type: string }
+            lifeChangeStress: { type: string }
+            medication: { type: string }
+            medicationDetails: { type: string, description: optional }
+            priorDiagnosis: { type: string }
+            safetyCheck: { type: string }
+            specificDiagnosis: { type: string, description: optional }
+            taskDescription: { type: string }
+            taskEvidenceType: { type: string, description: optional }
+            taskEvidenceUrl: { type: string, description: optional }
+            taskPublicAccess: { type: string }
+            taskReliability: { type: string }
+            taskTraining: { type: string }
+            treatmentDetails: { type: string, description: optional }
+    CreateOrder:
+      type: object
+      required: [partner_order_id, payment, service, customer, animals, assessment, consents]
+      additionalProperties: false
+      properties:
+        partner_order_id:
+          type: string
+          maxLength: 128
+          description: Your stable order reference. One PawTenant order per value, forever.
+        payment:
+          type: object
+          required: [status, reference]
+          properties:
+            status: { type: string, const: paid, description: "You bill your customer; we only fulfil paid work." }
+            reference: { type: string }
+        service: { type: string, enum: [esa, psd] }
+        customer: { $ref: "#/components/schemas/Customer" }
+        animals: { type: array, minItems: 1, maxItems: 10, items: { $ref: "#/components/schemas/Animal" } }
+        assessment:
+          oneOf:
+            - $ref: "#/components/schemas/EsaAssessment"
+            - $ref: "#/components/schemas/PsdAssessment"
+        consents:
+          type: object
+          required: [telehealth, privacy_data_transfer, electronic_signature]
+          properties:
+            telehealth: { $ref: "#/components/schemas/Consent" }
+            privacy_data_transfer: { $ref: "#/components/schemas/Consent" }
+            electronic_signature:
+              type: object
+              required: [name, at]
+              properties:
+                name: { type: string }
+                at: { type: string, format: date-time }
+                evidence: { type: string }
+    OrderAccepted:
+      type: object
+      properties:
+        partner_order_id: { type: string }
+        pawtenant_reference: { type: string, description: "Display reference (PT-…), never a credential." }
+        service: { type: string }
+        clinical_status: { $ref: "#/components/schemas/ClinicalStatus" }
+        accepted_at: { type: string, format: date-time }
+        idempotent_replay: { type: boolean }
+        request_id: { type: string }
+    OrderStatus:
+      type: object
+      properties:
+        partner_order_id: { type: string }
+        pawtenant_reference: { type: string }
+        service: { type: string }
+        clinical_status: { $ref: "#/components/schemas/ClinicalStatus" }
+        provider_assigned: { type: boolean }
+        accepted_at: { type: string, format: date-time }
+        clinical_completed_at: { type: [string, "null"], format: date-time }
+        request_id: { type: string }
+    ClinicalStatus:
+      type: string
+      enum: [received, ready_for_assignment, provider_review, consultation_required,
+             document_ready, clinical_work_completed, correction_required, cancelled]
+      description: >
+        clinical_work_completed is the terminal billable state and is
+        independent of the clinical outcome: a professionally completed
+        evaluation that does not qualify is still completed work.
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details:
+              type: object
+              additionalProperties: { type: array, items: { type: string } }
+              description: Field NAMES only — never field values.
+        request_id: { type: string }
+    DocumentReady:
+      type: object
+      properties:
+        partner_order_id: { type: string }
+        pawtenant_reference: { type: string }
+        service: { type: string }
+        document:
+          type: object
+          properties:
+            download_url:
+              type: string
+              description: >
+                SHORT-LIVED signed URL (see expires_in_seconds). Fetch the
+                bytes promptly; do NOT store this URL. When it expires,
+                repeat the GET — the endpoint is idempotent and re-signs the
+                same immutable release. There is no permanent URL.
+            expires_in_seconds: { type: integer, const: 300 }
+            content_type: { type: string }
+            size_bytes: { type: integer }
+            sha256:
+              type: string
+              description: Verify the downloaded bytes against this digest.
+            released_at: { type: string, format: date-time }
+            filename: { type: string }
+        request_id: { type: string }
+    RevisionRequest:
+      type: object
+      required: [revision_reason, assessment]
+      additionalProperties: false
+      properties:
+        revision_reason:
+          type: string
+          maxLength: 1000
+          description: Why the assessment is being replaced. Required; audited.
+        assessment:
+          $ref: "#/components/schemas/PsdAssessment"
+          description: >
+            The COMPLETE canonical replacement — the same contract as intake,
+            fully re-validated. Partial patches are refused: the server only
+            materializes complete immutable snapshots.
+    RevisionAccepted:
+      type: object
+      properties:
+        partner_order_id: { type: string }
+        pawtenant_reference: { type: string }
+        revision:
+          type: integer
+          description: The new immutable version number (original acceptance is 1).
+        accepted_at: { type: string, format: date-time }
+        idempotent_replay: { type: boolean }
+        request_id: { type: string }
+    WebhookEnvelope:
+      type: object
+      description: >
+        The body of every webhook POST. Carries coarse status only — never
+        assessment content, clinical detail, customer contact fields, provider
+        identity or PawTenant-internal identifiers.
+      properties:
+        event_id: { type: string, format: uuid }
+        event_type:
+          type: string
+          enum: [order.accepted, order.provider_assigned,
+                 order.additional_information_required, order.correction_required,
+                 order.document_approved, order.completed, order.document_ready,
+                 order.cancelled, invoice.issued, invoice.paid, billing.credit_issued]
+        event_version: { type: string, const: "1" }
+        partner_order_id: { type: [string, "null"] }
+        pawtenant_reference: { type: [string, "null"] }
+        occurred_at: { type: string, format: date-time }
+        data:
+          type: object
+          description: Event-family specific coarse fields (service, status, invoice identity).
+paths:
+  /orders:
+    post:
+      summary: Submit a paid order for clinical fulfillment
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateOrder" }
+            examples:
+              esa:
+                summary: ESA order (generic intake summary)
+                value:
+                  partner_order_id: "RPD-1001"
+                  payment: { status: paid, reference: "RPD-PAY-1001" }
+                  service: esa
+                  customer:
+                    legal_first_name: Jordan
+                    legal_last_name: Example
+                    email: jordan@example.com
+                    phone: "+15555550100"
+                    date_of_birth: "1990-01-01"
+                    current_physical_state: TX
+                  animals: [{ name: Bailey, type: Dog }]
+                  assessment:
+                    schema_version: partner.assessment.v1
+                    answers:
+                      primaryConcern: anxiety
+                      symptomDescription: "Synthetic example."
+                      durationOfSymptoms: over_1_year
+                  consents:
+                    telehealth: { accepted: true, at: "2026-01-01T00:00:00Z" }
+                    privacy_data_transfer: { accepted: true, at: "2026-01-01T00:00:00Z" }
+                    electronic_signature: { name: Jordan Example, at: "2026-01-01T00:00:00Z" }
+              psd:
+                summary: PSD order (canonical psd_v1 contract — all 16 required answers)
+                value:
+                  partner_order_id: "RPD-1002"
+                  payment: { status: paid, reference: "RPD-PAY-1002" }
+                  service: psd
+                  customer:
+                    legal_first_name: Casey
+                    legal_last_name: Example
+                    email: casey@example.com
+                    date_of_birth: "1992-02-02"
+                    current_physical_state: TX
+                  animals: [{ name: Scout, type: Dog }]
+                  assessment:
+                    schema_version: partner.assessment.psd.v1
+                    answers:
+                      conditions: [ptsd]
+                      currentTreatment: "weekly therapy"
+                      dailyImpact: "significant functional impact"
+                      dogDuration: 2_years
+                      dogHelpDescription: "interrupts panic episodes with trained pressure"
+                      dogTasks: [deep_pressure_therapy]
+                      emotionalFrequency: daily
+                      housingType: apartment
+                      lifeChangeStress: moderate
+                      medication: none
+                      priorDiagnosis: "yes"
+                      safetyCheck: "no"
+                      taskDescription: "applies deep pressure during panic episodes"
+                      taskPublicAccess: "yes"
+                      taskReliability: consistent
+                      taskTraining: professional
+                  consents:
+                    telehealth: { accepted: true, at: "2026-01-01T00:00:00Z" }
+                    privacy_data_transfer: { accepted: true, at: "2026-01-01T00:00:00Z" }
+                    electronic_signature: { name: Casey Example, at: "2026-01-01T00:00:00Z" }
+      responses:
+        "201":
+          description: Accepted (new order).
+          content: { application/json: { schema: { $ref: "#/components/schemas/OrderAccepted" } } }
+        "200":
+          description: Idempotent replay of a previously accepted order.
+          content: { application/json: { schema: { $ref: "#/components/schemas/OrderAccepted" } } }
+        "4XX":
+          description: >
+            Structured refusal. Codes: unauthenticated (401), forbidden_scope
+            (403), partner_not_active (403), rate_limited (429; honor the
+            reset window), payload_too_large (413), malformed_json (400),
+            idempotency_key_required (400), schema_violation (422 — includes
+            unknown PSD questions, eligibility-claim fields, duplicate JSON
+            keys), assessment_schema_unsupported (422), assessment_incomplete
+            (422 — lists missing/invalid PSD question ids by NAME), consent_missing
+            (422), payment_not_paid (422), service_unsupported (422),
+            state_unsupported (422), no_provider_coverage (422),
+            idempotency_conflict (409), partner_order_conflict (409),
+            payment_credentials_rejected (422 — never transmit card data).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  /orders/{partner_order_id}:
+    get:
+      summary: Retrieve order clinical status
+      parameters:
+        - name: partner_order_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Status of YOUR order (cross-partner ids return 404).
+          content: { application/json: { schema: { $ref: "#/components/schemas/OrderStatus" } } }
+        "404":
+          description: No such partner order (including another partner's id).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  /orders/{partner_order_id}/document:
+    get:
+      summary: Retrieve the final partner-safe document (short-lived signed URL)
+      description: |
+        Requires the documents:read scope. Returns the CURRENT approved
+        partner-safe document release for your own order — a neutral copy of
+        the approved clinical letter with no PawTenant verification ID, QR or
+        public-verification identity, held in a partner-isolated store.
+
+        Expiry & retry semantics: the download_url expires after
+        expires_in_seconds (300). The GET is idempotent and rate-limited —
+        when a URL expires, call the endpoint again for a fresh URL to the
+        same immutable release. If the underlying letter is superseded and
+        re-approved (a correction), this endpoint switches to the NEW current
+        release; compare sha256 to detect that.
+      parameters:
+        - name: partner_order_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The current release, signed for 300 seconds.
+          content: { application/json: { schema: { $ref: "#/components/schemas/DocumentReady" } } }
+        "403":
+          description: forbidden_scope — the credential lacks documents:read.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "404":
+          description: No such partner order (including another partner's id).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "409":
+          description: >
+            document_not_ready — the clinical document is not approved and
+            released yet. Wait for the order.document_ready webhook (or poll
+            status until document_ready / clinical_work_completed) and retry.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  /orders/{partner_order_id}/revisions:
+    post:
+      summary: Submit an immutable assessment revision (canonical PSD contract)
+      description: |
+        Replaces the assessment with a COMPLETE re-validated canonical payload.
+        The accepted original is never modified: the server stores revision
+        N+1 linked to N, and every prior version remains auditable.
+
+        Allowed only while the order is accepted and NOT yet assigned to a
+        provider, completed or cancelled — after that the request is refused
+        (409 revision_locked) and the change must go through partner support's
+        administrative + clinical review path. ESA (generic-contract) orders
+        are not revisable by API (422 revision_unsupported_for_service).
+
+        A revision never approves, rejects or advances the order by itself.
+        Identical content can never create a duplicate version (content-hash
+        replay). Identity fields (customer, service, animals, payment) are not
+        part of a revision — those changes are support-mediated.
+      parameters:
+        - name: partner_order_id
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevisionRequest" }
+      responses:
+        "201":
+          description: New immutable revision stored.
+          content: { application/json: { schema: { $ref: "#/components/schemas/RevisionAccepted" } } }
+        "200":
+          description: Idempotent replay (same key or identical content).
+          content: { application/json: { schema: { $ref: "#/components/schemas/RevisionAccepted" } } }
+        "4XX":
+          description: >
+            Structured refusal. Codes include: revision_locked (409),
+            revision_unsupported_for_service (422), idempotency_conflict
+            (409), schema_violation / assessment_incomplete /
+            assessment_schema_unsupported (422), not_found (404).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+webhooks:
+  partnerStatusEvent:
+    post:
+      summary: Signed status webhook (PawTenant → partner)
+      description: |
+        PawTenant POSTs the WebhookEnvelope to your registered HTTPS endpoint
+        for the event families you subscribe to.
+
+        SIGNATURE (HMAC-SHA256): every delivery carries
+          X-PawTenant-Event-Id:   the envelope event_id
+          X-PawTenant-Event-Type: the envelope event_type
+          X-PawTenant-Timestamp:  unix seconds at send time
+          X-PawTenant-Signature:  v1=HEX(HMAC_SHA256(secret, timestamp + "." + raw_body))
+        Verify by recomputing the HMAC over the RAW request body bytes with
+        the shared endpoint secret (issued once at registration), comparing in
+        constant time, and rejecting when the timestamp is more than 5 minutes
+        from your clock (replay protection). Deduplicate on event_id: retries
+        and manual redelivery reuse the SAME event_id, so processing must be
+        idempotent per event_id.
+
+        RETRIES: non-2xx responses are retried with exponential backoff
+        (~1m, 5m, 25m, ~2h, then 12h intervals; 8 attempts total) before the
+        delivery is marked terminally failed and surfaced to PawTenant admins.
+        Respond 2xx quickly (before heavy processing) to avoid timeouts.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WebhookEnvelope" }
+      responses:
+        "200":
+          description: Acknowledged. Any 2xx counts as delivered.

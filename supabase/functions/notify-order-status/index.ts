@@ -1,6 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
+// Slice 6: partner-managed orders never receive PawTenant status emails.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 import { DELIVERY_TURNAROUND_CLAUSE } from "../_shared/deliveryPromise.ts";
 
 const CORS_HEADERS = {
@@ -372,6 +374,24 @@ Deno.serve(async (req: Request) => {
     adminNotifKey = "order_cancelled";
   }
 
+  // ── Slice 6 partner boundary — CUSTOMER branch only ───────────────────────
+  // Status emails to the customer are the partner's job on a partner-managed
+  // order; the admin fan-out below stays, because admins still operate the
+  // case. Gated BEFORE the reservation so no communications row is ever
+  // created for a message that was deliberately never composed.
+  const contactGate = await gateCustomerContact(supabase, { confirmationId }, {
+    channel: "email",
+    event: emailType || `status_${newStatus}`,
+    source: "notify-order-status",
+  });
+
+  let customerEmailSent = false;
+  let customerResendId: string | undefined;
+  let customerReservationProceed: boolean | undefined;
+
+  if (!contactGate.allowed) {
+    console.warn(`[notify-order-status] SUPPRESSED customer email ${emailType} for ${confirmationId} — ${contactGate.reason}`);
+  } else {
   // ── Customer email: reserve dedupe_key BEFORE sending ────────────────────
   // Key = {confirmation_id}:{emailType} → exactly one customer email per
   // status transition across the entire system.
@@ -385,9 +405,7 @@ Deno.serve(async (req: Request) => {
     slug: emailType,
     sentBy: "admin_status_change",
   });
-
-  let customerEmailSent = false;
-  let customerResendId: string | undefined;
+  customerReservationProceed = customerReservation.proceed;
 
   if (!customerReservation.proceed) {
     console.log(`[notify-order-status] SKIP customer email ${emailType} for ${confirmationId} — dedupe`);
@@ -402,6 +420,7 @@ Deno.serve(async (req: Request) => {
       success: r.sent, body: null, resendId: r.resendId ?? null, errorMessage: r.error ?? null,
     });
     await appendEmailLog(supabase, confirmationId, { type: emailType, sentAt: new Date().toISOString(), to: order.email, success: r.sent });
+  }
   }
 
   // ── Admin notifications: reserve per recipient ──────────────────────────
@@ -447,7 +466,9 @@ Deno.serve(async (req: Request) => {
     emailSent: customerEmailSent,
     status: newStatus,
     confirmationId,
-    skippedDuplicate: customerReservation.proceed === false,
+    skippedDuplicate: customerReservationProceed === false,
+    // Slice 6: policy outcome, not a delivery failure.
+    customerEmailSuppressed: !contactGate.allowed,
     resendId: customerResendId,
   });
 });

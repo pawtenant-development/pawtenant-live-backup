@@ -24,6 +24,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logEmailComm } from "../_shared/logEmailComm.ts";
 import { SUPPORT_FROM, OPERATIONAL_REPLY_TO } from "../_shared/roleMailboxes.ts";
+// Slice 6: partner-managed orders never receive PawTenant review requests.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -157,6 +159,32 @@ Deno.serve(async (req: Request) => {
     const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
       ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
       : null;
+
+    // ── Slice 6 partner boundary ─────────────────────────────────────────
+    // Review requests are retail relationship-marketing. A partner-managed
+    // customer is the PARTNER's relationship. This endpoint historically
+    // never read the order at all (email/phone arrive in the body), so the
+    // gate re-reads by the supplied confirmation id; with no Supabase client
+    // available we refuse order-scoped sends outright — unverifiable is not
+    // permissible.
+    if (confirmationId) {
+      if (!supabase) {
+        return json({ ok: false, code: "partner_policy_unresolved", error: "Cannot verify this order's communication policy — refusing to send." }, 500);
+      }
+      const gate = await gateCustomerContact(supabase, { confirmationId }, {
+        channel: channel === "sms" ? "sms" : "email",
+        event: "review_request",
+        source: "send-review-request",
+      });
+      if (!gate.allowed) {
+        return json({
+          ok: false,
+          code: "partner_policy_suppressed",
+          reason: gate.reason,
+          error: "This order's customer communication is owned by the partner — PawTenant does not send review requests for it.",
+        }, 409);
+      }
+    }
 
     // ───────────────────────────── EMAIL ─────────────────────────────────
     if (channel === "email") {

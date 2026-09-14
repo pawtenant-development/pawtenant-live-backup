@@ -1,4 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — the customer-notification
+// firewall. A partner-managed customer is never texted by PawTenant.
+import { gateCustomerContact, gateCustomerContactIdentity } from "../_shared/partnerCommsGate.ts";
 
 const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
 const TWILIO_AUTH_TOKEN   = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
@@ -86,6 +89,19 @@ Deno.serve(async (req) => {
     }
 
     const actor = await resolveActor(req);
+
+    // Partner firewall: an order reference decides on that order's row; a bare
+    // phone number is checked against every partner-managed order. Refused
+    // sends are audited (channel + event only) and never reach Twilio.
+    const contactGate = (orderId || confirmationId)
+      ? await gateCustomerContact(supabase, { orderId, confirmationId }, { channel: "sms", event: "manual_sms", source: "send-sms" })
+      : await gateCustomerContactIdentity(supabase, { phone: toPhone }, { channel: "sms", event: "manual_sms", source: "send-sms" });
+    if (!contactGate.allowed) {
+      return new Response(JSON.stringify({ ok: false, error: contactGate.detail, reason: contactGate.reason }), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        status: 409,
+      });
+    }
 
     // Normalise phone — ensure E.164 format
     let phone = toPhone.replace(/\D/g, "");

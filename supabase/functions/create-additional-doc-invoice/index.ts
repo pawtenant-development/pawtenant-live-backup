@@ -30,6 +30,8 @@ import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 import { completeAdditionalDocPayment, ensureAddonEarning } from "../_shared/completeAdditionalDocPayment.ts";
+// Slice 6: partner-managed orders never receive PawTenant payment flows.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -180,6 +182,26 @@ Deno.serve(async (req) => {
   if (!isAdmin) {
     if (!callerEmail || callerEmail !== orderEmail) {
       return json(403, { ok: false, error: "Not authorized for this order" });
+    }
+  }
+
+  // ── Slice 6 partner boundary ───────────────────────────────────────────────
+  // An add-on invoice is a PawTenant payment flow plus a customer email. A
+  // partner-managed order gets neither — additional partner work is a
+  // partner-contract matter, not a customer Stripe checkout.
+  {
+    const gate = await gateCustomerContact(admin, { orderId: orderRow.id }, {
+      channel: "payment_link",
+      event: "additional_doc_invoice",
+      source: "create-additional-doc-invoice",
+    });
+    if (!gate.allowed) {
+      return json(409, {
+        ok: false,
+        code: "partner_policy_suppressed",
+        reason: gate.reason,
+        error: "This order is partner-managed — additional documentation is handled through the partner, not a PawTenant payment.",
+      });
     }
   }
 

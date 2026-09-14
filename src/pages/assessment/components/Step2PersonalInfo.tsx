@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isValidEmail, isOfAssessmentAge, maxAssessmentDob } from "../../../lib/assessmentIdentityRules";
 import { US_STATES } from "../../../lib/usStates";
 import StateComplianceBanner, { isComplianceState } from "./StateComplianceBanner";
 import StateAcknowledgmentModal, { type StateAcknowledgment } from "./StateAcknowledgmentModal";
@@ -102,21 +103,13 @@ export const PET_TYPES = ["Dog", "Cat", "Bird", "Rabbit", "Hamster", "Guinea Pig
 
 const emptyPet = (): PetInfo => ({ name: "", age: "", breed: "", type: "", weight: "" });
 
-// RFC-5322-lite email regex — catches the most common format errors
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
-function validateAge(dob: string): boolean {
-  if (!dob) return false;
-  const birth = new Date(dob);
-  const today = new Date();
-  const age = today.getFullYear() - birth.getFullYear();
-  const monthDiff = today.getMonth() - birth.getMonth();
-  const actualAge =
-    monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())
-      ? age - 1
-      : age;
-  return actualAge >= 18;
-}
+// PARTNER-PORTAL-MANUAL-ORDER-BILLING-AND-SIMPLE-ASSESSMENT-002 — the email
+// and minimum-age rules moved to `src/lib/assessmentIdentityRules.ts` so the
+// partner order form reuses THESE rules instead of growing a second, slightly
+// different copy. The behaviour is unchanged; only the home of the definition
+// moved.
+const EMAIL_RE = { test: (v: string) => isValidEmail(v) };
+const validateAge = isOfAssessmentAge;
 
 
 
@@ -247,9 +240,7 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
     onNext();
   };
 
-  const maxDate = new Date();
-  maxDate.setFullYear(maxDate.getFullYear() - 18);
-  const maxDobStr = maxDate.toISOString().split("T")[0];
+  const maxDobStr = maxAssessmentDob();
 
   return (
     <div>

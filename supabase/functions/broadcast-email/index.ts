@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — customer-notification firewall.
+import { gateCustomerContact, gateCustomerContactIdentity } from "../_shared/partnerCommsGate.ts";
 import { issueResumeLink } from "../_shared/resumeLink.ts";
 
 const CORS_HEADERS = {
@@ -349,7 +351,25 @@ serve(async (req) => {
     }
 
     // ── Bulk send ──────────────────────────────────────────────────────────
-    const recipients = body.recipients;
+    // Partner firewall: the modal already filters its audience to direct
+    // orders, but the server never trusts a recipient list. Each recipient is
+    // checked on its confirmation id (or, failing that, its email) and
+    // partner-managed customers are removed BEFORE any send.
+    const requestedRecipients = body.recipients ?? [];
+    const recipients: Recipient[] = [];
+    let partnerSuppressed = 0;
+    for (const r of requestedRecipients) {
+      const gate = r.confirmation_id
+        ? await gateCustomerContact(adminClient, { confirmationId: r.confirmation_id }, { channel: "email", event: "broadcast", source: "broadcast-email" })
+        : await gateCustomerContactIdentity(adminClient, { email: r.email }, { channel: "email", event: "broadcast", source: "broadcast-email" });
+      if (gate.allowed) recipients.push(r); else partnerSuppressed += 1;
+    }
+    if (requestedRecipients.length > 0 && recipients.length === 0) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "Every recipient belongs to a partner-managed order; nothing was sent.", partnerSuppressed }),
+        { status: 409, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      );
+    }
     if (!recipients?.length || !subject?.trim() || !bodyText?.trim()) {
       return new Response(
         JSON.stringify({ ok: false, error: "recipients, subject, and bodyText are required" }),

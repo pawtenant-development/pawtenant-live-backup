@@ -51,7 +51,15 @@ export default function AssessmentCard({ order }: { order: AssessmentCardOrder }
       state: order.state,
       assessment_answers: order.assessment_answers ?? null,
       created_at: order.created_at,
-    }));
+      // PARTNER-ASSESSMENT-NEUTRAL-PDF-001: pass the authoritative origin
+      // through rather than dropping it. A partner customer is served by the
+      // partner, not this portal, so in practice this is always a direct
+      // order — but forwarding the column means the generator decides from
+      // data instead of from an assumption made here.
+      order_origin: (order as { order_origin?: string | null }).order_origin ?? null,
+      partner_id: (order as { partner_id?: string | null }).partner_id ?? null,
+      letter_type: order.letter_type ?? null,
+    }, undefined, "customer"));
     w.document.close();
   };
 

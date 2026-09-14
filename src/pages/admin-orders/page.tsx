@@ -78,6 +78,11 @@ import {
   // card count and the list the card opens.
   KPI_CARD_KIND,
   kpiCardWindow,
+  // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — the ONE mapping from a
+  // clicked card to (status tab, origin). The card count is built through it
+  // too, so the Partner Orders card and its list cannot disagree.
+  kpiCardListSelection,
+  type OrderOriginFilter,
   type KpiCardKey,
   type KpiCardCounts,
   // ADMIN-ORDERS-SERVER-BACKED-LOADING-001 — the row read borrows the SAME
@@ -99,6 +104,8 @@ import {
   SEQUENCE_FACET_LABEL,
   type SequenceFacetCounts,
 } from "./orderFacetCounts";
+import { hasConfirmedPayment } from "@/lib/partnerOrder";
+import { usePartnerDirectory } from "@/lib/partnerDirectory";
 // ADMIN-ORDERS-NEW-YORK-CLOCK-...-001 §9 — the banner's SOLE data source is the
 // period-event RPC imported below.
 //
@@ -141,6 +148,7 @@ import AdminProfileMenu from "./components/AdminProfileMenu";
 import EmployeePresenceBar from "./components/EmployeePresenceBar";
 import FinanceOrdersGate from "./components/FinanceOrdersGate";
 import CommunicationsHub from "./components/CommunicationsHub";
+import PartnerPlatformWorkspace from "./components/partner-platform/PartnerPlatformWorkspace";
 import type {
   Order,
   DoctorProfile,
@@ -250,7 +258,17 @@ const ORDERS_LIST_COLUMNS =
   // and the full UTM / click-id set so the acquisition classifier can detect
   // AI referrals, dark social, and organic sources at the Order level.
   // Display-only — analytics math + attribution capture remain unchanged.
-  "first_touch_json,last_touch_json";
+  "first_touch_json,last_touch_json," +
+  // PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 — order origin + the immutable
+  // per-order policy snapshots. `order_origin` is selected EVERYWHERE on
+  // purpose: _shared/partnerPolicy.ts refuses to decide anything for a row that
+  // was read without it, rather than assuming "direct" and branding a partner
+  // letter. Identity and policy only — the wholesale fee, the earning snapshot
+  // and the margin live in partner_order_financials, which is admin-only and is
+  // NOT read here.
+  "order_origin,partner_id,partner_order_id,partner_support_owner," +
+  "partner_communication_policy,partner_document_policy," +
+  "partner_accepted_at,partner_clinical_completed_at,partner_intake_method";
 
 // Anchored, so a string that merely CONTAINS a uuid is not treated as one.
 const UUID_REGEX =
@@ -364,8 +382,9 @@ function getOrderDisplayStatus(order: Order) {
   if (order.doctor_status === "patient_notified") {
     return { label: "Order (Completed)", color: "bg-emerald-100 text-emerald-700" };
   }
-  // Stage 1 — no confirmed payment
-  const isLead = order.status === "lead" || !order.payment_intent_id;
+  // Stage 1 — no confirmed payment (a partner-funded order is paid by the
+  // partner at acceptance and never has a PaymentIntent — it is not a lead).
+  const isLead = order.status === "lead" || !hasConfirmedPayment(order);
   if (isLead) {
     return { label: "Lead (Unpaid)", color: "bg-amber-100 text-amber-700" };
   }
@@ -389,12 +408,12 @@ const DOCTOR_STATUS_COLOR: Record<string, string> = {
 
 // ─── Role-based tab visibility ─────────────────────────────────────────────
 
-type TabKey = "dashboard" | "orders" | "analytics" | "communications" | "comms" | "chats" | "contacts" | "customers" | "doctors" | "earnings" | "payments" | "team" | "attendance" | "shifts" | "audit" | "settings" | "health";
+type TabKey = "dashboard" | "orders" | "partners" | "analytics" | "communications" | "comms" | "chats" | "contacts" | "customers" | "doctors" | "earnings" | "payments" | "team" | "attendance" | "shifts" | "audit" | "settings" | "health";
 
 // Phase A note: "communications" is the new umbrella hub. Old "comms" / "chats"
 // / "contacts" stay intact so this rollout is purely additive. Hiding them
 // happens in a later phase only after the hub has been validated.
-const ALL_TABS: TabKey[] = ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "doctors", "earnings", "payments", "team", "attendance", "shifts", "audit", "settings", "health"];
+const ALL_TABS: TabKey[] = ["dashboard", "orders", "partners", "analytics", "communications", "comms", "chats", "contacts", "customers", "doctors", "earnings", "payments", "team", "attendance", "shifts", "audit", "settings", "health"];
 
 function getVisibleTabs(role: string | null, customTabAccess?: string[] | null): TabKey[] {
   // ── Canonical permission model ──────────────────────────────────────────
@@ -474,7 +493,8 @@ function getVisibleTabs(role: string | null, customTabAccess?: string[] | null):
       return ["dashboard", "orders", "analytics", "communications", "comms", "chats", "contacts", "customers", "doctors", "payments", "audit", "health"];
     default:
       // Attendance + Shifts (Company OS) are restricted to owner / admin_manager.
-      return ALL_TABS.filter((t) => t !== "attendance" && t !== "shifts");
+      // The Partner Platform (credential/webhook management) is admin-level only.
+      return ALL_TABS.filter((t) => t !== "attendance" && t !== "shifts" && t !== "partners");
   }
 }
 
@@ -563,6 +583,22 @@ export default function AdminOrdersPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // ── PARTNER-PLATFORM-ADMIN-WORKSPACE-001 — legacy Partner Orders links ────
+  // Partner Orders lived at /admin-orders?sub=partner (a sub-tab of Orders)
+  // before the dedicated Partner Platform workspace existed. Old bookmarks and
+  // deep links land on the workspace's Orders sub-tab instead of breaking —
+  // a REPLACE navigation, so history stays clean.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      if (params.get("sub") !== "partner") return;
+      params.delete("sub");
+      params.set("tab", "partners");
+      params.set("ptab", "orders");
+      navigate(`/admin-orders?${params.toString()}`, { replace: true });
+    } catch { /* a malformed query string never blocks the page */ }
+  }, [location.search, navigate]);
+
   // Tab state is bound to the ?tab= query param in both directions so the chat
   // notification banner (which navigates to /admin-orders?tab=chats) reliably
   // switches the UI, and a hard refresh on ?tab=chats still opens Chats.
@@ -614,6 +650,9 @@ export default function AdminOrdersPage() {
       const params = new URLSearchParams(location.search);
       if (t === "dashboard") params.delete("tab");
       else params.set("tab", t);
+      // ?ptab= belongs to the Partner Platform workspace only — leaving it
+      // behind would re-open that sub-tab on the next visit unexpectedly.
+      if (t !== "partners") params.delete("ptab");
       const qs = params.toString();
       navigate(`/admin-orders${qs ? `?${qs}` : ""}`, { replace: true });
     },
@@ -724,9 +763,14 @@ export default function AdminOrdersPage() {
   }, [search]);
   // Seeded from ?kpi= so a direct load lands on the card's tab immediately,
   // with no intermediate "All" frame.
-  const [statusFilter, setStatusFilter] = useState<string>(
-    () => readKpiParam(window.location.search) ?? "all",
-  );
+  // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001: the seeded card decides the
+  // tab AND the origin through the same mapping a click uses, so a direct load
+  // of ?kpi=partner_orders lists partner orders (All tab) instead of a status
+  // that does not exist.
+  const [statusFilter, setStatusFilter] = useState<string>(() => {
+    const seeded = readKpiParam(window.location.search);
+    return seeded ? kpiCardListSelection(seeded).statusFilter : "all";
+  });
   // ADMIN-ORDERS-CREATION-DATE-POSITION-001 — the Orders list has one permanent
   // display chronology: created_at. Changing status, assigning a provider,
   // completing, reopening or taking a later payment must never move an existing
@@ -766,6 +810,16 @@ export default function AdminOrdersPage() {
   const [doctorFilter, setDoctorFilter] = useState("all");
   const [selectedProviderFilter, setSelectedProviderFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
+  // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — partner orders appear in
+  // the main list. Origin is an EXPLICIT filter (default: both origins); the
+  // five retail KPI cards stay pinned to direct orders and the Partner Orders
+  // card to partner orders, through kpiCardListSelection().
+  const [originFilter, setOriginFilter] = useState<OrderOriginFilter>(() => {
+    const seeded = readKpiParam(window.location.search);
+    return seeded ? kpiCardListSelection(seeded).orderOrigin : "all";
+  });
+  const [partnerIdFilter, setPartnerIdFilter] = useState<string>("all");
+  const partnerDirectory = usePartnerDirectory(true);
   const [referredByFilter, setReferredByFilter] = useState("all");
   const [sequenceFilter, setSequenceFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
@@ -1010,6 +1064,8 @@ export default function AdminOrdersPage() {
   // boundary instead of the counts and the rows chasing each other.
   const listFilters = useMemo<FacetFilters>(() => ({
     dateBasis: effDateBasis, dateFrom: effDateFrom, dateTo: effDateTo,
+    orderOrigin: originFilter,
+    partnerId: partnerIdFilter,
     payment: paymentFilter,
     state: stateFilterAdv,
     referredBy: referredByFilter,
@@ -1022,7 +1078,7 @@ export default function AdminOrdersPage() {
     packageFilter,
     duplicatesOnly: showDuplicatesOnly,
   }), [
-    effDateBasis, effDateFrom, effDateTo, paymentFilter, stateFilterAdv,
+    effDateBasis, effDateFrom, effDateTo, originFilter, partnerIdFilter, paymentFilter, stateFilterAdv,
     referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter,
     debouncedSearch, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly,
   ]);
@@ -1106,6 +1162,7 @@ export default function AdminOrdersPage() {
       void runLatest(
         kpiCountGuard,
         () => fetchKpiCardCounts({
+          partnerId: partnerIdFilter,
           payment: paymentFilter,
           state: stateFilterAdv,
           referredBy: referredByFilter,
@@ -1137,7 +1194,7 @@ export default function AdminOrdersPage() {
     // Recomputing here cannot cause flicker: fetchKpiCardCounts ignores
     // activeKpi and statusFilter, so the same inputs return the same numbers
     // unless the underlying DATA actually moved.
-  }, [listQueryKey, kpiFrom, kpiTo, paymentFilter, stateFilterAdv, referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter, debouncedSearch, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly, monthlyKpiReloadToken, aggregateReloadToken, kpiCountGuard]);
+  }, [listQueryKey, kpiFrom, kpiTo, partnerIdFilter, paymentFilter, stateFilterAdv, referredByFilter, doctorFilter, selectedProviderFilter, sequenceFilter, debouncedSearch, showNonGhlOnly, sourceFilter, packageFilter, showDuplicatesOnly, monthlyKpiReloadToken, aggregateReloadToken, kpiCountGuard]);
 
   // First page of the CURRENT query. The previous query's rows deliberately
   // stay on screen (flagged loading) until this resolves, then are REPLACED —
@@ -2790,6 +2847,8 @@ export default function AdminOrdersPage() {
   // matching what the Filters panel actually shows as a single control.
   const activeFilterCount = [
     stateFilterAdv !== "all",
+    originFilter !== "all",
+    partnerIdFilter !== "all",
     doctorFilter !== "all",
     selectedProviderFilter !== "all",
     paymentFilter !== "all",
@@ -2822,8 +2881,16 @@ export default function AdminOrdersPage() {
   const applyKpiSelection = useCallback((key: KpiCardKey | null) => {
     setActiveKpi(key);
     // The card's tab IS its bucket, so the highlighted tab always matches the
-    // rows. Deselecting returns to All.
-    setStatusFilter(key ?? "all");
+    // rows. Deselecting returns to All (both origins). The Partner Orders card
+    // selects the partner origin with the All tab; a retail card pins direct.
+    if (key) {
+      const sel = kpiCardListSelection(key);
+      setStatusFilter(sel.statusFilter);
+      setOriginFilter(sel.orderOrigin);
+    } else {
+      setStatusFilter("all");
+      setOriginFilter("all");
+    }
   }, []);
 
   const onKpiCardClick = useCallback((key: KpiCardKey) => {
@@ -2870,7 +2937,14 @@ export default function AdminOrdersPage() {
     if (next === activeKpiRef.current) return;
     activeKpiRef.current = next;
     setActiveKpi(next);
-    setStatusFilter(next ?? "all");
+    if (next) {
+      const sel = kpiCardListSelection(next);
+      setStatusFilter(sel.statusFilter);
+      setOriginFilter(sel.orderOrigin);
+    } else {
+      setStatusFilter("all");
+      setOriginFilter("all");
+    }
   }, [location.search]);
 
   const clearAdvancedFilters = () => {
@@ -2878,6 +2952,8 @@ export default function AdminOrdersPage() {
     setDoctorFilter("all");
     setSelectedProviderFilter("all");
     setPaymentFilter("all");
+    setOriginFilter("all");
+    setPartnerIdFilter("all");
     setReferredByFilter("all");
     setSequenceFilter("all");
     setDateFrom("");
@@ -3382,6 +3458,7 @@ export default function AdminOrdersPage() {
           <h1 className="text-xl font-extrabold text-slate-900 capitalize">
             {activeTab === "dashboard" ? "Dashboard" :
              activeTab === "orders" ? "Orders" :
+             activeTab === "partners" ? "Partner Platform" :
              activeTab === "analytics" ? "Analytics" :
              activeTab === "communications" ? "Communications" :
              activeTab === "comms" ? "Communications" :
@@ -3521,6 +3598,9 @@ export default function AdminOrdersPage() {
                     ? `${dateFrom || "start"} → ${dateTo || "today"}`
                     : `${kpiMonth.from} – ${kpiMonth.toInclusive}`}
                 </span>
+                <span className="text-[11px] font-semibold text-gray-500">
+                  · partner orders: received in the same period
+                </span>
                 <span className="text-[10px] font-semibold text-gray-400">· America/New_York</span>
                 {/* A refresh in flight over EXISTING numbers: the values below
                     stay put (never flash to zero or "—"); this is the only
@@ -3546,13 +3626,18 @@ export default function AdminOrdersPage() {
                   each count with the SAME applyNonStatusFilters/applyBucket pair
                   that produces the list total, and clicking a card applies that
                   card's own basis + the active window. The two cannot drift. */}
-              <div className="bg-white rounded-xl border border-slate-200 mb-4 divide-y divide-slate-100 sm:divide-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-5 sm:divide-x sm:divide-slate-100 overflow-hidden">
+              <div className="bg-white rounded-xl border border-slate-200 mb-4 divide-y divide-slate-100 sm:divide-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-6 sm:divide-x sm:divide-slate-100 overflow-hidden">
                 {[
                   { key: "lead_unpaid" as KpiCardKey, icon: "ri-user-follow-line", color: "text-amber-600" },
                   { key: "paid_unassigned" as KpiCardKey, icon: "ri-user-unfollow-line", color: "text-sky-600" },
                   { key: "under_review" as KpiCardKey, icon: "ri-time-line", color: "text-violet-600" },
                   { key: "pending_delivery" as KpiCardKey, icon: "ri-inbox-unarchive-line", color: "text-teal-600" },
                   { key: "completed" as KpiCardKey, icon: "ri-checkbox-circle-line", color: "text-emerald-600" },
+                  // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — partner-funded
+                  // orders received in the period. Counts orders, never money:
+                  // partner charges live in the Partner Platform, apart from
+                  // direct-customer Stripe revenue.
+                  { key: "partner_orders" as KpiCardKey, icon: "ri-building-line", color: "text-indigo-600" },
                   // The permanent banner is EXACTLY these five workflow queues.
                   // "Payment Failed" is a PAYMENT state, not a workflow state; it
                   // survives as a status-filter tab. Do not re-add it, nor cards
@@ -3608,7 +3693,7 @@ export default function AdminOrdersPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-[#3b6ea5]">
                       {kpiCounts?.counts[activeKpi] == null ? "—" : kpiCounts.counts[activeKpi]}
-                      {" "}{KPI_CARD_LABEL[activeKpi]} order
+                      {" "}{activeKpi === "partner_orders" ? "partner" : KPI_CARD_LABEL[activeKpi]} order
                       {/* ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001 §3 — the copy is
                           derived from the card KIND, so it cannot claim a period
                           the rows were not filtered by. A work queue is current
@@ -3625,7 +3710,7 @@ export default function AdminOrdersPage() {
                            counts COMPLETIONS (last_completed_at). Naming the
                            wrong verb would describe a window the rows were not
                            actually selected by. */
-                        : `${activeKpi === "lead_unpaid" ? "created" : "completed"} in ${kpiRangeExplicit
+                        : `${activeKpi === "lead_unpaid" ? "created" : activeKpi === "partner_orders" ? "received" : "completed"} in ${kpiRangeExplicit
                             ? `${dateFrom || "start"} – ${dateTo || "today"}`
                             : `${kpiMonth.from} – ${kpiMonth.toInclusive}`}`}
                     </p>
@@ -3879,6 +3964,32 @@ export default function AdminOrdersPage() {
                       <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
                     </div>
                   </div>
+                  {/* PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — origin + partner */}
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1.5">Order Origin</label>
+                    <div className="relative">
+                      <select value={originFilter} aria-label="Order origin" onChange={(e) => { setOriginFilter(e.target.value as OrderOriginFilter); if (e.target.value !== "partner") setPartnerIdFilter("all"); }}
+                        className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
+                        <option value="all">Direct + Partner</option>
+                        <option value="direct">Direct customers</option>
+                        <option value="partner">Partner orders</option>
+                      </select>
+                      <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
+                    </div>
+                  </div>
+                  {originFilter === "partner" && (
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 mb-1.5">Partner</label>
+                      <div className="relative">
+                        <select value={partnerIdFilter} aria-label="Partner organization" onChange={(e) => setPartnerIdFilter(e.target.value)}
+                          className="w-full appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#3b6ea5] bg-white cursor-pointer">
+                          <option value="all">All partners</option>
+                          {Object.entries(partnerDirectory).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                        </select>
+                        <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
+                      </div>
+                    </div>
+                  )}
                   {/* Payment */}
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1.5">Payment</label>
@@ -4479,6 +4590,21 @@ export default function AdminOrdersPage() {
               </div>
             </div>
           </>
+        )}
+
+        {/* ── PARTNER PLATFORM TAB ──────────────────────────────────────
+             PARTNER-PLATFORM-ADMIN-WORKSPACE-001. The dedicated B2B
+             workspace: Overview / Orders / Finance / Integration / Settings
+             as ?ptab= sub-tabs. Partner Orders moved here from the Orders
+             tab's ?sub=partner (redirected above); the Slice 7 finance and
+             Slice 8 integration panels moved into their own sub-tabs. The
+             modal controller stays THE canonical openOrderDetail. */}
+        {activeTab === "partners" && isTabVisible("partners") && (
+          <PartnerPlatformWorkspace
+            onOpenOrder={openOrderDetail}
+            listColumns={ORDERS_LIST_COLUMNS}
+            reloadToken={aggregateReloadToken}
+          />
         )}
 
         {/* ── CHATS / CONTACTS / CUSTOMERS ── */}

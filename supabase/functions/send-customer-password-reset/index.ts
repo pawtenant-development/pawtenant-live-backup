@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 import { buildScannerSafeRecoveryUrl } from "../_shared/customerPasswordRecovery.ts";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — customer-notification firewall.
+import { gateCustomerContactIdentity } from "../_shared/partnerCommsGate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -81,6 +83,18 @@ serve(async (req) => {
 
     const body = await req.json() as { email?: string; first_name?: string; action?: string; order_id?: string; confirmation_id?: string };
     const targetEmail = (body.email ?? "").trim().toLowerCase();
+    // Partner firewall: no PawTenant portal account or reset email for an
+    // identity carried by a partner-managed order.
+    if (targetEmail) {
+      const contactGate = await gateCustomerContactIdentity(adminClient, { email: targetEmail }, {
+        channel: "email", event: "password_reset", source: "send-customer-password-reset",
+      });
+      if (!contactGate.allowed) {
+        return new Response(JSON.stringify({ ok: false, error: "This customer is managed by a partner organization; PawTenant does not email them.", reason: contactGate.reason }), {
+          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
     const firstName = (body.first_name ?? "").trim() || "there";
     // action: "reset" (default) | "welcome" (resend original welcome/portal access email)
     const action = (body.action ?? "reset") as "reset" | "welcome";

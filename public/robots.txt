@@ -13,6 +13,7 @@ Disallow: /admin-login
 Disallow: /admin-guide
 Disallow: /admin/
 Disallow: /provider-portal
+Disallow: /partner-portal
 Disallow: /provider-login
 Disallow: /my-orders
 Disallow: /customer-login

@@ -50,6 +50,11 @@ import OrderDiscountBreakdown from "./OrderDiscountBreakdown";
 // lives HERE (Payments tab), not in the Overview sidebar. Mounted in this
 // non-frozen child so the merge-frozen OrderDetailModal needs no addition.
 import OrderLifecyclePanel, { type OrderLifecyclePanelProps } from "./OrderLifecyclePanel";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — a partner-funded order has
+// no customer payment to show, collect or recover; it shows the partner
+// economics instead (admin-only, one server function).
+import PartnerFundingSummary from "./PartnerFundingSummary";
+import { isPartnerOrder } from "@/lib/partnerOrder";
 
 interface PaymentHistoryTabProps {
   order: Order;
@@ -312,6 +317,30 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
 
   const isPaid = !!order.payment_intent_id;
 
+  // Lifecycle & Payment — ONE mount, shared by the direct and partner layouts
+  // (the lifecycle-date guard forbids a second panel host).
+  const lifecyclePanel = (
+    <OrderLifecyclePanel order={order as unknown as OrderLifecyclePanelProps["order"]} fmt={fmt} />
+  );
+
+  // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001: a partner-funded order.
+  // No "No Payment Received Yet" warning, no Retry Payment Link, no Discount
+  // Recovery Email, no customer Stripe attempt log — none of those apply.
+  if (isPartnerOrder(order)) {
+    return (
+      <div className="p-4 sm:p-6 space-y-5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Partner Funding</p>
+            <p className="text-xs text-gray-400 mt-0.5">Frozen partner charge, provider cost and invoice state for this order</p>
+          </div>
+        </div>
+        <PartnerFundingSummary orderId={order.id} />
+        {lifecyclePanel}
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-5">
 
@@ -573,7 +602,7 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
 
       {/* Lifecycle & Payment — after the payment summary, before the attempt log
           and technical metadata. Single mount: never also rendered in Overview. */}
-      <OrderLifecyclePanel order={order as unknown as OrderLifecyclePanelProps["order"]} fmt={fmt} />
+      {lifecyclePanel}
 
       {/* Payment attempts log */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — customer-notification firewall.
+import { gateCustomerContact, gateCustomerContactIdentity } from "../_shared/partnerCommsGate.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -83,6 +85,25 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Partner firewall: every target is checked on its own order (or, without
+    // an order reference, on its phone number). Refused targets are dropped
+    // BEFORE any Twilio call and reported back; they are never silently sent.
+    const suppressedTargets: { phone: string; reason: string }[] = [];
+    const allowedTargets: BulkTarget[] = [];
+    for (const target of targets) {
+      const gate = (target.orderId || target.confirmationId)
+        ? await gateCustomerContact(adminClient, { orderId: target.orderId, confirmationId: target.confirmationId }, { channel: "sms", event: "bulk_sms", source: "bulk-sms" })
+        : await gateCustomerContactIdentity(adminClient, { phone: target.phone }, { channel: "sms", event: "bulk_sms", source: "bulk-sms" });
+      if (gate.allowed) allowedTargets.push(target);
+      else suppressedTargets.push({ phone: target.phone, reason: gate.reason ?? "partner_policy_unresolved" });
+    }
+    if (allowedTargets.length === 0) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "Every target belongs to a partner-managed order; nothing was sent.", suppressed: suppressedTargets.length }),
+        { headers: { ...CORS_HEADERS, "Content-Type": "application/json" }, status: 409 },
+      );
+    }
+
     const credentials = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
     let successCount = 0;
     let failCount = 0;
@@ -91,7 +112,7 @@ Deno.serve(async (req) => {
     const successfulConfirmationIds: string[] = [];
 
     await Promise.all(
-      targets.map(async (target) => {
+      allowedTargets.map(async (target) => {
         let phone = target.phone.replace(/\D/g, "");
         if (phone.length === 10) phone = "1" + phone;
         if (!phone.startsWith("+")) phone = "+" + phone;

@@ -9,6 +9,19 @@ import { getAdminToken } from "../../../lib/supabaseClient";
 import AISupportAssistant from "./AISupportAssistant";
 
 interface CommunicationTabProps {
+  /**
+   * PARTNER-ORDER-MODAL-SEGREGATION-001.
+   *
+   * When true, every CUSTOMER-CONTACT affordance in this tab is suppressed:
+   * the composer, the email/SMS/call panel triggers and the send controls.
+   * Set for partner-origin orders, where the PARTNER owns the customer
+   * relationship and PawTenant must not message that customer.
+   *
+   * Optional and defaulting to false, so every existing call site keeps its
+   * current behaviour untouched. The message HISTORY is still rendered — an
+   * admin must be able to see what (if anything) was ever sent.
+   */
+  partnerManaged?: boolean;
   orderId: string;
   confirmationId: string;
   phone: string | null;
@@ -218,6 +231,7 @@ export default function CommunicationTab({
   price,
   letterType,
   state,
+  partnerManaged = false,
 }: CommunicationTabProps) {
   const [activePanel, setActivePanel] = useState<PanelType>(null);
   const [smsText, setSmsText] = useState("");
@@ -918,8 +932,10 @@ export default function CommunicationTab({
           </p>
         )}
 
-        {/* Composer input row — SMS textbox sits at the bottom */}
-        <div className="flex items-end gap-2 px-3 py-2.5">
+        {/* Composer input row — SMS textbox sits at the bottom.
+            PARTNER-ORDER-MODAL-SEGREGATION-001: hidden entirely for a
+            partner-managed order so no customer-contact control is reachable. */}
+        <div className={`${partnerManaged ? "hidden" : "flex"} items-end gap-2 px-3 py-2.5`}>
           {/* + : Quick templates */}
           <button type="button" title="Quick templates"
             onClick={() => { setShowTemplates((v) => !v); setActivePanel(null); }}

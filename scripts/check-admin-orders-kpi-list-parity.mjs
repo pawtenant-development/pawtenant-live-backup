@@ -150,9 +150,12 @@ async function runChecks() {
   add("K1  Paid-Unassigned/Under-Review/Pending-Delivery are OPERATIONAL queues",
     OPERATIONAL.every((k) => kinds?.[k] === "operational"),
     JSON.stringify(kinds));
-  add("K2  Lead and Completed are the EVENT (period-scoped) cards — and only those",
-    PERIOD_SCOPED.every((k) => kinds?.[k] === "event") &&
-      Object.entries(kinds ?? {}).filter(([, v]) => v === "event").length === PERIOD_SCOPED.length,
+  // LIVE ADAPTATION (PARTNER-PLATFORM-LIVE-FOUNDATION-ROLLOUT-004): LIVE keeps
+  // Lead as a period EVENT card (created_at) and Partner Orders is the third
+  // period EVENT (orders RECEIVED in the period, on created_at).
+  add("K2  Lead, Completed and Partner Orders are the EVENT (period-scoped) cards — and only those",
+    PERIOD_SCOPED.every((k) => kinds?.[k] === "event") && kinds?.partner_orders === "event" &&
+      Object.entries(kinds ?? {}).filter(([, v]) => v === "event").length === PERIOD_SCOPED.length + 1,
     JSON.stringify(kinds));
 
   // Operational cards must carry NO range — current inventory across all dates.
@@ -232,15 +235,10 @@ async function runChecks() {
       keys.every((k) => (perCard[k] ?? []).some(([m, a]) =>
         m === "select" && a[0] === "id" && a[1] && a[1].head === true && a[1].count === "exact")));
 
-    // LIVE ADAPTATION. On TEST this position asserted that every retail KPI pins
-    // order_origin="direct" (Rapid partner isolation). LIVE has NO order_origin
-    // column and no partner schema, so the correct assertion here is the exact
-    // INVERSE: the shipped KPI path must never emit that predicate, because a
-    // filter on a column that does not exist would fail every count query.
-    const originOps = keys.flatMap((k) => (perCard[k] ?? []))
-      .filter(([, a]) => JSON.stringify(a).includes("order_origin"));
-    add("K11 no order_origin predicate is emitted (column absent on LIVE)",
-      originOps.length === 0, JSON.stringify(originOps).slice(0, 120));
+    // Partner isolation (Rapid Slice 5): retail surfaces must pin order_origin.
+    add("K11 retail KPIs pin order_origin=direct; the Partner Orders card pins partner",
+      keys.every((k) => (perCard[k] ?? []).some(([m, a]) =>
+        m === "eq" && a[0] === "order_origin" && a[1] === (k === "partner_orders" ? "partner" : "direct"))));
 
     // ── PARITY: the clicked list must build the same predicate set ──────────
     // For each card, the list is applyListPredicates(filters, statusFilter=key)
@@ -252,7 +250,10 @@ async function runChecks() {
     const mismatches = [];
     for (const k of keys) {
       rec.length = 0;
-      await mod.fetchListScopeTotal({ ...mod.kpiCardWindow(k, RANGE) }, k, {});
+      // The list the card opens: page.tsx derives BOTH the status tab and the
+      // origin from kpiCardListSelection(), so the guard does the same.
+      const sel = mod.kpiCardListSelection(k);
+      await mod.fetchListScopeTotal({ ...mod.kpiCardWindow(k, RANGE), orderOrigin: sel.orderOrigin }, sel.statusFilter, {});
       const listOps = rec[0] ?? [];
       if (norm(listOps) !== norm(perCard[k] ?? [])) mismatches.push(k);
     }
@@ -275,9 +276,11 @@ async function runChecks() {
     await mod.fetchListScopeTotal({ ...mod.kpiCardWindow("lead_unpaid", RANGE) }, "lead_unpaid", {});
     const leadOps = rec[0] ?? [];
     const leadSrc = JSON.stringify(leadOps);
+    // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001: "no confirmed payment"
+    // now excludes partner-funded orders (paid by the partner at acceptance).
     add("K15 Lead predicate keys on payment, never on payment_failure_reason",
       !leadSrc.includes("payment_failure_reason") &&
-      leadOps.some(([m, a]) => m === "or" && a[0] === "payment_intent_id.is.null,status.eq.lead"),
+      leadOps.some(([m, a]) => m === "or" && a[0] === `status.eq.lead,${mod.NO_CONFIRMED_PAYMENT_ARM}`),
       leadSrc.includes("payment_failure_reason") ? "failure metadata leaked into Lead" : "");
 
     // Paid (Unassigned): paid, unassigned, not completed/refunded/cancelled.
@@ -285,7 +288,7 @@ async function runChecks() {
     await mod.fetchListScopeTotal({ ...mod.kpiCardWindow("paid_unassigned", RANGE) }, "paid_unassigned", {});
     const pu = JSON.stringify(rec[0] ?? []);
     add("K16 Paid (Unassigned) = paid ∧ unassigned ∧ not completed/refunded/cancelled",
-      pu.includes('["not",["payment_intent_id","is",null]]') &&
+      pu.includes(JSON.stringify(["or", [mod.CONFIRMED_PAYMENT_ARM]])) &&
       pu.includes('["is",["doctor_email",null]]') &&
       pu.includes('["is",["doctor_user_id",null]]') &&
       pu.includes('["neq",["status","cancelled"]]') &&
@@ -342,7 +345,9 @@ async function runChecks() {
   // The two EVENT cards are period-scoped on DIFFERENT events, so the banner
   // must not call a Lead arrival a "completion".
   add("K24 Lead banner says CREATED (not completed) for the selected period",
-    /activeKpi === "lead_unpaid" \? "created" : "completed"/.test(page));
+    // LIVE ADAPTATION (PARTNER-PLATFORM-LIVE-FOUNDATION-ROLLOUT-004): the third
+    // period event card, Partner Orders, says RECEIVED; Lead still says CREATED.
+    /activeKpi === "lead_unpaid" \? "created" : activeKpi === "partner_orders" \? "received" : "completed"/.test(page));
 
   // The visible description must state Lead is the selected period, and must not
   // still describe it as all-date workload.
@@ -373,22 +378,22 @@ if (SELF) {
       from: "  pending_delivery: \"operational\",",
       to: "  pending_delivery: \"event\"," },
     { name: "Completed KPI uses payment date instead of completion date", file: FACETS, expect: "K8",
-      from: "  completed: \"completed\",\n};\n\n// ─── ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001",
-      to: "  completed: \"first_paid\",\n};\n\n// ─── ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001" },
+      from: "  completed: \"completed\",\n  // Received = immutable creation.",
+      to: "  completed: \"first_paid\",\n  // Received = immutable creation." },
     { name: "KPI counts only the currently loaded page (not a server count)", file: FACETS, expect: "K10",
       from: 'return supabase.from("orders").select("id", { count: "exact", head: true });',
       to: 'return supabase.from("orders").select("id", { count: "exact", head: false }).limit(50);' },
     { name: "Lead includes a paid order via stale failure metadata", file: FACETS, expect: "K15",
-      from: '    case "lead_unpaid": // isLeadOrder\n      return q.or("payment_intent_id.is.null,status.eq.lead");',
-      to: '    case "lead_unpaid": // isLeadOrder\n      return q.or("payment_intent_id.is.null,status.eq.lead,payment_failure_reason.not.is.null");' },
+      from: '    case "lead_unpaid": // isLeadOrder — never a partner-funded order\n      return q.or(`status.eq.lead,${NO_CONFIRMED_PAYMENT_ARM}`);',
+      to: '    case "lead_unpaid": // isLeadOrder — never a partner-funded order\n      return q.or(`status.eq.lead,${NO_CONFIRMED_PAYMENT_ARM},payment_failure_reason.not.is.null`);' },
     { name: "UTC boundaries used instead of America/New_York", file: "src/lib/orderLifecycle.ts", expect: "K9",
       from: "export function businessDayStartUtcIso",
       to: "export function businessDayStartUtcIso_UNUSED_SHADOW" },
-    // LIVE ADAPTATION of TEST's partner-leak control: here the defect is the
-    // opposite one — a promoted line that references a column LIVE does not have.
-    { name: "an order_origin reference is reintroduced (column absent on LIVE)", file: FACETS, expect: "K11",
-      from: '  if (f.payment === "paid") q = q.not("payment_intent_id", "is", null);',
-      to: '  q = q.eq("order_origin", "direct");\n  if (f.payment === "paid") q = q.not("payment_intent_id", "is", null);' },
+    // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001: the card→list mapping is
+    // the ONLY place a retail card's origin is decided, so that is what leaks.
+    { name: "a partner-origin order leaks into a retail KPI", file: FACETS, expect: "K11",
+      from: '  return { statusFilter: key, orderOrigin: "direct" };',
+      to: '  return { statusFilter: key, orderOrigin: "all" };' },
     { name: "count and list windows drift apart again", file: PAGE, expect: "K17",
       from: "  const kpiWindow = activeKpi ? kpiCardWindow(activeKpi, { from: kpiFrom, to: kpiTo }) : null;",
       to: "  const kpiWindow = activeKpi ? { dateBasis: KPI_CARD_BASIS[activeKpi], dateFrom: kpiFrom, dateTo: kpiTo } : null;" },
@@ -417,8 +422,8 @@ if (SELF) {
     // 3. Month applied to the LIST but not the CARD: the count builder stops
     //    using the shared window for Lead.
     { name: "month on the LIST but not the CARD (Lead count loses the window)", file: FACETS, expect: "K8b",
-      from: "              ...kpiCardWindow(k, range),",
-      to: "              ...(k === \"lead_unpaid\" ? { dateBasis: \"created\" } : kpiCardWindow(k, range))," },
+      from: "            ...kpiCardWindow(k, range),",
+      to: "            ...(k === \"lead_unpaid\" ? { dateBasis: \"created\" } : kpiCardWindow(k, range))," },
     // 5. Lead measured on the wrong timestamp.
     { name: "Lead uses the wrong timestamp (paid_at instead of created_at)", file: FACETS, expect: "K8b",
       from: '  lead_unpaid: "created",',

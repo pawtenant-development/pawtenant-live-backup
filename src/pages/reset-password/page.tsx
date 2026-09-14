@@ -18,7 +18,10 @@ function getPendingRecoveryLink(): string | null {
       action.protocol !== "https:" ||
       action.origin !== expectedOrigin ||
       action.pathname !== "/auth/v1/verify" ||
-      action.searchParams.get("type") !== "recovery"
+      (
+        action.searchParams.get("type") !== "recovery" &&
+        action.searchParams.get("type") !== "invite"
+      )
     ) return null;
     return action.toString();
   } catch {
@@ -130,9 +133,21 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    // Detect portal based on user role — redirect to the right login page
+    // Partner invitations are membership rows, not doctor_profiles. Accept the
+    // invitation while the verified Auth session is still present, then keep
+    // that session and take the user straight into the partner workspace.
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
+      const { error: partnerAcceptError } = await supabase.rpc(
+        "partner_portal_accept_invitation",
+      );
+      if (!partnerAcceptError) {
+        navigate("/partner-portal?passwordReset=success", { replace: true });
+        return;
+      }
+
+      // Non-partner recovery: preserve the existing provider/admin/customer
+      // role routing exactly.
       const { data: profile } = await supabase
         .from("doctor_profiles")
         .select("is_admin, is_active")
@@ -218,6 +233,12 @@ export default function ResetPasswordPage() {
                       className="whitespace-nowrap inline-flex items-center gap-2 px-5 py-2.5 bg-[#1a5c4f] text-white text-sm font-bold rounded-lg hover:bg-[#17504a] cursor-pointer"
                     >
                       <i className="ri-user-line"></i>Customer Sign In
+                    </Link>
+                    <Link
+                      to="/partner-portal"
+                      className="whitespace-nowrap inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-50 cursor-pointer"
+                    >
+                      <i className="ri-building-line"></i>Partner Sign In
                     </Link>
                     <Link
                       to="/provider-login"

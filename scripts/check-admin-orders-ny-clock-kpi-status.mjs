@@ -84,7 +84,7 @@ export function stripComments(src) {
 
 /** The KPI card array block (between the 5-col grid and the .map). */
 export function kpiCardBlock(page) {
-  const grid = page.indexOf("lg:grid-cols-5");
+  const grid = page.indexOf("lg:grid-cols-6");
   if (grid < 0) return "";
   const end = page.indexOf("].map((s)", grid);
   return end < 0 ? "" : page.slice(grid, end);
@@ -206,8 +206,10 @@ const CHECKS = [
     const p = stripComments(read(PAGE));
     // Seeded from the URL on first render (§13) rather than adopted in an
     // effect — see readKpiParam. It is still the ONE piece of KPI state.
+    // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001: the tab AND the origin
+    // are derived from the card through ONE mapping (kpiCardListSelection).
     return /const \[activeKpi, setActiveKpi\] = useState<KpiCardKey \| null>\(\(\) => readKpiParam\(window\.location\.search\)\)/.test(p)
-      && /setStatusFilter\(key \?\? "all"\)/.test(p);
+      && /const sel = kpiCardListSelection\(key\);\s*setStatusFilter\(sel\.statusFilter\);\s*setOriginFilter\(sel\.orderOrigin\);/.test(p);
   }],
   ["N20", "a manual status tab click clears the KPI card", () => {
     const p = stripComments(read(PAGE));
@@ -237,7 +239,7 @@ const CHECKS = [
     if (!m) return false;
     const labels = [...m[1].matchAll(/: "([^"]+)"/g)].map((x) => x[1]);
     return JSON.stringify(labels) === JSON.stringify(
-      ["Lead (Unpaid)", "Paid (Unassigned)", "Under Review", "Pending Delivery", "Completed"]);
+      ["Lead (Unpaid)", "Paid (Unassigned)", "Under Review", "Pending Delivery", "Completed", "Partner Orders"]);
   }],
   ["N23", "the retired EVENT labels are gone", () => {
     const p = stripComments(read(PAGE)) + stripComments(read(FACET));
@@ -272,7 +274,9 @@ const CHECKS = [
     const i = f.indexOf("export async function fetchKpiCardCounts");
     if (i < 0) return false;
     const body = f.slice(i, f.indexOf("\n}", i));
-    return /applyBucket\(\s*applyNonStatusFilters\(/.test(body);
+    // The KPI count is now the list predicate itself (applyListPredicates =
+    // applyListStatus + applyNonStatusFilters), keyed by kpiCardListSelection.
+    return /applyListPredicates\(newCountQuery\(\)/.test(body) && /kpiCardListSelection\(k\)/.test(body);
   }],
   // ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001 — N27/N28 previously pinned the two
   // LITERAL expressions that built the window on each side. That encoded the old

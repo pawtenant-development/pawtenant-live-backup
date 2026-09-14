@@ -2,7 +2,8 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { BrowserRouter, useNavigate, useLocation } from "react-router-dom";
 import { AppRoutes } from "./router";
 import { AdminSubdomainRoutes } from "./router/adminRoutes";
-import { isAdminSubdomain } from "./lib/subdomainConfig";
+import { CustomerSubdomainRoutes, PartnerSubdomainRoutes } from "./router/portalRoutes";
+import { getPortalHostname } from "./lib/subdomainConfig";
 import { I18nextProvider } from "react-i18next";
 import i18n from "./i18n";
 import ScrollToTop from "./components/feature/ScrollToTop";
@@ -384,10 +385,30 @@ function AdminApp() {
   );
 }
 
+function DedicatedPortalApp({ portal }: { portal: "customer" | "partner" }) {
+  return (
+    <ErrorBoundary>
+      <I18nextProvider i18n={i18n}>
+        <BrowserRouter basename={__BASE_PATH__}>
+          <ScrollToTop />
+          <UTMCapture />
+          <AuthHandler />
+          <DeferredServicesGate />
+          {portal === "partner" ? <PartnerSubdomainRoutes /> : <CustomerSubdomainRoutes />}
+        </BrowserRouter>
+      </I18nextProvider>
+    </ErrorBoundary>
+  );
+}
+
 function App() {
   // ── Subdomain gate ────────────────────────────────────────────────────────
-  if (isAdminSubdomain()) {
+  const portalHostname = getPortalHostname();
+  if (portalHostname === "admin") {
     return <AdminApp />;
+  }
+  if (portalHostname === "partner" || portalHostname === "customer") {
+    return <DedicatedPortalApp portal={portalHostname} />;
   }
 
   // ── Public site (pawtenant.com) ───────────────────────────────────────────

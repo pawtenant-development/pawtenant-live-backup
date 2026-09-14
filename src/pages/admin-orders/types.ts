@@ -154,6 +154,21 @@ export interface Order {
   quote_locked_at?: string | null;
   first_touch_json?: AttributionSnapshot | null;
   last_touch_json?: AttributionSnapshot | null;
+  // ── PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 ────────────────────────────
+  // Origin + the immutable per-order policy snapshots. Identity and policy
+  // ONLY: the wholesale fee, the provider-earning snapshot and the fulfillment
+  // margin deliberately live in partner_order_financials (admin-only RLS), so
+  // they can never reach a provider-facing surface through the Order type.
+  order_origin?: "direct" | "partner" | null;
+  partner_id?: string | null;
+  partner_order_id?: string | null;
+  partner_support_owner?: string | null;
+  partner_communication_policy?: "pawtenant_managed" | "partner_managed" | null;
+  partner_document_policy?: "pawtenant_branded" | "partner_neutral" | null;
+  partner_accepted_at?: string | null;
+  partner_clinical_completed_at?: string | null;
+  /** PARTNER-MULTI-BRAND-MANUAL-PDF-ORDER-INGESTION-001 — how the partner order arrived. */
+  partner_intake_method?: "api" | "manual" | "partner_portal_manual" | null;
   // Customer-portal-only fields — read by CustomerPortalPreview + my-orders
   additional_documents_requested?: { types?: string[]; otherDescription?: string } | null;
   user_id?: string | null;

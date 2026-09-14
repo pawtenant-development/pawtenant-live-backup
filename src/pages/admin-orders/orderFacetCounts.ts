@@ -38,8 +38,31 @@ import {
   type OrderDateBasis,
 } from "../../lib/orderLifecycle";
 
+/**
+ * PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 (slice 3).
+ *
+ * Which ORIGIN of order a count/list surface is asking about.
+ *
+ *   "direct"  — PawTenant retail orders only. The historical universe.
+ *   "partner" — B2B fulfillment orders only (Rapid ESA Letter today).
+ *   "all"     — both. Reserved for surfaces that are explicitly cross-origin.
+ *
+ * Partner orders are wholesale fulfillment work, not retail sales: the customer
+ * paid the PARTNER, and `orders.price` / `payment_intent_id` / `stripe_*` are
+ * deliberately NULL on them. Letting one into a retail KPI would report revenue
+ * that does not exist and a "lead" that was never ours to convert.
+ */
+export type OrderOriginFilter = "direct" | "partner" | "all";
+
 // Non-status filters, exactly as the list holds them.
 export interface FacetFilters {
+  // PARTNER-...-001: origin segregation. OMITTING THIS MEANS "direct" — see
+  // applyOrderOriginFilter for why the default is not "all".
+  orderOrigin?: OrderOriginFilter;
+  // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001: narrow partner orders to
+  // ONE organisation. "all" / undefined = every partner. Applied inside the
+  // same funnel, so the Partner Orders card and its list agree by construction.
+  partnerId?: string;
   // ADMIN-ORDERS-LIFECYCLE-DATE-SEMANTICS-001: which date the From/To bounds
   // apply to. Defaults to "created" so an omitted basis keeps the historical
   // behaviour exactly. The list passes the ACTIVE basis, so the cards and the
@@ -148,7 +171,55 @@ function applySequenceFilter(q: Q, sequence: string): Q {
 
 // Apply every SQL-able NON-STATUS filter. Never applies statusFilter and never
 // applies the client-only filters.
+/**
+ * THE order-origin predicate. One implementation, applied inside
+ * applyNonStatusFilters — which is the single funnel shared by the row query,
+ * the list scope total, the ten lifecycle facets, the KPI cards and the
+ * sequence chips. Segregation is therefore STRUCTURAL: a count and the list it
+ * produces cannot disagree about origin, because there is only one place that
+ * decides.
+ *
+ * THE DEFAULT IS "direct", NOT "all", AND THAT IS THE POINT.
+ * Every pre-existing call site omits `orderOrigin`. Defaulting to "all" would
+ * have silently leaked partner orders into every retail KPI the moment the
+ * first one was ingested, and nothing would have failed loudly. Defaulting to
+ * "direct" means a call site that forgets the field under-reports partner work
+ * (visible, recoverable) instead of contaminating retail revenue (invisible,
+ * corrupting). A surface that genuinely wants both must say so.
+ */
+function applyOrderOriginFilter(q: Q, f: FacetFilters): Q {
+  const origin: OrderOriginFilter = f.orderOrigin ?? "direct";
+  if (origin === "all") return q;
+  return q.eq("order_origin", origin);
+}
+
+// ─── PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 ─────────────────────────
+//
+// WHAT "PAID" MEANS, in PostgREST, exactly as order_workflow_state() says it:
+// a customer PaymentIntent, OR a partner-funded order (order_origin = partner)
+// whose acceptance stamped paid_at. Partner orders carry NO PaymentIntent by
+// design, so the old `payment_intent_id.not.is.null` trunk classified every
+// one of them as an unpaid lead the moment they entered the main list. Both
+// arms are written once here and reused by every bucket, the payment filter
+// and the default scope — one definition, so a queue and its tab cannot
+// disagree about a partner order.
+export const CONFIRMED_PAYMENT_ARM =
+  "payment_intent_id.not.is.null,and(order_origin.eq.partner,paid_at.not.is.null)";
+// NULL order_origin (legacy direct rows) must count as "not partner": neq on a
+// NULL is NULL in PostgREST, so the null case is spelled out.
+export const NO_CONFIRMED_PAYMENT_ARM =
+  "and(payment_intent_id.is.null,or(order_origin.is.null,order_origin.neq.partner,paid_at.is.null))";
+
+function requireConfirmedPayment(q: Q): Q {
+  return q.or(CONFIRMED_PAYMENT_ARM);
+}
+
 function applyNonStatusFilters(q: Q, f: FacetFilters): Q {
+  // FIRST, always. Origin is the outermost scope: it decides which universe the
+  // rest of the filters are narrowing.
+  q = applyOrderOriginFilter(q, f);
+  if (f.partnerId && f.partnerId !== "all") q = q.eq("partner_id", f.partnerId);
+
   // Date — identical instants to the list's client predicate, applied to the
   // ACTIVE basis column. MONTH-END-...-001 §D: bounds are BUSINESS-timezone
   // calendar days (America/New_York, inclusive start, EXCLUSIVE next-day end),
@@ -167,8 +238,8 @@ function applyNonStatusFilters(q: Q, f: FacetFilters): Q {
     if (f.dateTo) q = q.lt(col, businessDayEndExclusiveUtcIso(f.dateTo));
   }
 
-  if (f.payment === "paid") q = q.not("payment_intent_id", "is", null);
-  else if (f.payment === "unpaid") q = q.is("payment_intent_id", null);
+  if (f.payment === "paid") q = requireConfirmedPayment(q);
+  else if (f.payment === "unpaid") q = q.or(NO_CONFIRMED_PAYMENT_ARM);
 
   if (f.state && f.state !== "all") q = q.eq("state", f.state);
 
@@ -192,8 +263,19 @@ function applyNonStatusFilters(q: Q, f: FacetFilters): Q {
   const term = (f.search ?? "").trim();
   if (term) {
     const a = safeIlikeArg(term);
+    // PARTNER-...-001: partner_order_id is an ORDER IDENTIFIER, exactly like
+    // confirmation_id, and an operator handling a partner query has the
+    // PARTNER'S reference in front of them — it is the only id the partner's
+    // support agent can quote. It is searched on the SAME predicate rather than
+    // in a second partner-specific search, so there is still one search
+    // implementation.
+    //
+    // Safe for retail: direct orders have partner_order_id IS NULL, and an
+    // ilike never matches NULL, so the retail result set is unchanged. Origin
+    // segregation is enforced separately by applyOrderOriginFilter, so widening
+    // the searched columns cannot leak a partner order into retail.
     q = q.or(
-      `confirmation_id.ilike.${a},email.ilike.${a},first_name.ilike.${a},last_name.ilike.${a},state.ilike.${a},doctor_name.ilike.${a},phone.ilike.${a},ghl_contact_id.ilike.${a}`,
+      `confirmation_id.ilike.${a},partner_order_id.ilike.${a},email.ilike.${a},first_name.ilike.${a},last_name.ilike.${a},state.ilike.${a},doctor_name.ilike.${a},phone.ilike.${a},ghl_contact_id.ilike.${a}`,
     );
   }
   return q;
@@ -208,15 +290,15 @@ function excludeRefundedBucket(q: Q): Q {
 // Add a single bucket's status predicate to an already-non-status-filtered query.
 function applyBucket(q: Q, bucket: FacetBucket): Q {
   switch (bucket) {
-    case "lead_unpaid": // isLeadOrder
-      return q.or("payment_intent_id.is.null,status.eq.lead");
+    case "lead_unpaid": // isLeadOrder — never a partner-funded order
+      return q.or(`status.eq.lead,${NO_CONFIRMED_PAYMENT_ARM}`);
     case "paid_unassigned": // isPaidUnassigned
       return excludeRefundedBucket(
-        q.not("payment_intent_id", "is", null).neq("status", "lead"),
+        requireConfirmedPayment(q).neq("status", "lead"),
       ).or("doctor_status.is.null,doctor_status.neq.patient_notified").is("doctor_email", null).is("doctor_user_id", null);
     case "under_review": // isUnderReview
       return excludeRefundedBucket(
-        q.not("payment_intent_id", "is", null).neq("status", "lead"),
+        requireConfirmedPayment(q).neq("status", "lead"),
       ).or("doctor_status.is.null,doctor_status.neq.patient_notified")
         // ADMIN-ORDER-PENDING-DELIVERY-WORKFLOW-LIVE-ROLLOUT-001: Under Review must
         // EXCLUDE Pending Delivery, or the two tabs would double-count the same
@@ -229,7 +311,7 @@ function applyBucket(q: Q, bucket: FacetBucket): Q {
       // the same row-level fact the SQL classifier uses. Refunded/cancelled orders
       // are excluded so the queue only shows actionable work.
       return excludeRefundedBucket(
-        q.not("payment_intent_id", "is", null).neq("status", "lead"),
+        requireConfirmedPayment(q).neq("status", "lead"),
       ).eq("doctor_status", "pending_admin_approval");
     case "completed": // list defn: doctor_status = patient_notified (does not exclude refunded)
       return q.eq("doctor_status", "patient_notified");
@@ -240,7 +322,7 @@ function applyBucket(q: Q, bucket: FacetBucket): Q {
     case "cancelled":
       return q.eq("status", "cancelled");
     case "payment_failed":
-      return q.not("payment_failure_reason", "is", null).or("status.eq.lead,payment_intent_id.is.null");
+      return q.not("payment_failure_reason", "is", null).or(`status.eq.lead,${NO_CONFIRMED_PAYMENT_ARM}`);
     case "archived":
       return q.eq("status", "archived");
   }
@@ -287,7 +369,7 @@ export function defaultScopeCutoffIso(now: Date = new Date()): string {
  */
 function paidOpenQueueArm(): string {
   return [
-    "and(payment_intent_id.not.is.null",
+    `and(or(${CONFIRMED_PAYMENT_ARM})`,
     "status.neq.lead",
     "status.neq.cancelled",
     "status.neq.refunded",
@@ -342,6 +424,17 @@ export function applyListStatus(q: Q, statusFilter: string): Q {
  * full-dataset number, and selecting that tab shows a full-dataset list.
  */
 export function isDefaultScopeEligible(f: FacetFilters, statusFilter: string): boolean {
+  // PARTNER-...-001: the 60-day window is a RETAIL affordance — it exists so an
+  // untouched list of hundreds of retail orders opens fast. Partner volume is
+  // small, and silently hiding a partner case older than 60 days would look
+  // like the order was never ingested. Non-direct surfaces always see the full
+  // dataset.
+  // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001: the mixed default view
+  // ("all") keeps the window — the paid-open-queue arm now recognises
+  // partner-funded work, so an old open partner case still surfaces. A
+  // partner-only view stays unwindowed.
+  if ((f.orderOrigin ?? "direct") === "partner") return false;
+  if (f.partnerId && f.partnerId !== "all") return false;
   if (statusFilter !== "all") return false;
   if ((f.search ?? "").trim()) return false;
   if (f.dateFrom || f.dateTo) return false;
@@ -482,11 +575,27 @@ export async function fetchOrderFacetCounts(f: FacetFilters): Promise<FacetCount
 // uses for the list total. There is one predicate builder, so the card count and
 // the clicked list cannot drift apart by construction.
 export type KpiCardKey =
-  | "lead_unpaid" | "paid_unassigned" | "under_review" | "pending_delivery" | "completed";
+  | "lead_unpaid" | "paid_unassigned" | "under_review" | "pending_delivery" | "completed"
+  // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — partner-funded orders
+  // received in the period. A COUNT of orders, never a money figure.
+  | "partner_orders";
 
 export const KPI_CARD_KEYS: KpiCardKey[] = [
-  "lead_unpaid", "paid_unassigned", "under_review", "pending_delivery", "completed",
+  "lead_unpaid", "paid_unassigned", "under_review", "pending_delivery", "completed", "partner_orders",
 ];
+
+/**
+ * THE mapping from a clicked card to the list it opens: its status tab and the
+ * origin it is scoped to. The five retail cards are pinned to direct orders
+ * (partner charges must never enter retail figures); the Partner Orders card is
+ * pinned to partner orders on the All tab. fetchKpiCardCounts() builds each
+ * count through this same function, so the number on the card and the rows
+ * behind it are the same predicate by construction.
+ */
+export function kpiCardListSelection(key: KpiCardKey): { statusFilter: string; orderOrigin: OrderOriginFilter } {
+  if (key === "partner_orders") return { statusFilter: "all", orderOrigin: "partner" };
+  return { statusFilter: key, orderOrigin: "direct" };
+}
 
 /**
  * The stage-entry date column each card measures its range against. These are
@@ -505,6 +614,8 @@ export const KPI_CARD_BASIS: Record<KpiCardKey, OrderDateBasis> = {
   under_review: "under_review_entered",
   pending_delivery: "pending_delivery_entered",
   completed: "completed",
+  // Received = immutable creation. Assignment, invoicing or payment never move it.
+  partner_orders: "created",
 };
 
 // ─── ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001 ────────────────────────────────
@@ -551,6 +662,9 @@ export const KPI_CARD_KIND: Record<KpiCardKey, KpiCardKind> = {
   under_review: "operational",
   pending_delivery: "operational",
   completed: "event",
+  // "Partner orders received this period" — an event on created_at, so the
+  // period selector applies exactly as it does to Completed.
+  partner_orders: "event",
 };
 
 /**
@@ -585,6 +699,7 @@ export const KPI_CARD_LABEL: Record<KpiCardKey, string> = {
   under_review: "Under Review",
   pending_delivery: "Pending Delivery",
   completed: "Completed",
+  partner_orders: "Partner Orders",
 };
 
 export interface KpiCardCounts {
@@ -610,6 +725,7 @@ export async function fetchKpiCardCounts(
 
   const empty: Record<KpiCardKey, number | null> = {
     lead_unpaid: null, paid_unassigned: null, under_review: null, pending_delivery: null, completed: null,
+    partner_orders: null,
   };
   // Same owner contract as the facet counts: refuse to publish a silently-wrong
   // number rather than show one that the list cannot reproduce.
@@ -617,20 +733,22 @@ export async function fetchKpiCardCounts(
 
   try {
     const results = await Promise.all(
-      KPI_CARD_KEYS.map((k) =>
-        runCount(
-          applyBucket(
-            applyNonStatusFilters(newCountQuery().neq("status", "archived"), {
-              ...f,
-              // ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001: the SAME helper the
-              // list uses to build its effective window (page.tsx). Operational
-              // queues come back with no range — current inventory, all dates.
-              ...kpiCardWindow(k, range),
-            }),
-            k,
-          ),
-        ),
-      ),
+      KPI_CARD_KEYS.map((k) => {
+        // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001: the card count is the
+        // LIST predicate for the selection the card opens — same status tab,
+        // same origin, same window — built by applyListPredicates itself.
+        const sel = kpiCardListSelection(k);
+        return runCount(
+          applyListPredicates(newCountQuery(), {
+            ...f,
+            // ADMIN-ORDERS-KPI-TO-LIST-CONSISTENCY-001: the SAME helper the
+            // list uses to build its effective window (page.tsx). Operational
+            // queues come back with no range — current inventory, all dates.
+            ...kpiCardWindow(k, range),
+            orderOrigin: sel.orderOrigin,
+          }, sel.statusFilter),
+        );
+      }),
     );
     const counts = { ...empty };
     KPI_CARD_KEYS.forEach((k, i) => { counts[k] = results[i]; });

@@ -12,6 +12,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { mayBrandOrderDocuments } from "../_shared/partnerDocumentGate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -63,6 +64,30 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log(`[issue-letter-verification] Processing for order ${confirmationId} (${orderId})`);
+
+    // ── PARTNER DOCUMENT ISOLATION GATE ───────────────────────────────────────
+    //
+    // PARTNER-CLINICAL-FULFILLMENT-FOUNDATION-001 Slice 5. A PawTenant
+    // Verification ID is a PawTenant identity artefact displayed in the owning
+    // customer's portal and resolvable at pawtenant.com/verify/:id. It is never
+    // embedded in the clinical PDF. A partner-origin order must not own one.
+    //
+    // Placed FIRST — before the order fetch, before the idempotency checks and
+    // long before the insert — so a partner order can neither create a record nor
+    // be handed an existing one by the "reused" branches.
+    const brandingGate = await mayBrandOrderDocuments(supabase, orderId);
+    if (!brandingGate.allowed) {
+      console.log(
+        `[issue-letter-verification] refusing ${confirmationId}: ${brandingGate.reason} — ${brandingGate.detail}`,
+      );
+      return json({
+        ok: false,
+        skipped: true,
+        reason: brandingGate.reason,
+        detail: brandingGate.detail,
+        error: "A PawTenant verification ID cannot be issued for this order.",
+      }, 422);
+    }
 
     const { data: order, error: orderErr } = await supabase
       .from("orders")

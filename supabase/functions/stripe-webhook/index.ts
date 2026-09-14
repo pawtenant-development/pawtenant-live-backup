@@ -1107,6 +1107,35 @@ Deno.serve(async (req: Request) => {
   if (t === "invoice.paid") {
     const invoice = event.data.object; const amt = Math.round((invoice.amount_paid ?? 0) / 100); const billing = invoice.billing_reason; const cid = invoice.subscription_details?.metadata?.confirmation_id;
 
+    // ── PARTNER RECEIVABLE ────────────────────────────────────────────────
+    // PARTNER-PORTAL-MANUAL-ORDER-BILLING-AND-SIMPLE-ASSESSMENT-002.
+    //
+    // A partner invoice is a BUSINESS receivable, not a customer purchase. It
+    // is recognised by our own metadata (never by an amount, an email or a
+    // guess) and handled here, before any customer/subscription branch can see
+    // it, then returned.
+    //
+    // All it does is mark the invoice paid and move its orders to
+    // `invoice_paid_unreconciled`. It does NOT complete a clinical order, move
+    // a provider, deliver a document, message a customer, create a provider
+    // earning, or set any individual order to `paid` — an admin does that by
+    // hand. The RPC is idempotent, so a replayed Stripe event changes nothing.
+    if (invoice?.metadata?.pawtenant_kind === "partner_receivable") {
+      const { data: partnerResult, error: partnerErr } = await supabase.rpc("partner_record_stripe_invoice_paid", {
+        p_stripe_invoice_id: invoice.id,
+        p_amount_paid_cents: invoice.amount_paid ?? 0,
+        p_currency: (invoice.currency ?? "usd").toUpperCase(),
+        p_paid_at: new Date(((invoice.status_transitions?.paid_at ?? event.created) as number) * 1000).toISOString(),
+        p_stripe_event_id: event.id,
+      });
+      if (partnerErr) {
+        console.error(`[stripe-webhook] partner invoice ${invoice.id} could not be recorded: ${partnerErr.message}`);
+        return json({ ok: false, type: t, partner_invoice: true, error: "record_failed" }, 500);
+      }
+      console.info(`[stripe-webhook] partner invoice ${invoice.id} recorded paid`, partnerResult);
+      return json({ ok: true, type: t, partner_invoice: true, result: partnerResult });
+    }
+
     // ORDER-LINKED-CUSTOM-STRIPE-INVOICE-001 — reconciled by the shared helper,
     // which is also reachable from invoice.payment_succeeded and from the admin
     // "sync" recovery action. Runs BEFORE the subscription branches below,
@@ -1136,6 +1165,14 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true, type: t, billing, amount: amt });
   }
   if (t === "invoice.payment_succeeded") {
+    // A partner receivable is acknowledged and returned here too. Stripe may
+    // deliver either event, and the customer reconciliation below must never
+    // see a business invoice — PARTNER-PORTAL-MANUAL-ORDER-BILLING-AND-SIMPLE-
+    // ASSESSMENT-002. `invoice.paid` is what actually records the payment; this
+    // branch only refuses to mis-handle the sibling event.
+    if (event.data.object?.metadata?.pawtenant_kind === "partner_receivable") {
+      return json({ ok: true, type: t, partner_invoice: true, recorded_by: "invoice.paid" });
+    }
     // Same reconciliation as invoice.paid. Whichever event this endpoint is
     // actually subscribed to, the custom payment settles exactly once — the
     // helper's guarded update makes the second one a no-op.

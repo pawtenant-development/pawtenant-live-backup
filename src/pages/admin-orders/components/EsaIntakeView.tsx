@@ -18,6 +18,10 @@ import {
   formatDob,
   formatSubmitDate,
 } from "./assessmentUtils";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — a partner order never
+// shows the branded intake form; it renders the neutral assessment instead.
+import PartnerNeutralAssessment from "../../../components/partner/PartnerNeutralAssessment";
+import { isPartnerOrder } from "../../../lib/partnerOrder";
 
 export default function EsaIntakeView({
   order,
@@ -31,6 +35,17 @@ export default function EsaIntakeView({
   const dob = a.dob as string | undefined;
   const stateName = STATE_NAMES[order.state ?? ""] ?? order.state ?? "—";
   const fullName = [order.first_name, order.last_name].filter(Boolean).join(" ") || "—";
+  // PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002: every INTERNAL view
+  // (admin) renders the one neutral assessment, as does every partner order.
+  // Only the customer's own portal copy of a direct order keeps the branded
+  // intake form below — customer-facing documents are out of scope.
+  if (isPartnerOrder(order) || variant === "admin") {
+    return (
+      <div className="px-4 sm:px-8 py-6">
+        <PartnerNeutralAssessment order={order} audience={variant === "admin" ? "admin" : "provider"} />
+      </div>
+    );
+  }
 
   const hasAnyAnswers = QUESTIONNAIRE_ITEMS.some(({ key }) => {
     const v = a[key];

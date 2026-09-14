@@ -1,6 +1,17 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// ADMIN-ORDER-...-QA-CLOSURE — defence in depth. admin-review-document already
+// gates the customer email in the CALLER, but this function is also reached
+// directly by provider-submit-letter's gate-disabled auto-delivery path (Phase 1)
+// and by any future caller, so the send point carries its own gate.
+import { evaluateNotificationSuppression } from "../_shared/testNotificationSuppression.ts";
+// Slice 6: partner-managed orders complete clinically but the customer-facing
+// delivery (email + GHL) belongs to the partner.
+import { auditSuppressedCustomerContact, gateCustomerContact } from "../_shared/partnerCommsGate.ts";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — the PARTNER contact (never
+// the customer) is told that clinical work on its order is complete.
+import { sendEmailViaResend } from "../_shared/resendClient.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -454,6 +465,190 @@ Deno.serve(async (req: Request) => {
   //
   // Every real reservation = a fresh communications row, exactly as the
   // user-facing comms timeline requires.
+  // ── Slice 6 partner boundary ──────────────────────────────────────────────
+  // On a partner-managed order the CLINICAL COMPLETION is real — the provider
+  // finished the work, the case must classify as completed and the provider
+  // must be paid — but the customer-facing delivery belongs to the partner.
+  // So this branch performs the state transition and the earning self-heal,
+  // and deliberately does NOT: reserve a communications row, compose or send
+  // the email, stamp patient_notification_sent_at (PawTenant did not notify
+  // the patient — writing the timestamp would be a false delivery claim), or
+  // fire the GHL workflow.
+  const contactGate = await gateCustomerContact(supabase, { orderId: order.id as string, confirmationId }, {
+    channel: "email",
+    event: "letter_delivery",
+    source: "notify-patient-letter",
+  });
+  if (!contactGate.allowed) {
+    const { error: partnerUpdateErr } = await supabase.from("orders")
+      .update({ doctor_status: "patient_notified", status: "completed" })
+      .eq("confirmation_id", confirmationId);
+    if (partnerUpdateErr) return jsonResp({ error: `Failed to update order: ${partnerUpdateErr.message}` }, 500);
+
+    let partnerEarningCreated = false;
+    const partnerDoctorUserId = order.doctor_user_id ?? userId;
+    try {
+      const { data: existingBase } = await supabase.from("doctor_earnings").select("id").eq("confirmation_id", confirmationId).eq("earning_type", "base").neq("status", "cancelled").order("created_at", { ascending: true }).limit(1).maybeSingle();
+      if (!existingBase && partnerDoctorUserId) {
+        const { data: doctorProfile } = await supabase.from("doctor_profiles").select("full_name, email, per_order_rate").eq("user_id", partnerDoctorUserId).maybeSingle();
+        const perOrderRate = (doctorProfile as { per_order_rate?: number | null } | null)?.per_order_rate ?? null;
+        const partnerPatientName = `${order.first_name ?? ""} ${order.last_name ?? ""}`.trim() || order.email;
+        // order_amount is NULL by policy: a partner case has no PawTenant
+        // retail value, and neither the partner's price nor the wholesale fee
+        // may enter the provider-visible ledger. doctor_amount stays the
+        // existing approved provider rate (doctor_profiles.per_order_rate).
+        const { error: earnErr } = await supabase.from("doctor_earnings").insert({ doctor_user_id: partnerDoctorUserId, doctor_name: doctorProfile?.full_name ?? order.doctor_name ?? "", doctor_email: doctorProfile?.email ?? order.doctor_email ?? "", order_id: order.id, confirmation_id: confirmationId, patient_name: partnerPatientName, patient_state: order.state ?? "", order_amount: null, doctor_amount: perOrderRate, status: "pending", earning_type: "base" });
+        if (!earnErr) partnerEarningCreated = true;
+        else if ((earnErr as { code?: string }).code !== "23505") console.warn("[notify-patient-letter] partner earnings insert error:", earnErr.message);
+      }
+    } catch (err) { console.warn("[notify-patient-letter] partner earnings insert error:", err); }
+
+    // The gate already audited the suppressed email; record the withheld GHL
+    // workflow event separately so the audit trail names every channel.
+    await auditSuppressedCustomerContact(supabase, {
+      orderId: order.id as string,
+      confirmationId,
+      channel: "ghl",
+      event: "documents_ready_for_patient",
+      source: "notify-patient-letter",
+      reason: contactGate.reason ?? "partner_policy_suppressed",
+    });
+
+    // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — notify the PARTNER's
+    // configured completion contact. Minimum necessary: partner reference,
+    // PawTenant order id, status, portal path. No customer name, no clinical
+    // content, no provider identity, no economics. The customer is never a
+    // recipient here; the partner owns delivery.
+    let partnerContactNotified = false;
+    let partnerContactSuppressed = false;
+    /** A previous completion already claimed this order's partner notice. */
+    let partnerContactAlreadyNotified = false;
+    try {
+      const { data: partnerRow } = await supabase.from("orders")
+        .select("partner_id, partner_order_id").eq("id", order.id as string).maybeSingle();
+      const partnerId = (partnerRow as { partner_id?: string | null } | null)?.partner_id ?? null;
+      const rawRef = (partnerRow as { partner_order_id?: string | null } | null)?.partner_order_id ?? null;
+      const partnerRef = rawRef && !rawRef.startsWith("portal-") ? rawRef : null;
+      const { data: org } = partnerId
+        ? await supabase.from("partner_organizations").select("completion_notification_email").eq("id", partnerId).maybeSingle()
+        : { data: null };
+      const contact = ((org as { completion_notification_email?: string | null } | null)?.completion_notification_email ?? "").trim();
+      if (contact) {
+        const site = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://pawtenant.com").replace(/\/$/, "");
+        const portalUrl = `${site}/partner-portal`;
+        const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        const lines = [
+          `Order reference: ${confirmationId}`,
+          partnerRef ? `Your reference: ${partnerRef}` : null,
+          `Status: Clinical work completed`,
+          `Retrieve the document in your portal: ${portalUrl}`,
+        ].filter((l): l is string => Boolean(l));
+        const html = `<div style="font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#111;line-height:1.6">` +
+          `<p>Clinical work on one of your orders is complete and the document is ready for retrieval.</p>` +
+          `<table style="border-collapse:collapse">` +
+          lines.map((l) => { const [k, ...rest] = l.split(": "); return `<tr><td style="padding:3px 12px 3px 0;color:#555">${esc(k)}</td><td style="padding:3px 0;font-weight:bold">${esc(rest.join(": "))}</td></tr>`; }).join("") +
+          `</table><p style="font-size:12px;color:#666">This message contains no customer or clinical details. Sign in to the portal to retrieve the document.</p></div>`;
+        const subject = `Clinical work completed — ${confirmationId}${partnerRef ? ` (${partnerRef})` : ""}`;
+        // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 closure — IDEMPOTENCY.
+        //
+        // Clinical completion is retryable: admin force-complete, a provider
+        // re-submit and the ordinary notify path can all reach this branch for
+        // the SAME order. Without a claim, every retry sent the partner another
+        // "work completed" email for work that completed once.
+        //
+        // The dedupe key is PERMANENT and per-order (unlike letter_delivery's
+        // time-bucketed key, which exists so an admin CAN deliberately resend to
+        // a customer). A partner completion notice is a once-per-order event, so
+        // a second completion must claim nothing and send nothing.
+        //
+        // Claim BEFORE the send, and release the claim on failure: an exception
+        // between claiming and finalising would otherwise leave the row in
+        // "sending" forever, which reads as a delivered notice that never went.
+        // A row that finished "failed" (Resend outage) is recyclable — the
+        // partner must still learn the order completed — while a row that
+        // finished "sent" is never recycled, which is the guarantee itself.
+        const partnerDedupeKey = `${confirmationId}:partner_completion`;
+        const suppression = evaluateNotificationSuppression(contact);
+        const reservePartner = await reserveEmailSend({
+          supabase,
+          orderId: order.id as string,
+          confirmationId,
+          to: contact,
+          from: FROM_ADDRESS,
+          subject,
+          slug: "partner_completion",
+          dedupeKey: partnerDedupeKey,
+          templateSource: "hardcoded",
+          sentBy: "partner_completion_contact",
+          allowRetryAfterFailed: true,
+          staleClaimMinutes: 15,
+        });
+        if (!reservePartner.proceed) {
+          // Already notified for this order. Say so honestly and send nothing.
+          partnerContactAlreadyNotified = true;
+          console.info(`[notify-patient-letter] partner completion DEDUPED for ${confirmationId}`);
+        } else {
+          try {
+            if (suppression.suppressed) {
+              partnerContactSuppressed = true;
+              await finalizeEmailSend(supabase, reservePartner.rowId, {
+                success: false,
+                body: html,
+                errorMessage: `SUPPRESSED (TEST fixture): ${suppression.reason}`,
+              });
+            } else {
+              const sent = await sendEmailViaResend({
+                from: FROM_ADDRESS,
+                to: [contact],
+                subject,
+                html,
+                text: lines.join("\n"),
+                tags: [{ name: "email_type", value: "partner_completion" }, { name: "confirmation_id", value: confirmationId }],
+              });
+              partnerContactNotified = sent.ok;
+              await finalizeEmailSend(supabase, reservePartner.rowId, {
+                success: sent.ok,
+                body: html,
+                resendId: sent.ok ? (sent.messageId ?? null) : null,
+                errorMessage: sent.ok ? null : sent.error,
+              });
+            }
+          } catch (sendErr) {
+            // Release the claim so the partner can still be told later.
+            await finalizeEmailSend(supabase, reservePartner.rowId, {
+              success: false,
+              errorMessage: sendErr instanceof Error ? sendErr.message : String(sendErr),
+            });
+            throw sendErr;
+          }
+          await supabase.from("audit_logs").insert({
+            actor_type: "system", actor_name: "notify-patient-letter", actor_role: "system",
+            object_type: "partner_platform", object_id: order.id as string,
+            action: "partner_completion_notified", entity_type: "order", entity_id: order.id as string,
+            order_id: order.id as string, category: "partner_platform", source: "notify-patient-letter",
+            metadata: { confirmation_id: confirmationId, partner_id: partnerId, sent: partnerContactNotified, suppressed: partnerContactSuppressed, has_partner_reference: Boolean(partnerRef) },
+          }).then(() => {}, () => {});
+        }
+      }
+    } catch (err) {
+      console.warn("[notify-patient-letter] partner completion contact:", err instanceof Error ? err.message : String(err));
+    }
+
+    return jsonResp({
+      ok: true,
+      sent: false,
+      customerEmailSuppressed: true,
+      reason: contactGate.reason,
+      message: `Clinical completion recorded for partner order ${confirmationId} — customer delivery is the partner's responsibility.`,
+      confirmationId,
+      docsEmailed: docsEmailedCount,
+      earningsCreated: partnerEarningCreated,
+      partnerContactNotified,
+      partnerContactSuppressed,
+      partnerContactAlreadyNotified,
+    });
+  }
+
   const subjectSuffixPre = docsEmailedCount > 1 ? ` (${docsEmailedCount} documents)` : "";
   const dedupeBucket = forceResend
     ? `${Date.now()}.${crypto.randomUUID().slice(0, 8)}`
@@ -508,7 +703,10 @@ Deno.serve(async (req: Request) => {
     if (!existingBase && resolvedDoctorUserId) {
       const { data: doctorProfile } = await supabase.from("doctor_profiles").select("full_name, email, per_order_rate").eq("user_id", resolvedDoctorUserId).maybeSingle();
       const perOrderRate = (doctorProfile as { per_order_rate?: number | null } | null)?.per_order_rate ?? null;
-      const { error: earnErr } = await supabase.from("doctor_earnings").insert({ doctor_user_id: resolvedDoctorUserId, doctor_name: doctorProfile?.full_name ?? order.doctor_name ?? "", doctor_email: doctorProfile?.email ?? order.doctor_email ?? "", order_id: order.id, confirmation_id: confirmationId, patient_name: patientName, patient_state: order.state ?? "", order_amount: order.price ?? 0, doctor_amount: perOrderRate, status: "pending", earning_type: "base" });
+      // Slice 6: order_amount records the RETAIL order value and only a
+      // proven-direct order has one — any other origin records NULL.
+      const retailOrderAmount = contactGate.decision?.origin === "direct" ? (order.price ?? 0) : null;
+      const { error: earnErr } = await supabase.from("doctor_earnings").insert({ doctor_user_id: resolvedDoctorUserId, doctor_name: doctorProfile?.full_name ?? order.doctor_name ?? "", doctor_email: doctorProfile?.email ?? order.doctor_email ?? "", order_id: order.id, confirmation_id: confirmationId, patient_name: patientName, patient_state: order.state ?? "", order_amount: retailOrderAmount, doctor_amount: perOrderRate, status: "pending", earning_type: "base" });
       // 23505 = unique_violation on the base-earning partial index → a concurrent run already created it; treat as success.
       if (!earnErr || (earnErr as { code?: string }).code === "23505") earningsCreated = !earnErr;
       else console.warn("[notify-patient-letter] earnings insert error:", earnErr.message);

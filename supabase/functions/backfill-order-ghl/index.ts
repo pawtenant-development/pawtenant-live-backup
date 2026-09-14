@@ -19,6 +19,8 @@
  */
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Slice 6: partner-managed orders never reach the CRM — see the gate below.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -319,6 +321,24 @@ Deno.serve(async (req: Request) => {
 
   if (orderErr || !order) {
     return json({ error: "Order not found", detail: orderErr?.message }, 404);
+  }
+
+  // ── Slice 6 partner boundary ───────────────────────────────────────────────
+  // A partner-managed order must never be synchronised into the PawTenant CRM.
+  // Worse than a leak, a backfill would MISCLASSIFY it: resolveEventType keys
+  // on payment_intent_id, and a partner order (paid by the partner, no Stripe)
+  // reads as an unpaid lead — pushing a paid partner customer straight into the
+  // lead-recovery drip. Refused here, before any GHL call, and audited.
+  {
+    const gate = await gateCustomerContact(adminClient, { confirmationId }, {
+      channel: "ghl",
+      event: "backfill_order_ghl",
+      source: "backfill-order-ghl",
+    });
+    if (!gate.allowed) {
+      console.warn(`[BACKFILL-GHL] SUPPRESSED (${gate.reason}) — order="${confirmationId}"`);
+      return json({ ok: true, skipped: "partner_policy_suppressed", reason: gate.reason });
+    }
   }
 
   // ── Resolve eventType from ACTUAL order status ────────────────────────────

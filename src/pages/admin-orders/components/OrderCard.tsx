@@ -7,6 +7,8 @@ import { AdditionalPetListChip } from "./OrderAdditionalPetPanel";
 import { supabase } from "@/lib/supabaseClient";
 import { isProviderEligibleForState } from "./providerEligibility";
 import { isRefundedBucket } from "@/lib/orderClassification";
+import { hasConfirmedPayment, isPartnerOrder, PARTNER_ORDER_INDICATOR } from "@/lib/partnerOrder";
+import { usePartnerDirectory } from "@/lib/partnerDirectory";
 // ADMIN-ORDERS-LIFECYCLE-UI-SIMPLIFICATION-001 — the list shows ONE workflow
 // badge plus an exceptional payment chip. Full lifecycle detail is in the modal.
 import { exceptionalPaymentChip, primaryBadgeTitle } from "@/lib/orderLifecycle";
@@ -171,7 +173,7 @@ function getOrderDisplayStatus(o: Order): { label: string; color: string } {
   if (o.fraud_warning) return { label: "Fraud Warning", color: "bg-red-200 text-red-800" };
   if (isRefundedBucket(o)) return { label: "Refunded", color: "bg-red-100 text-red-600" };
   if (o.doctor_status === "patient_notified" || o.doctor_status === "completed") return { label: "Completed", color: "bg-emerald-100 text-emerald-700" };
-  if (o.status === "lead" || !o.payment_intent_id) {
+  if (o.status === "lead" || !hasConfirmedPayment(o)) {
     if (o.payment_failure_reason) return { label: "Payment Failed", color: "bg-red-100 text-red-700" };
     return { label: "Lead (Unpaid)", color: "bg-amber-100 text-amber-700" };
   }
@@ -260,7 +262,13 @@ export default function OrderCard({
   const msg = assignMsg[order.confirmation_id];
   const unreadComms = unreadCommsMap[order.confirmation_id] ?? 0;
   const isPendingThisAssign = pendingAssign?.confirmationId === order.confirmation_id;
-  const isLead = order.status === "lead" || !order.payment_intent_id;
+  // PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001: a partner-funded order has
+  // no customer PaymentIntent and is NOT a lead — no recovery actions, and the
+  // assignment controls stay available.
+  const isLead = order.status === "lead" || !hasConfirmedPayment(order);
+  const partnerOrder = isPartnerOrder(order);
+  const partnerDirectory = usePartnerDirectory(partnerOrder);
+  const partnerBrand = partnerOrder ? (partnerDirectory[order.partner_id ?? ""] ?? "Partner") : null;
   const seqStatus = getSeqStatus(order);
   // REFUND-ONLY-OPERATIONAL: only operational cancellation makes an order
   // non-assignable. Refund Only (partial OR full) stays active. Not a refund field.
@@ -554,6 +562,13 @@ export default function OrderCard({
               <span className="truncate">{order.confirmation_id}</span>
               <i className={`${copied ? "ri-checkbox-circle-fill text-emerald-500" : "ri-file-copy-line"} flex-shrink-0`} style={{ fontSize: "9px" }}></i>
             </button>
+            {/* PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001: the same admin-only
+                Partner Order chip on phones (the identity block above is sm+). */}
+            {partnerOrder && (
+              <span className="sm:hidden mt-1 inline-flex max-w-full items-center gap-1 truncate rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-200" title={`${PARTNER_ORDER_INDICATOR} — ${partnerBrand}`}>
+                <i className="ri-building-line" style={{ fontSize: "9px" }}></i>{PARTNER_ORDER_INDICATOR} · {partnerBrand}
+              </span>
+            )}
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
               <span className="text-xs text-gray-400">{stateName}</span>
               <PackageChips order={order} hasPaidAddon={hasPaidAddon} size="sm" />
@@ -583,6 +598,11 @@ export default function OrderCard({
                 and the day-group heading already carry the date context, and the
                 full dates live in Order Details → Payments → Lifecycle & Payment. */}
             <p className="text-[11px] font-mono text-gray-500">{order.confirmation_id}</p>
+            {partnerOrder && (
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-200" title={`${PARTNER_ORDER_INDICATOR} — ${partnerBrand}`}>
+                <i className="ri-building-line" style={{ fontSize: "9px" }}></i>{PARTNER_ORDER_INDICATOR} · {partnerBrand}
+              </span>
+            )}
             <div className={`flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${lastActivity.bgColor} ${lastActivity.color}`} title={lastActivity.fullLabel}>
               <i className={`${lastActivity.icon}`} style={{ fontSize: "9px" }}></i><span>{lastActivity.label}</span>
             </div>
@@ -684,6 +704,11 @@ export default function OrderCard({
           <div className="w-[140px] flex-shrink-0 pr-4">
             {/* §3 — Order ID only; no bare creation date. */}
             <p className="text-[11px] font-mono text-gray-600 font-semibold truncate">{order.confirmation_id}</p>
+            {partnerOrder && (
+              <span className="mt-1 inline-flex max-w-full items-center gap-1 truncate rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-200" title={`${PARTNER_ORDER_INDICATOR} — ${partnerBrand}`}>
+                <i className="ri-building-line" style={{ fontSize: "9px" }}></i>{PARTNER_ORDER_INDICATOR} · {partnerBrand}
+              </span>
+            )}
           </div>
 
           {/* State — w-[80px] (includes pet count) */}

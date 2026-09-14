@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — customer-notification firewall.
+import { gateCustomerContactIdentity } from "../_shared/partnerCommsGate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,6 +57,18 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Check if user already exists ─────────────────────────────────────
+    // Partner firewall: a partner's customer never receives a PawTenant portal
+    // account or its welcome email. Refused before any auth user is created.
+    const contactGate = await gateCustomerContactIdentity(adminClient, { email }, {
+      channel: "email", event: "portal_account_created", source: "create-customer-account",
+    });
+    if (!contactGate.allowed) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "This email is managed by a partner organization. Please contact the organization you ordered through.", reason: contactGate.reason }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const { data: existingUsers } = await adminClient.auth.admin.listUsers({
       page: 1,
       perPage: 1000,

@@ -44,6 +44,7 @@ const CustomerLoginPage = lazy(() => import("../pages/customer-login/page"));
 const MyOrdersPage = lazy(() => import("../pages/my-orders/page"));
 const GoLivePage = lazy(() => import("../pages/go-live/page"));
 const AdminOrdersPage = lazy(() => import("../pages/admin-orders/page"));
+const AdminPartnersRedirect = lazy(() => import("../pages/admin-orders/components/partner-platform/AdminPartnersRedirect"));
 const AdminLiveVisitorsPage = lazy(() => import("../pages/admin-live/page"));
 const AdminGuidePage = lazy(() => import("../pages/admin-guide/page"));
 const AdminLoginPage = lazy(() => import("../pages/admin-login/page"));
@@ -51,6 +52,7 @@ const ResetPasswordPage = lazy(() => import("../pages/reset-password/page"));
 const AdminDoctorsPage = lazy(() => import("../pages/admin-doctors/page"));
 const ProviderLoginPage = lazy(() => import("../pages/provider-login/page"));
 const ProviderPortalPage = lazy(() => import("../pages/provider-portal/page"));
+const PartnerPortalPage  = lazy(() => import("../pages/partner-portal/page"));
 const AdminProviderPreview = lazy(() => import("../pages/admin-orders/components/AdminProviderPreview"));
 const PSDAssessmentPage = lazy(() => import("../pages/psd-assessment/page"));
 const PSDAssessmentThankYouPage = lazy(() => import("../pages/psd-assessment-thankyou/page"));
@@ -369,10 +371,18 @@ const routes: RouteObject[] = [
   // Declared before /admin-orders so the more specific match is unambiguous.
   { path: "/admin-orders/live", element: <P C={AdminLiveVisitorsPage} /> },
   { path: "/admin-orders", element: <P C={AdminOrdersPage} /> },
+  // PARTNER-PLATFORM-ADMIN-WORKSPACE-001 — memorable route for the Partner
+  // Platform workspace. Pure redirect into the admin shell's ?tab=partners
+  // (the same pattern /admin-chats used when Chats moved into the shell).
+  { path: "/admin-partners", element: <P C={AdminPartnersRedirect} /> },
   { path: "/company", element: <P C={CompanyHomePage} /> },
   { path: "/admin-doctors", element: <P C={AdminDoctorsPage} /> },
   { path: "/provider-login", element: <P C={ProviderLoginPage} /> },
   { path: "/provider-portal", element: <P C={ProviderPortalPage} /> },
+  // PARTNER-PORTAL-MANUAL-ORDER-BILLING-AND-SIMPLE-ASSESSMENT-002 — invite-only
+  // partner workspace. Its own sign-in: partners are a third population and must
+  // never be routed through the staff/provider login.
+  { path: "/partner-portal", element: <P C={PartnerPortalPage} /> },
   { path: "/admin/provider-preview", element: <P C={AdminProviderPreview} /> },
   { path: "/admin-guide", element: <P C={AdminGuidePage} /> },
   { path: "/reset-password", element: <P C={ResetPasswordPage} /> },

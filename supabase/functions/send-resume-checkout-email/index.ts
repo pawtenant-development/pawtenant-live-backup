@@ -28,6 +28,8 @@ import { resolveAuditActor, maskEmail } from "../_shared/auditActor.ts";
 import { issueResumeLink } from "../_shared/resumeLink.ts";
 import { sendEmailViaResend } from "../_shared/resendClient.ts";
 import { reserveEmailSend, finalizeEmailSend } from "../_shared/logEmailComm.ts";
+// PARTNER-ORDER-UX-ASSESSMENT-FINANCE-REPAIR-001 — customer-notification firewall.
+import { gateCustomerContact } from "../_shared/partnerCommsGate.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -244,6 +246,21 @@ Deno.serve(async (req: Request) => {
 
   const order = orderData as OrderRow | null;
   const verdict = evaluate(order);
+
+  // Partner firewall: a partner-funded order has no PawTenant checkout to
+  // resume and its customer is never emailed by PawTenant. Preview reports it
+  // as ineligible; a send is refused outright.
+  if (order) {
+    const contactGate = await gateCustomerContact(supabase, { orderId: order.id }, {
+      channel: "email", event: "resume_checkout", source: "send-resume-checkout-email",
+    });
+    if (!contactGate.allowed) {
+      return json({
+        ok: false, eligible: false,
+        reason: contactGate.reason, reasonText: "Partner-managed order — the partner owns customer communication.",
+      }, body.action === "preview" ? 200 : 409);
+    }
+  }
 
   // ── preview ──────────────────────────────────────────────────────────────
   // Everything the confirmation modal shows. The stable slug is NOT returned:
