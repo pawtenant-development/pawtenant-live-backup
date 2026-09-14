@@ -7,6 +7,13 @@ export interface PetInfo {
   age: string;
   breed: string;
   weight?: string;
+  // PARTNER-PLATFORM-LIVE-FOUNDATION-ROLLOUT-004: the ported pet-support
+  // renderer reads these optional fields. LIVE orders never carry them today
+  // (ASSESSMENT-PET-SUPPORT-AND-STEP-STRUCTURE-001 is TEST-only), so readers
+  // fail safe to empty — the renderer already guards every access.
+  vaccinated?: boolean;
+  supportFunctions?: string[];
+  supportNarrative?: string;
 }
 
 export interface AssessmentData {
