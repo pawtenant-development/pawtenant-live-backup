@@ -93,7 +93,7 @@ export default function HeroSection() {
               href={withAttribution("/assessment")}
               className="w-full sm:w-auto min-w-0 sm:min-w-[260px] px-8 py-4 bg-orange-500 text-white font-extrabold text-base rounded-md hover:bg-orange-600 transition-colors cursor-pointer inline-flex items-center justify-center gap-2 shadow-lg shadow-orange-500/30"
             >
-              Check If You Qualify
+              Get an ESA letter now
               <i className="ri-arrow-right-line" aria-hidden></i>
             </a>
             <p className="text-white/90 text-[13px] font-semibold mt-3 flex items-center gap-1.5">

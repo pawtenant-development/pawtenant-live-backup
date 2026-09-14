@@ -339,7 +339,7 @@ const HOME_HERO_SKELETON = `<section class="pt-h-hero" id="get-started">
       <div class="pt-h-rating"><span class="pt-h-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span><span>4.9 &middot; Trusted by 15,000+ pet owners</span></div>
       <h1 class="pt-h-h1">Get Your <span>Emotional Support Animal Letter</span><br class="pt-h-br" /> Today</h1>
       <p class="pt-h-price">Start for as low as <strong>$32.25</strong></p>
-      <a class="pt-h-cta" href="/assessment">Check If You Qualify</a>
+      <a class="pt-h-cta" href="/assessment">Get an ESA letter now</a>
       <p class="pt-h-refund"><b>&#10003;</b> Full refund if you don&rsquo;t qualify</p>
       <div><div class="pt-h-pill"><span>Serving all 50 US states</span></div></div>
     </div>
