@@ -8,6 +8,7 @@ import Step2PersonalInfo, { Step2Data } from "../assessment/components/Step2Pers
 import StepIndicator from "../assessment/components/StepIndicator";
 import ExitIntentOverlay from "../assessment/components/ExitIntentOverlay";
 import StateSelectionStep from "../assessment/components/StateSelectionStep";
+import AssessmentPricingIntro from "../assessment/components/AssessmentPricingIntro";
 import CustomerOtpStep from "../assessment/components/CustomerOtpStep";
 import AssuranceScreen from "../assessment/components/AssuranceScreen";
 import PackageSelectionStep from "../assessment/components/PackageSelectionStep";
@@ -135,6 +136,11 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
     (typeof window !== "undefined"
       ? (window as unknown as { __ptCheckoutResume?: Record<string, unknown> }).__ptCheckoutResume
       : undefined);
+  // Fresh Apply Now visits see pricing first. Resume and durable checkout paths
+  // bypass this display-only screen and retain their current destination.
+  const [pricingIntroComplete, setPricingIntroComplete] = useState(
+    () => Boolean(resumeConfirmationId || resumeToken || checkoutResume),
+  );
   // POST-OTP-DIRECT-CHECKOUT-001: verified customers land on checkout directly.
   const directCheckout = isDirectCheckout();
 
@@ -980,12 +986,25 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
 
               <button
                 type="button"
-                onClick={() => { setResumeNotFound(false); setStep(1); }}
+                onClick={() => {
+                  setResumeNotFound(false);
+                  setStep(1);
+                  setStateConfirmed(false);
+                  setPricingIntroComplete(false);
+                }}
                 className="whitespace-nowrap flex items-center gap-2 px-6 py-3 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 cursor-pointer transition-colors"
               >
                 <i className="ri-arrow-right-line"></i>Start Fresh Assessment
               </button>
             </div>
+          ) : !pricingIntroComplete ? (
+            <AssessmentPricingIntro
+              letterType="psd"
+              onContinue={() => {
+                setPricingIntroComplete(true);
+                window.scrollTo(0, 0);
+              }}
+            />
           ) : !stateConfirmed ? (
             /* STATE FIRST — collected before the questionnaire so the 30-day
                acknowledgment (AR/CA/IA/LA/MT) fires early. */

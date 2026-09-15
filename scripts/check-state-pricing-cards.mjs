@@ -38,6 +38,9 @@ const HOME = "src/pages/home/components/HomePricingSection.tsx";
 const PSD_LANDING = "src/components/feature/PsdPricingSection.tsx";
 const STATE_ESA = "src/pages/state-esa/page.tsx";
 const STATE_PSD = "src/pages/state-psd/page.tsx";
+const ASSESSMENT_INTRO = "src/pages/assessment/components/AssessmentPricingIntro.tsx";
+const ASSESSMENT_ESA = "src/pages/assessment/page.tsx";
+const ASSESSMENT_PSD = "src/pages/psd-assessment/page.tsx";
 
 // Approved ESA/PSD 3-card shape (whole dollars). Same numbers for ESA and PSD.
 const EXPECT = [
@@ -152,6 +155,28 @@ async function main() {
   const data = await read(DATA);
   need(data, DATA, /from\s+["']\.\.\/config\/pricing["']/, "data module must derive prices from ../config/pricing");
   forbid(stripComments(data), DATA, /Reasonable Accommodation/i, "data module must not define a Reasonable Accommodation card");
+
+  // Fresh assessment pricing intro: full-card click, display-only behavior,
+  // aligned rows, canonical matching-feature order and compact trust signals.
+  const intro = await read(ASSESSMENT_INTRO);
+  need(intro, ASSESSMENT_INTRO, /buildEsaPlanCards[\s\S]*buildPsdPlanCards/, "assessment intro must consume both canonical three-card builders");
+  need(intro, ASSESSMENT_INTRO, /<button[\s\S]*onClick=\{onContinue\}/, "the whole pricing card must be clickable");
+  forbid(stripComments(intro), ASSESSMENT_INTRO, /selectedPackage|setSelectedPackage|sessionStorage|localStorage|create-payment-intent|create-checkout-session|stripe/i, "presentation-only intro must not select, persist, or charge a package");
+  need(intro, ASSESSMENT_INTRO, /alignVisibleFeatures[\s\S]*slice\(0, targetCount\)/, "cards must expose an equal number of visible benefit rows");
+  need(intro, ASSESSMENT_INTRO, /sortFeaturesByCanonicalSequence[\s\S]*FEATURE_SEQUENCE/, "matching benefits must keep one canonical sequence across cards");
+  need(intro, ASSESSMENT_INTRO, /items-stretch[\s\S]*h-full[\s\S]*min-h-\[5rem\][\s\S]*min-h-\[8\.75rem\][\s\S]*pb-6[\s\S]*mt-2/, "card rows must align with breathing room above the CTA");
+  for (const signal of ["HIPAA Secure", "Licensed Professionals", "24-Hour Delivery", "Money-Back Guarantee"]) {
+    need(intro, ASSESSMENT_INTRO, new RegExp(signal), `missing assessment trust signal: ${signal}`);
+  }
+  forbid(intro, ASSESSMENT_INTRO, /Purchasing does not guarantee qualification/i, "owner-rejected disclaimer must not appear");
+
+  const assessmentEsa = await read(ASSESSMENT_ESA);
+  const assessmentPsd = await read(ASSESSMENT_PSD);
+  need(assessmentEsa, ASSESSMENT_ESA, /!pricingIntroComplete[\s\S]*<AssessmentPricingIntro[\s\S]*letterType="esa"/, "fresh ESA assessment must render pricing before state selection");
+  need(assessmentPsd, ASSESSMENT_PSD, /!pricingIntroComplete[\s\S]*<AssessmentPricingIntro[\s\S]*letterType="psd"/, "fresh PSD assessment must render pricing before state selection");
+  for (const [file, src] of [[ASSESSMENT_ESA, assessmentEsa], [ASSESSMENT_PSD, assessmentPsd]]) {
+    need(src, file, /Boolean\(resumeConfirmationId \|\| resumeToken \|\| checkoutResume\)/, "resume/durable checkout must bypass the pricing intro");
+  }
 
   const home = await read(HOME);
   need(home, HOME, /buildEsaPlanCards/, "HomePricingSection must consume the shared buildEsaPlanCards (parity)");

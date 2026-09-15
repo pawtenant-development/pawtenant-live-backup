@@ -12,6 +12,7 @@ import ExitIntentOverlay from "./components/ExitIntentOverlay";
 import WhatHappensNext from "./components/WhatHappensNext";
 import LiveStatusBanner from "./components/LiveStatusBanner";
 import StateSelectionStep from "./components/StateSelectionStep";
+import AssessmentPricingIntro from "./components/AssessmentPricingIntro";
 import CustomerOtpStep from "./components/CustomerOtpStep";
 import AssuranceScreen from "./components/AssuranceScreen";
 import PackageSelectionStep from "./components/PackageSelectionStep";
@@ -413,6 +414,15 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
   // Read via the helper: the pre-boot inline script has already scrubbed the
   // address bar, so the raw value now arrives in memory rather than in the URL.
   const resumeToken = readResumeToken(searchParams);
+  // Stable checkout/resume arrivals bypass the presentation-only pricing intro.
+  const checkoutResume =
+    checkoutResumeProp ??
+    (typeof window !== "undefined"
+      ? (window as unknown as { __ptCheckoutResume?: Record<string, unknown> }).__ptCheckoutResume
+      : undefined);
+  const [pricingIntroComplete, setPricingIntroComplete] = useState(
+    () => Boolean(resumeConfirmationId || resumeToken || checkoutResume),
+  );
   // TRACK 2 · REPEAT-CUSTOMER-NEW-ESA-LINK-TEST
   // Opt-in flag: when present on a resume URL, pre-fill still runs so the
   // customer's identity stays loaded, but we land on Step 1 instead of jumping
@@ -474,19 +484,9 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
   const [stripeSecretError, setStripeSecretError] = useState("");
   const [stripePaymentIntentId, setStripePaymentIntentId] = useState("");
   const stripeSecretInFlight = useRef(false); // dedupe concurrent calls
-  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001 — the stable /checkout/<slug>
-  // route resolves the slug server-side and hands the order to this screen. The
-  // PROP is the durable path — this component is rendered BY that route, which
-  // now STAYS in the address bar. The `window` fallback is kept for the
-  // in-memory handoff producers that still use it (memory only — never storage).
-  //
-  // Declared HERE, above `resumeLoading`, because the initial loading value
-  // depends on it — see the next statement.
-  const checkoutResume =
-    checkoutResumeProp ??
-    (typeof window !== "undefined"
-      ? (window as unknown as { __ptCheckoutResume?: Record<string, unknown> }).__ptCheckoutResume
-      : undefined);
+  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001 — checkoutResume was
+  // resolved above so both the pricing-intro gate and resume-loading state use
+  // the same first-render signal.
   // NO STEP-1 FLASH. `checkoutResume` belongs in this initial value, not just in
   // the effect that consumes it: without it the first paint rendered the state
   // picker / Question 1 for a customer the server had already resolved to
@@ -1922,12 +1922,25 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
 
             <button
               type="button"
-              onClick={() => { setResumeNotFound(false); setCurrentStep(1); }}
+              onClick={() => {
+                setResumeNotFound(false);
+                setCurrentStep(1);
+                setStateConfirmed(false);
+                setPricingIntroComplete(false);
+              }}
               className="whitespace-nowrap flex items-center gap-2 px-6 py-3 bg-[#1A5C4F] text-white font-bold rounded-xl hover:bg-[#14493E] cursor-pointer transition-colors"
             >
               <i className="ri-arrow-right-line"></i>Start Fresh Assessment
             </button>
           </div>
+        ) : !pricingIntroComplete ? (
+          <AssessmentPricingIntro
+            letterType="esa"
+            onContinue={() => {
+              setPricingIntroComplete(true);
+              window.scrollTo(0, 0);
+            }}
+          />
         ) : !stateConfirmed ? (
           <>
             {/* STATE FIRST — collected before the questionnaire so the 30-day
