@@ -171,7 +171,8 @@ export default function ProviderAdditionalPetReview({
   const canDecide = DECIDABLE.has(status) && status !== "clarification_requested" && mayDecide;
   const ctx = view.clinical_context;
   const assessment = clinicalRows(ctx?.assessment_answers);
-  const allCasePets = isReplacementCase
+  const showAsStandardCase = isReplacementCase;
+  const allCasePets = showAsStandardCase
     ? [
         ...(view.original_pets ?? []),
         ...(view.approved_added_pets ?? []),
@@ -187,7 +188,7 @@ export default function ProviderAdditionalPetReview({
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100 flex items-start justify-between gap-3 flex-wrap">
         <h3 className="text-sm font-extrabold text-orange-500">
-          {isReplacementCase ? "Case Details" : "Additional Pet Requested"}
+          {showAsStandardCase ? "Case Details" : "Additional Pet Requested"}
         </h3>
         <span className="text-[11px] font-semibold text-gray-600 whitespace-nowrap">
           {STATUS_LABEL[status] ?? status}
@@ -195,7 +196,7 @@ export default function ProviderAdditionalPetReview({
       </div>
 
       <div className="px-4 py-3 space-y-3 text-sm">
-        {isReplacementCase ? (
+        {showAsStandardCase ? (
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Pets</p>
             {allCasePets.length > 0 ? (

@@ -1272,7 +1272,10 @@ export default function ProviderOrderDetail({
                   been decided. Reads only the provider-safe projection — no
                   financial field. (LIVE keeps this mount beneath the neutral
                   assessment; the provider decision flow is unchanged.) */}
-              <ProviderAdditionalPetReview orderId={order.id} />
+              <ProviderAdditionalPetReview
+                orderId={order.id}
+                isReplacementCase={order.status === "under-review" && Boolean(order.signed_letter_url)}
+              />
             </div>
           )}
 

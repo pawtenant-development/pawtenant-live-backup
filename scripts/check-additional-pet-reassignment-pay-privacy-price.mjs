@@ -42,7 +42,7 @@ const checks = [
   ["admin summary treats additional-pet payout as extra", /t === "additional_pet"/.test(summary)],
   ["provider earnings labels additional-pet work", /earning_type === "additional_pet"/.test(provider)],
   ["new assignee sees neutral normal-case details language", /Case Details/.test(review) && !/Complete Case Review|Case Review|replacement letter/.test(review)],
-  ["new assignee sees every pet in one neutral list", /const allCasePets = isReplacementCase/.test(review) && />Pets</.test(review) && !/isReplacementCase \? "Pet"|isReplacementCase \? "Other pets"/.test(review)],
+  ["new assignee sees every pet in one neutral list", /const showAsStandardCase = isReplacementCase/.test(review) && /const allCasePets = showAsStandardCase/.test(review) && />Pets</.test(review) && !/isReplacementCase \? "Pet"|isReplacementCase \? "Other pets"/.test(review)],
   ["new assignee queue contains no handoff terminology", /New Cases/.test(queue) && /isReplacementCase=\{!r\.is_order_provider\}/.test(queue) && !/Complete Case Reviews|Assigned Cases|fresh full-case assignment|multi-pet complete case|Submit the revised letter|Submit revised letter/.test(queue)],
   ["new assignee decline copy contains no reassignment disclosure", /internal review/.test(review) && /isReplacementCase/.test(review)],
   ["provider queue receives the complete target pet count", /'target_pet_count', r\.target_pet_count/.test(migration) && /target_pet_count: number \| null/.test(queue)],

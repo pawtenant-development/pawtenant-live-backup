@@ -520,9 +520,8 @@ Deno.serve(async (req: Request) => {
       // a reopen is exactly what used to let this submission through.
       const slotReason = slot.reason ?? "approved_document_requires_reopen";
       const rejectionMessage = slotReason === "additional_pet_review_pending"
-        ? "This order has an Additional Pet request awaiting your clinical decision. " +
-          "Open the Additional Pet review on this case and approve or decline it first. " +
-          "Approving it is what authorises a revised letter covering the added pet."
+        ? "This case requires your clinical decision before a letter can be submitted. " +
+          "Open the Assessment tab and approve or decline the case first."
         : "This order already has an approved letter delivered to the customer. " +
           "Ask PawTenant to reopen the order before uploading a replacement.";
       return json({

@@ -3219,13 +3219,24 @@ export default function OrderDetailModal({
     setResendingProvider(true);
     setResendProviderMsg("");
     try {
-      const res = await fetch(`${supabaseUrl}/functions/v1/assign-doctor`, {
+      // A delivered order reopened for a new provider already has its current
+      // assignment. Calling assign-doctor again could rewrite the original
+      // provider's earning, so use the idempotent notification-only endpoint.
+      const isReopenedDeliveredCase =
+        order.status === "under-review" && Boolean(order.signed_letter_url);
+      const endpoint = isReopenedDeliveredCase
+        ? "notify-reopened-case-provider"
+        : "assign-doctor";
+      const token = isReopenedDeliveredCase ? await getAdminToken() : anonKey;
+      const res = await fetch(`${supabaseUrl}/functions/v1/${endpoint}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${anonKey}` },
-        body: JSON.stringify({
-          confirmationId: order.confirmation_id,
-          doctorEmail: order.doctor_email,
-        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(isReopenedDeliveredCase
+          ? { confirmationId: order.confirmation_id }
+          : {
+              confirmationId: order.confirmation_id,
+              doctorEmail: order.doctor_email,
+            }),
       });
       const result = await res.json() as {
         ok?: boolean;

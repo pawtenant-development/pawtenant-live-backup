@@ -289,6 +289,7 @@ async function runChecks() {
   const migFiles = readdirSync(join(ROOT, "supabase/migrations")).filter((f) => f.endsWith(".sql")).sort();
   const allowedAfterClosure = new Set([
     "20260915013358_sync_reassigned_additional_pet_into_assessment.sql",
+    "20260915021810_reopen_assignment_current_provider.sql",
     "20260915054500_additional_pet_reassignment_privacy_earnings_price.sql",
     "20260915061500_additional_pet_full_case_assignment_message.sql",
   ]);

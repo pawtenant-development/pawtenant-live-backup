@@ -238,14 +238,14 @@ const CHECKS = [
   // ── B5 · refuse AND redirect ──────────────────────────────────────────────
   ["B5a", "the refusal carries its own reason code",
     (s) => /'reason',\s*'additional_pet_review_pending'/.test(gateBlock(s))],
-  ["B5b", "the provider is redirected to the Additional Pet workflow, not to a reopen",
+  ["B5b", "the provider is redirected to the case decision, not to a reopen",
     (s) => {
       const c = codeOnly(s.submit);
       const m = c.match(/slotReason === "additional_pet_review_pending"[\s\S]{0,600}?:\s*"This order already has/);
       if (!m) return false;
       const branch = m[0];
-      return /Additional Pet review/.test(branch)
-          && /approve or decline it first/.test(branch)
+      return /Assessment tab/.test(branch)
+          && /approve or decline the case first/.test(branch)
           && !/reopen/i.test(branch.slice(0, branch.indexOf(': "This order already has')));
     }],
   ["B5c", "the rejection is surfaced as 409 with the server's reason",
@@ -334,7 +334,7 @@ const CONTROLS = [
     "update public.doctor_earnings set doctor_amount = 0;\n-- ── §2 · an approved add-on's version must carry a pet snapshot ─────────────")],
   // Provider-facing copy regresses to "ask for a reopen".
   ["N10", "B5b", "submit", (t) => t.replace(
-    '? "This order has an Additional Pet request awaiting your clinical decision. " +\n          "Open the Additional Pet review on this case and approve or decline it first. " +\n          "Approving it is what authorises a revised letter covering the added pet."',
+    '? "This case requires your clinical decision before a letter can be submitted. " +\n          "Open the Assessment tab and approve or decline the case first."',
     '? "Ask PawTenant to reopen the order before uploading a replacement."')],
   // A second writer of the approval state would dethrone the decision function.
   ["N11", "B6a", "submit", (t) => t.replace(
