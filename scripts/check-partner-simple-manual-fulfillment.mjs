@@ -320,7 +320,7 @@ async function runChecks() {
     /orgs\.find\(\(o\) => o\.slug === slug\)/.test(create) && /already exists\|23505/.test(create) &&
       /let partnerUserId = existingUser\?\.id \?\? null;/.test(create) && /const hasRate = /.test(create) && /completion_notification_email\) \{/.test(create));
   check("H4 invitation dispatch failure is never reported as success",
-    /if \(!res\.ok \|\| body\.ok !== true\) throw new Error/.test(create) && /tone: "warn"/.test(create) && /was NOT sent/.test(create) && /Resend invitation/.test(create));
+    /if \(!res\.ok \|\| body\.ok !== true\) throw new Error/.test(create) && /tone: "warn"/.test(create) && /was NOT sent/.test(create) && /Send new password link/.test(create));
 
   // ── I. Tenant isolation (server-side) ────────────────────────────────────
   const portalMig = sqlCode(read(F.MIG_PORTAL));

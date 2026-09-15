@@ -19,7 +19,7 @@
 //   * the completion contact is set only when empty.
 // Every outcome is reported honestly: an organization that exists but whose
 // invitation did not send is NOT "success" — it is "created, invitation not
-// sent", with a working "Resend invitation" path (PartnerUsersPanel).
+// sent", with a working "Send new password link" path (PartnerUsersPanel).
 //
 // Nothing here sends a customer anything, touches Stripe, or changes rates
 // that already exist.
@@ -207,7 +207,7 @@ export default function PartnerCreateForm({ orgs, onCreated }: Props) {
       } catch (e) {
         setOutcome({
           tone: "warn",
-          text: `${form.name.trim()} was created but the invitation was NOT sent: ${e instanceof Error ? e.message : String(e)}. Use "Resend invitation" under Partner portal users once the cause is fixed. (${steps.join(" · ")})`,
+          text: `${form.name.trim()} was created but the invitation was NOT sent: ${e instanceof Error ? e.message : String(e)}. Use "Send new password link" under Partner portal users once the cause is fixed. (${steps.join(" · ")})`,
         });
       }
       onCreated(partnerId);

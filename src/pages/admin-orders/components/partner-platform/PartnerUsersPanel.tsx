@@ -69,8 +69,8 @@ export default function PartnerUsersPanel({ selected }: { selected: PartnerOrg |
 
   useEffect(() => { void load(); }, [load]);
 
-  /** Ask Supabase Auth to send its own invitation / sign-in link. No password
-   *  is generated, transported or stored by PawTenant. */
+  /** Ask the admin-gated edge function for a fresh one-time setup/recovery
+   *  link. No password is generated, transported or stored by PawTenant. */
   const sendInvitationEmail = async (partnerUserId: string, address: string) => {
     const { data: sess } = await supabase.auth.getSession();
     const token = sess.session?.access_token;
@@ -115,8 +115,8 @@ export default function PartnerUsersPanel({ selected }: { selected: PartnerOrg |
       const { error: err } = await supabase.rpc("partner_admin_record_invitation_sent", { p_partner_user_id: row.id });
       if (err) throw err;
       setNotice(result.suppressed
-        ? "Invitation re-recorded (test address — email suppressed)."
-        : `Invitation resent to ${row.email}.`);
+        ? "Password link re-recorded (test address — email suppressed)."
+        : `Fresh password link sent to ${row.email}.`);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -213,7 +213,7 @@ export default function PartnerUsersPanel({ selected }: { selected: PartnerOrg |
                           {r.status !== "revoked" && (
                             <button type="button" disabled={busy === r.id} onClick={() => void resend(r)}
                               className="rounded border border-gray-300 px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40">
-                              Resend invitation
+                              Send new password link
                             </button>
                           )}
                           {r.status === "revoked" ? (
