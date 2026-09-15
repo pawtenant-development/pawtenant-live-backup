@@ -130,3 +130,61 @@ Residue after rollback: every partner table 0 rows, auth users and orders unchan
 6. Mirror to TEST: the `ghl-webhook-proxy` bounded re-read and the three boot fixes are
    LIVE-side repairs of TEST-shaped defects (TEST is unaffected today only because its shared
    module and helpers exist there).
+
+## 6. Closeout — frontend published and production flow verified (2026-09-15, session 2)
+
+**Git / Vercel.** LIVE `main` fast-forwarded `30d01586` → `5da51083` (173 files) and pushed
+without force; `orderFacetCounts.ts` working-tree noise was proven CRLF-only (751 CRs, byte-identical
+after normalisation) and restored before the merge. Production deployment
+`dpl_FkBhHNfwAArsAyDYqCuHNiUgeTmJ` (aliases `pawtenant.com`, `www.pawtenant.com`), served bundle
+`index-CS4sdS5x.js` carrying `PartnerOrderWizard`/`AdminPartnersRedirect`/`PartnerNeutralAssessment`
+chunks; `/partner-portal` → 200. Follow-up `f968b339` (PetInfo optional pet-support fields, tsc
+21→9 pre-existing errors) → `dpl_CYQLom9VWCcW2SovPESihUHsyzjB`, bundle `index-BtGXTz4W.js`.
+Rollback: `dpl_CVxmqPdDoGoG8D7EMTEphA3MQZAg` (`30d01586`) via `npx vercel rollback` /
+`git revert`; DB and functions are additive and stay.
+
+**Configuration.** `PARTNER_PORTAL_URL=https://pawtenant.com` set on LIVE functions. Vault secrets
+`partner_webhook_dispatch_secret` and `partner_weekly_invoice_secret` created inside the database
+(64-char random, never read out); positive controls true, wrong/empty/cross-secret false. No partner
+cron jobs exist on TEST or LIVE (parity) — the gates are for manual/external invocation. Auth redirect
+allow-list verified behaviourally: the generated invite action link carries
+`redirect_to=https://pawtenant.com/reset-password` (dashboard read was not possible: Supabase
+dashboard sign-in unavailable to the session).
+
+**Production flow (owner admin session, Resend test recipient `delivered@resend.dev`).** One-step
+"Create partner + invite user" → org `qa-rollout-004-alpha-fixture` (sandbox, manual, partner_managed,
+partner_neutral), ESA sandbox rate 5200¢, partner user invited (`partner-user-invite` 200), branded
+Resend email delivered ("Activate your PawTenant Partner Portal access", from hello@pawtenant.com,
+scanner-safe fragment link) → `/reset-password` "Continue Securely" → password set →
+`/partner-portal?passwordReset=success` (partner_users active, `partner_user_accepted_invitation`
+audited) → sign-out → `/partner-portal` password sign-in → partner workspace. Never touched
+`/customer-login`. `/admin-orders` with the partner session → `/admin-login?reason=unauthorized`.
+Zero `communications` rows created. Isolation (partner JWT via REST/RPC): `partner_portal_context`
+= own org only; direct `partner_organizations`/`partner_rate_cards`/`partner_invoices`/`orders` = `[]`;
+`partner_users` = own row only; second org (`qa-rollout-004-beta-fixture`) invisible; every
+`partner_admin_*` RPC and `is_chat_admin` refused (42501/false). Unauthenticated probes of all 8
+partner functions → 401. Partner portal at 390/768/1440: no horizontal overflow, orders table in
+`overflow-x:auto`, New Order visible. Admin Partner Platform tab verified at 1536 px only (owner
+Chrome window is maximised; extension resize ineffective) — 390/768 admin pass still owed.
+Fixtures removed (partner rows, rate card, 8 audit rows, auth user + identities/sessions/tokens);
+counts back to baseline (auth.users 1572, doctor_profiles 30, partner tables 0, orders 2593,
+communications 16374).
+
+**Checks.** Partner guards: portal-access 17/17, document-isolation 29/29 (+15/15 planted),
+comms-isolation 51/51, psd-unmapped 13/13, psd-contract 24/24, slice8 55/55, simple-manual-fulfillment
+41/41 (+31/31 planted), manual-intake/platform/assessment-pdf/orders pass; planted-control
+self-tests report 16/17, 20/24, 14/15, 16/18, 21/22 and psd-contract EXIT 1 — byte-identical to TEST
+`332febb` (parity, not regression). Full `npm run build` (prebuild + postbuild guards) EXIT 0.
+Security advisors: 0 ERROR, no partner-related finding. Function logs since 22:40Z: 0 × 5xx
+(post-repair window), retail traffic normal (PT-MU1TIR37 paid/assigned after the deploy).
+
+**Not done.** (1) GHL backfill for `PT-MU1SXR87` NOT run: GHL already holds the contact (created by
+the OTP path 22:19:44Z, no email/custom fields) and GHL itself sent the lead an SMS (22:24Z) and a call
+(23:03Z); `backfill-order-ghl` would re-POST `assessment_started` into the published "ESA
+Order/Contact Status Automation" workflow whose re-entry/messaging settings are not readable through
+the API — duplicate customer contact cannot be excluded, so it stays an owner decision.
+(2) Observation (TEST parity, not a regression): a signed-in partner user who navigates to
+`/my-orders` sees the empty customer-portal shell (orders resolve by uid/email, RLS-scoped, nothing
+leaks) — worth a partner-membership refusal in the customer portal. (3) Partner acceptance audit rows
+carry `actor_type=customer`. (4) `send-meta-capi-event` v70 reconciliation and TEST mirroring of the
+LIVE-side boot fixes remain open from section 5.
