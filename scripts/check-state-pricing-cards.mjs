@@ -237,6 +237,7 @@ async function main() {
     "src/components/feature/PsdPricingSection.tsx",
     "src/pages/state-esa/page.tsx",
     "src/pages/state-psd/page.tsx",
+    "src/pages/assessment/components/AssessmentPricingIntro.tsx",
     "src/pages/lp-esa-housing/page.tsx",
     // LIVE-PUBLIC-PAGES-...-001 — public conversion pages that now render the
     // CANONICAL homepage pricing cards instead of their own hand-maintained
