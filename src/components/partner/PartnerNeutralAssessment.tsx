@@ -18,18 +18,31 @@
 //
 // The customer-facing branded intake form (customer portal) is untouched.
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
 import {
   buildAssessmentDocumentModel,
+  buildPrintHTML,
   type AssessmentOrderBase,
 } from "../../pages/admin-orders/components/assessmentUtils";
 
 export type NeutralAssessmentOrder = Omit<AssessmentOrderBase, "created_at" | "email"> & {
+  id?: string;
   email?: string | null;
   created_at?: string | null;
 };
 
 export type NeutralAssessmentAudience = "provider" | "admin";
+
+export async function resolveInternalAssessmentOrder<T extends NeutralAssessmentOrder>(order: T): Promise<T> {
+  if (!order.id) return order;
+  const { data, error } = await supabase.rpc("get_internal_assessment_answers", { p_order_id: order.id });
+  if (error) throw error;
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("The complete assessment data was unavailable.");
+  }
+  return { ...order, assessment_answers: data as Record<string, unknown> };
+}
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -52,19 +65,42 @@ const cell = "border border-gray-500 px-2 py-1.5";
 
 export default function PartnerNeutralAssessment({
   order,
-  onDownload,
+  showDownload = false,
   audience = "provider",
 }: {
   order: NeutralAssessmentOrder;
-  /** Optional: renders a plain "Download PDF" control that opens the neutral document. */
-  onDownload?: () => void;
+  /** Renders a neutral PDF from the same resolved assessment shown on screen. */
+  showDownload?: boolean;
   /** "admin" additionally shows the authorization/consent audit record. */
   audience?: NeutralAssessmentAudience;
 }) {
+  const [resolvedOrder, setResolvedOrder] = useState<NeutralAssessmentOrder | null>(order.id ? null : order);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoadError(null);
+    setResolvedOrder(order.id ? null : order);
+    resolveInternalAssessmentOrder(order)
+      .then((next) => { if (active) setResolvedOrder(next); })
+      .catch(() => {
+        if (active) setLoadError("Unable to load the complete assessment. Refresh and try again before reviewing this case.");
+      });
+    return () => { active = false; };
+  }, [order]);
+
   const m = useMemo(
-    () => buildAssessmentDocumentModel({ ...order, email: order.email ?? "", created_at: order.created_at ?? "" }),
-    [order],
+    () => resolvedOrder
+      ? buildAssessmentDocumentModel({ ...resolvedOrder, email: resolvedOrder.email ?? "", created_at: resolvedOrder.created_at ?? "" })
+      : null,
+    [resolvedOrder],
   );
+  if (loadError) {
+    return <div className="bg-red-50 border border-red-300 rounded-xl p-5 text-sm font-semibold text-red-800" role="alert">{loadError}</div>;
+  }
+  if (!m || !resolvedOrder) {
+    return <div className="bg-white border border-gray-300 rounded-xl p-7 text-sm text-gray-600" aria-busy="true">Loading complete assessment…</div>;
+  }
   const qa = m.questionnaire;
   const ev = m.petEvidence;
   const showEvidence = ev.pets.length > 0 || ev.differentiation || ev.differentiationNote;
@@ -76,10 +112,20 @@ export default function PartnerNeutralAssessment({
           <h2 className="text-xl font-bold">{m.title}</h2>
           <p className="text-xs text-gray-600 mt-0.5">Confidential clinical assessment prepared for licensed provider review.</p>
         </div>
-        {onDownload && (
+        {showDownload && (
           <button
             type="button"
-            onClick={onDownload}
+            onClick={() => {
+              const html = buildPrintHTML({
+                ...resolvedOrder,
+                email: resolvedOrder.email ?? "",
+                created_at: resolvedOrder.created_at ?? "",
+              });
+              const blobUrl = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+              const w = window.open(blobUrl, "_blank");
+              if (w) setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+              else URL.revokeObjectURL(blobUrl);
+            }}
             className="whitespace-nowrap inline-flex items-center gap-2 px-3.5 py-2 border border-gray-900 text-gray-900 text-xs font-bold rounded-lg hover:bg-gray-100 cursor-pointer"
           >
             <i className="ri-download-line"></i>Download PDF

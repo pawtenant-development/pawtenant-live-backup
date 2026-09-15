@@ -18,6 +18,10 @@ const review = read("src/pages/provider-portal/components/ProviderAdditionalPetR
 const queue = read("src/pages/provider-portal/components/ProviderAdditionalPetQueue.tsx");
 const submit = read("supabase/functions/provider-submit-letter/index.ts");
 const assignment = read("supabase/migrations/20260915061500_additional_pet_full_case_assignment_message.sql");
+const assessmentProjection = read("supabase/migrations/20260915013358_sync_reassigned_additional_pet_into_assessment.sql");
+const neutralAssessment = read("src/components/partner/PartnerNeutralAssessment.tsx");
+const adminModal = read("src/pages/admin-orders/components/OrderDetailModal.tsx");
+const providerDetail = read("src/pages/provider-portal/components/ProviderOrderDetail.tsx");
 
 const checks = [
   ["request-keyed earning FK exists", /additional_pet_request_id uuid[\s\S]*references public\.order_additional_pet_requests\(id\) on delete restrict/.test(migration)],
@@ -46,6 +50,16 @@ const checks = [
   ["submitted revision snapshot covers original and every approved added pet", /const pets = \[\.\.\.originals, \.\.\.approvedAdded\];/.test(submit) && /p_pet_snapshot: addPetSnapshot/.test(submit)],
   ["assignment notification is neutral normal-case language", /New case assigned/.test(assignment) && /A new %s-pet %s case/.test(assignment) && /assessment and all pets/.test(assignment) && !/replacement letter|complete multi-pet case/i.test(assignment)],
   ["assignment validates the provider's state licence", /provider_not_licensed_for_state/.test(assignment)],
+  ["internal assessment preserves original answers and merges pets at read time", /coalesce\(o\.assessment_answers[\s\S]*jsonb_set\(v_answers, '\{pets\}', v_pets, true\)/.test(assessmentProjection)],
+  ["assessment projection is admin/base-provider/current-assignee gated", /v_is_admin[\s\S]*v_order_provider is distinct from v_actor[\s\S]*not v_is_assignee/.test(assessmentProjection)],
+  ["assessment projection includes paid active work and completed additions", /r\.paid_at is not null or r\.pricing_outcome = 'included'/.test(assessmentProjection) && /'needs_reassignment'[\s\S]*'completed'/.test(assessmentProjection)],
+  ["assessment projection excludes financial and provider-history output", /return jsonb_set\(v_answers/.test(assessmentProjection) && !/jsonb_build_object\([\s\S]*(amount_cents|provider_decision|provider_decision_reason|event_type)/.test(assessmentProjection)],
+  ["assessment projection deduplicates an already-present pet", /v_pets @> jsonb_build_array\(v_pet\)/.test(assessmentProjection)],
+  ["assessment RPC is unavailable to public and anon", /revoke all on function public\.get_internal_assessment_answers\(uuid\) from public/.test(assessmentProjection) && /from anon/.test(assessmentProjection)],
+  ["neutral assessment resolves complete server data and fails closed", /get_internal_assessment_answers/.test(neutralAssessment) && /Unable to load the complete assessment/.test(neutralAssessment) && /aria-busy="true"/.test(neutralAssessment)],
+  ["neutral screen and PDF use the same resolved order", /buildAssessmentDocumentModel\(\{ \.\.\.resolvedOrder/.test(neutralAssessment) && /buildPrintHTML\(\{[\s\S]*\.\.\.resolvedOrder/.test(neutralAssessment)],
+  ["admin assessment delegates its PDF to the complete neutral renderer", /<PartnerNeutralAssessment order=\{order\} audience="admin" showDownload \/>/.test(adminModal) && !/buildPrintHTML\(order\)/.test(adminModal)],
+  ["provider assessment and quick PDF both resolve complete pets", /<PartnerNeutralAssessment order=\{order\} showDownload \/>/.test(providerDetail) && /resolveInternalAssessmentOrder\(order\)/.test(providerDetail)],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);

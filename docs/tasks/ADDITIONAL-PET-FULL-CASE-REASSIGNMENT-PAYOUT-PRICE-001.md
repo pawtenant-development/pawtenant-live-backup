@@ -51,7 +51,24 @@ post-completion pet additions cost $60. Pre-completion pricing is unchanged.
 
 ## Target order
 
-`PT-PSD8INJ5GQB` remains untouched until LIVE deployment and explicit provider
-selection. Preflight invariants: base provider Robert Staaf; base earning $35
-pending; original approved v1 present; Additional Pet request paid $30 and in
-`needs_reassignment` with no current request-level assignee.
+`PT-PSD8INJ5GQB` retains Robert Staaf as the base provider, his $35 earning,
+and the original approved v1. Its frozen $30 Additional Pet request is assigned
+at request level to Eve Rosno and is pending provider review. The original
+assessment contains Madi; the request contains Maxine. The projection presents
+both pets as one ordinary clinical case without mutating either source record.
+
+## Assessment projection follow-up
+
+The paid request pet remains immutable in `order_additional_pet_requests`; it is
+not copied into the customer's original `orders.assessment_answers` entitlement
+snapshot. Migration
+`20260915013358_sync_reassigned_additional_pet_into_assessment.sql` adds an
+authorization-gated internal projection that returns the original assessment
+with applicable paid/included request pets merged into its `pets` array. Exact
+JSON containment prevents duplicate pets. The projection returns no payment,
+assignment, decision, decline, reassignment, or event-history fields.
+
+The shared neutral assessment resolves that projection before rendering and
+uses the same resolved order for its simple black-and-white PDF. Admin and
+provider surfaces therefore show the same full Pets list and questionnaire;
+they fail closed rather than display or download a clinically incomplete case.

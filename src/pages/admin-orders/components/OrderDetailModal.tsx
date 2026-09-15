@@ -77,7 +77,6 @@ import {
   visualFor as visualForAcquisition,
   explain as explainAcquisition,
 } from "../../../lib/acquisitionClassifier";
-import { buildPrintHTML } from "./assessmentUtils";
 
 /**
  * ESA-30-DAY-SCOPE-AND-ADMIN-FORCE-COMPLETE-001 — the shape returned by
@@ -6088,25 +6087,6 @@ export default function OrderDetailModal({
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">
                   {isPSDOrder(order) ? "PSD Assessment" : "ESA Assessment"}
                 </p>
-                {/* Download PDF — the neutral document, for every order with assessment data */}
-                {order.assessment_answers && assessmentCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const html = buildPrintHTML(order);
-                      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-                      const blobUrl = URL.createObjectURL(blob);
-                      const w = window.open(blobUrl, "_blank");
-                      if (w) {
-                        setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
-                      }
-                    }}
-                    className="whitespace-nowrap flex items-center gap-2 px-4 py-2 bg-orange-500 text-white text-sm font-bold rounded-lg hover:bg-orange-600 cursor-pointer transition-colors"
-                  >
-                    <i className="ri-download-line"></i>
-                    Download PDF
-                  </button>
-                )}
               </div>
 
               {/* PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002 (tracker row 210):
@@ -6114,7 +6094,7 @@ export default function OrderDetailModal({
                   ESA, direct PSD and partner — built from the same document
                   model as the downloadable PDF. The admin audience additionally
                   sees the authorization record (never shown to providers). */}
-              <PartnerNeutralAssessment order={order} audience="admin" />
+              <PartnerNeutralAssessment order={order} audience="admin" showDownload />
 
             </div>
           )}

@@ -7,7 +7,7 @@ import { buildPrintHTML } from "../../admin-orders/components/assessmentUtils";
 // PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002 — the ONE neutral
 // on-screen assessment, for every order, sharing its document model with the
 // downloadable PDF.
-import PartnerNeutralAssessment from "../../../components/partner/PartnerNeutralAssessment";
+import PartnerNeutralAssessment, { resolveInternalAssessmentOrder } from "../../../components/partner/PartnerNeutralAssessment";
 
 import ProviderAdditionalPetReview from "./ProviderAdditionalPetReview";
 
@@ -515,11 +515,20 @@ export default function ProviderOrderDetail({
   // PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002: the provider surface
   // does not know — and does not need to know — where an order came from.
   // Every case uses the same tabs, labels, assessment and submission flow.
-  const openNeutralDocument = () => {
+  const openNeutralDocument = async () => {
     const w = window.open("", "_blank");
     if (!w) return;
-    w.document.write(buildPrintHTML(order as Parameters<typeof buildPrintHTML>[0]));
-    w.document.close();
+    w.document.write("<p style='font-family:sans-serif;padding:24px'>Loading complete assessment…</p>");
+    try {
+      const completeOrder = await resolveInternalAssessmentOrder(order);
+      w.document.open();
+      w.document.write(buildPrintHTML(completeOrder as Parameters<typeof buildPrintHTML>[0]));
+      w.document.close();
+    } catch {
+      w.document.open();
+      w.document.write("<p style='font-family:sans-serif;padding:24px;color:#991b1b'>Unable to load the complete assessment. Close this window, refresh the case, and try again.</p>");
+      w.document.close();
+    }
   };
   const isLetterSubmitted = doctorStatus === "letter_sent" || doctorStatus === "patient_notified";
   // PROVIDER-LETTER-ADMIN-APPROVAL-GATE — read the release state off the
@@ -1256,7 +1265,7 @@ export default function ProviderOrderDetail({
                   PSD, partner). It renders the same document model the
                   downloadable PDF is built from, so screen and PDF cannot drift.
                   No consent / attestation rows reach a provider. */}
-              <PartnerNeutralAssessment order={order} />
+              <PartnerNeutralAssessment order={order} showDownload />
 
               {/* ORDER-ADDITIONAL-PET-UI-STRIPE-QA-CLOSURE-001 §9: Additional
                   Pet review. Renders nothing unless a request is awaiting or has

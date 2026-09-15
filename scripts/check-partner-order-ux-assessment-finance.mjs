@@ -213,8 +213,8 @@ async function runChecks() {
   // PARTNER-PLATFORM-SIMPLE-MANUAL-FULFILLMENT-REPAIR-002: the neutral assessment
   // is mounted for EVERY order on every internal surface (no partner branch).
   check("Q10 admin modal, provider detail and the shared intake view mount the neutral assessment for every order",
-    /<PartnerNeutralAssessment order=\{order\} audience="admin" \/>/.test(read(F.MODAL)) && !/isPartnerOrder \? \(\s*<PartnerNeutralAssessment/.test(read(F.MODAL)) &&
-      /<PartnerNeutralAssessment order=\{order\} \/>/.test(providerDetail) && !/isPartnerCase/.test(providerDetail) &&
+    /<PartnerNeutralAssessment order=\{order\} audience="admin" showDownload \/>/.test(read(F.MODAL)) && !/isPartnerOrder \? \(\s*<PartnerNeutralAssessment/.test(read(F.MODAL)) &&
+      /<PartnerNeutralAssessment order=\{order\} showDownload \/>/.test(providerDetail) && !/isPartnerCase/.test(providerDetail) &&
       /if \(isPartnerOrder\(order\) \|\| variant === "admin"\)/.test(read(F.ESA_VIEW)));
 
   // ── N. Notifications ─────────────────────────────────────────────────────
@@ -288,6 +288,7 @@ async function runChecks() {
   // is still caught.
   const migFiles = readdirSync(join(ROOT, "supabase/migrations")).filter((f) => f.endsWith(".sql")).sort();
   const allowedAfterClosure = new Set([
+    "20260915013358_sync_reassigned_additional_pet_into_assessment.sql",
     "20260915054500_additional_pet_reassignment_privacy_earnings_price.sql",
     "20260915061500_additional_pet_full_case_assignment_message.sql",
   ]);

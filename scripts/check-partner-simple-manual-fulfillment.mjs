@@ -195,7 +195,7 @@ async function runChecks() {
       /buildAssessmentDocumentModel\(/.test(neutralCode) && !/resolvePartnerQuestionnaire|QUESTIONNAIRE_ITEMS|PSD_QUESTIONNAIRE_ITEMS|collectAnswers/.test(neutralCode));
   check("B4 consent rows on screen render only for the admin audience, never a provider",
     /audience === "admin" && m\.consents\.length > 0 && \(/.test(neutral) && !/audience="admin"/.test(providerDetail) &&
-      /<PartnerNeutralAssessment order=\{order\} audience="admin" \/>/.test(modal));
+      /<PartnerNeutralAssessment order=\{order\} audience="admin" showDownload \/>/.test(modal));
   const models = { partner: A.buildAssessmentDocumentModel(partnerOrder), direct: A.buildAssessmentDocumentModel(directEsa), psd: A.buildAssessmentDocumentModel(directPsd) };
   const esc = (v) => String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const inOrder = (h, blocks) => {
@@ -212,7 +212,7 @@ async function runChecks() {
       models.psd.questionnaire.blocks.some((b) => b.answer === "Owner-trained (self-trained with the dog)") &&
       models.partner.questionnaire.additional.length === 1 && /Extra note outside numbering/.test(docs.partner));
   check("B6 every internal surface mounts the neutral assessment for every order",
-    /<PartnerNeutralAssessment order=\{order\} \/>/.test(providerDetail) && !/PSDAssessmentView|PawTenant ESA Intake Form/.test(stripComments(providerDetail)) &&
+    /<PartnerNeutralAssessment order=\{order\} showDownload \/>/.test(providerDetail) && !/PSDAssessmentView|PawTenant ESA Intake Form/.test(stripComments(providerDetail)) &&
       !/PSDAssessmentView|PawTenant ESA Intake Form/.test(stripComments(modal)) &&
       /if \(isPartnerOrder\(order\) \|\| variant === "admin"\)/.test(read(F.ESA_VIEW)));
 
