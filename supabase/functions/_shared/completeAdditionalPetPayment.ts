@@ -28,12 +28,12 @@ const LOGO_URL = "https://pawtenant.com/assets/brand/pawtenant-logo-white-02.png
 const PORTAL_URL = "https://pawtenant.com/my-orders";
 
 /**
- * The CURRENT paid Additional Pet price, for NEW quotes only.
+ * The CURRENT generic/pre-completion Additional Pet price, for NEW quotes only.
  *
  * PRICING CHANGE 2026-07-28: $20 -> $30. This constant is a fallback for the
- * rare path that has no server quote to hand; the authoritative current price
- * is `additional_pet_current_price()` in the database, and the authoritative
- * price for an EXISTING request is that request's own immutable `amount_cents`.
+ * rare path that has no server quote to hand; post-completion amendments use
+ * the separate database-only phase price. The authoritative price for an
+ * EXISTING request is always that request's own immutable `amount_cents`.
  *
  * NEVER validate a payment against this constant. A request quoted at $20
  * before the change is still payable at $20, so the expected amount must come
@@ -331,7 +331,7 @@ export async function completeAdditionalPetPayment(
       from_status: reqRow.status as string, to_status: updated.status as string,
       actor_role: "system",
       detail: {
-        amount_cents: ADDITIONAL_PET_UPGRADE_CENTS, currency: ADDITIONAL_PET_CURRENCY,
+        amount_cents: expectedCents, currency: ADDITIONAL_PET_CURRENCY,
         stripe_event_id: opts.eventId ?? null, source, base_order_paid: baseIsPaid,
       },
     });
@@ -346,7 +346,7 @@ export async function completeAdditionalPetPayment(
         : `INTEGRITY HOLD: Additional Pet paid (${amountFormatted}) but the base order is UNPAID — held, not advanced [via ${source}]`,
       metadata: {
         request_id: reqId, order_id: parentOrderId, confirmation_id: confId,
-        amount_cents: ADDITIONAL_PET_UPGRADE_CENTS, payment_intent_id: opts.piId ?? null,
+        amount_cents: expectedCents, payment_intent_id: opts.piId ?? null,
         checkout_session_id: opts.sessionId ?? null, stripe_event_id: opts.eventId ?? null,
         source, paid_at: nowIso,
       },

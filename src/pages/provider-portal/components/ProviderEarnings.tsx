@@ -385,6 +385,11 @@ export default function ProviderEarnings({ userId }: ProviderEarningsProps) {
                               <i className="ri-file-add-line"></i>Additional Documentation
                             </span>
                           )}
+                          {earning.earning_type === "additional_pet" && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 border border-emerald-200 rounded-full text-[10px] font-extrabold text-emerald-700">
+                              <i className="ri-bear-smile-line"></i>Additional Pet
+                            </span>
+                          )}
                           {wasRefunded && earning.status !== "paid" && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 border border-orange-300 rounded-full text-[10px] font-extrabold text-orange-700">
                               <i className="ri-refund-line"></i>Order Refunded — Payment Still Owed

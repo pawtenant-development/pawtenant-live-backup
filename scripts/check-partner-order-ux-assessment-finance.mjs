@@ -282,12 +282,19 @@ async function runChecks() {
       /allowRetryAfterFailed: true/.test(partnerBlock));
 
   // ── M. Migration surface ─────────────────────────────────────────────────
-  // This closure is code-only. A new migration file would mean the PSD intake
-  // contract was changed without the owner review that change requires.
+  // This closure is code-only. Later, separately approved migrations may exist,
+  // but the closure migration itself must remain the last migration owned by
+  // this task. Keep the explicit allowlist narrow so a planted/unknown migration
+  // is still caught.
   const migFiles = readdirSync(join(ROOT, "supabase/migrations")).filter((f) => f.endsWith(".sql")).sort();
-  const newest = migFiles[migFiles.length - 1];
-  check("M1 the closure introduces no migration — 20260911210000 is still the newest",
-    newest === "20260911210000_partner_order_ux_assessment_finance_repair.sql", `newest=${newest}`);
+  const allowedAfterClosure = new Set([
+    "20260915054500_additional_pet_reassignment_privacy_earnings_price.sql",
+    "20260915061500_additional_pet_full_case_assignment_message.sql",
+  ]);
+  const unexpectedAfterClosure = migFiles.filter((f) =>
+    f > "20260911210000_partner_order_ux_assessment_finance_repair.sql" && !allowedAfterClosure.has(f));
+  check("M1 the closure introduces no migration; only separately approved later migrations exist",
+    unexpectedAfterClosure.length === 0, `unexpected=${unexpectedAfterClosure.join(",") || "none"}`);
 
   // ── A. Authorization ─────────────────────────────────────────────────────
   check("A1 every new database function pins search_path and is revoked from anon; the lossless helper is not client-callable",

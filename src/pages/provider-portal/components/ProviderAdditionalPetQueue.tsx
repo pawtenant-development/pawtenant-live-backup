@@ -28,6 +28,7 @@ interface QueueRow {
   status: string;
   service_type: string;
   pet_name: string | null;
+  target_pet_count: number | null;
   customer_first_name: string | null;
   state: string | null;
   is_order_provider: boolean;
@@ -38,7 +39,7 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   pending_provider_review: { label: "Awaiting your review", cls: "bg-blue-50 text-blue-700 border-blue-200" },
   clarification_requested: { label: "Awaiting the customer", cls: "bg-amber-50 text-amber-800 border-amber-200" },
   resubmitted: { label: "Customer responded", cls: "bg-blue-50 text-blue-700 border-blue-200" },
-  approved_pending_document: { label: "Approved — revised letter needed", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  approved_pending_document: { label: "Approved — letter needed", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
 };
 
 export default function ProviderAdditionalPetQueue({ readOnly = false }: { readOnly?: boolean }) {
@@ -63,8 +64,8 @@ export default function ProviderAdditionalPetQueue({ readOnly = false }: { readO
     <div className="mb-5 bg-white rounded-2xl border border-orange-200 overflow-hidden">
       <div className="px-4 sm:px-5 py-3 bg-orange-50 border-b border-orange-100 flex items-center justify-between gap-2 flex-wrap">
         <h3 className="text-sm font-extrabold text-orange-600">
-          <i className="ri-heart-add-line mr-1.5" aria-hidden="true"></i>
-          Additional Pet Reviews
+          <i className="ri-folder-line mr-1.5" aria-hidden="true"></i>
+          New Cases
         </h3>
         <span className="text-[11px] font-semibold text-orange-700">
           {rows.length} awaiting action
@@ -80,14 +81,14 @@ export default function ProviderAdditionalPetQueue({ readOnly = false }: { readO
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-gray-900 break-words">
-                    {r.pet_name ?? "Additional pet"}
+                    {r.is_order_provider ? (r.pet_name ?? "Additional pet") : `${r.service_type.toUpperCase()} case`}
                     <span className="ml-2 font-normal text-gray-500 text-xs">
                       {r.customer_first_name ?? "Customer"}{r.state ? ` · ${r.state}` : ""} · {r.confirmation_id}
                     </span>
                   </p>
                   <p className="text-[11px] text-gray-400">
-                    Requested {new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                    {r.is_order_provider ? " · your case" : " · reassigned review"}
+                    {r.is_order_provider ? "Requested" : "Assigned"} {new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    {r.is_order_provider ? " · your case" : ""}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -104,7 +105,11 @@ export default function ProviderAdditionalPetQueue({ readOnly = false }: { readO
 
               {isOpen && (
                 <div className="mt-3 space-y-3">
-                  <ProviderAdditionalPetReview orderId={r.order_id} showClinicalContext />
+                  <ProviderAdditionalPetReview
+                    orderId={r.order_id}
+                    showClinicalContext
+                    isReplacementCase={!r.is_order_provider}
+                  />
                   {r.status === "approved_pending_document" && !readOnly && (
                     <RevisedLetterUpload confirmationId={r.confirmation_id} onSubmitted={load} />
                   )}
@@ -118,8 +123,8 @@ export default function ProviderAdditionalPetQueue({ readOnly = false }: { readO
   );
 }
 
-/** Streams the revised letter PDF to provider-submit-letter. The server side
- *  decides everything: revision vs first letter, verification ID minting,
+/** Streams the letter PDF to provider-submit-letter. The server side decides
+ *  everything: document versioning, verification ID minting,
  *  QR stamping, admin approval gating, and completing the add-on request. */
 function RevisedLetterUpload({
   confirmationId, onSubmitted,
@@ -146,7 +151,7 @@ function RevisedLetterUpload({
       });
       const d = await res.json().catch(() => ({})) as { ok?: boolean; error?: string };
       if (!res.ok || d?.ok === false) throw new Error(d?.error ?? `Upload failed (HTTP ${res.status})`);
-      setMsg({ ok: true, text: "Revised letter submitted. A PawTenant reviewer will approve and deliver it — the customer's current letter stays valid until then." });
+      setMsg({ ok: true, text: "Letter submitted. A PawTenant reviewer will approve and deliver it." });
       setFile(null);
       onSubmitted();
     } catch (e) {
@@ -157,12 +162,10 @@ function RevisedLetterUpload({
   return (
     <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-3 space-y-2">
       <p className="text-xs font-bold text-emerald-800">
-        Submit the revised letter
+        Submit the letter
       </p>
       <p className="text-[11px] text-emerald-900/80 leading-relaxed">
-        The revised letter must cover <span className="font-semibold">every approved pet</span> listed
-        above. It becomes a new document version with its own verification ID; the
-        customer's previous letter is preserved as history.
+        The letter must cover <span className="font-semibold">every pet</span> listed above.
       </p>
       <input
         type="file" accept="application/pdf,.pdf"
@@ -177,7 +180,7 @@ function RevisedLetterUpload({
       )}
       <button type="button" disabled={!file || busy} onClick={submit}
         className="rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
-        {busy ? "Submitting…" : "Submit revised letter"}
+        {busy ? "Submitting…" : "Submit letter"}
       </button>
     </div>
   );

@@ -72,10 +72,10 @@ export default function ProviderPayoutSummary({ orderId }: { orderId: string }) 
     );
   }
 
-  // RA and paid Additional Documentation are separate ledger concepts but one
-  // line to an operator: both are "the extra RA work". Everything else (legacy
-  // rows carry a null earning_type) is the base order payout.
-  const isExtra = (t: string | null) => t === "additional_documentation" || t === "ra_completion";
+  // Every add-on is a separate ledger concept. Legacy/null rows remain the
+  // base order payout; Additional Pet must never be folded into Robert's base.
+  const isExtra = (t: string | null) =>
+    t === "additional_documentation" || t === "ra_completion" || t === "additional_pet";
   const baseRows = live.filter((r) => !isExtra(r.earning_type));
   const extraRows = live.filter((r) => isExtra(r.earning_type));
 
@@ -101,7 +101,7 @@ export default function ProviderPayoutSummary({ orderId }: { orderId: string }) 
           <p className="text-sm font-semibold text-violet-700">${total}</p>
           {showBreakdown && (
             <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">
-              Base ${baseTotal} · Add’l Doc ${extraTotal}
+              Base ${baseTotal} · Extra work ${extraTotal}
               {rateUnset ? " · rate pending" : ""}
             </p>
           )}

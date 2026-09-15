@@ -41,6 +41,7 @@ interface ProviderEarningRow {
   doctor_amount: number | null;
   status: string;
   additional_documentation_request_id: string | null;
+  additional_pet_request_id: string | null;
 }
 
 // Canonical Order — see ../types.ts
@@ -302,7 +303,7 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
   const loadProviderEarnings = useCallback(async () => {
     const { data } = await supabase
       .from("doctor_earnings")
-      .select("id, earning_type, doctor_amount, status, additional_documentation_request_id")
+      .select("id, earning_type, doctor_amount, status, additional_documentation_request_id, additional_pet_request_id")
       .eq("order_id", order.id)
       .neq("status", "cancelled")
       .order("created_at", { ascending: true });
@@ -507,10 +508,10 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
       {/* Provider earnings for this order (base + RA-completion + add-on payout) */}
       {providerEarnings.length > 0 && (() => {
         const num = (v: number | null) => (typeof v === "number" ? v : 0);
-        // Three distinct ledger components. RA-completion (combo orders) and
-        // Additional Documentation (paid standalone add-on) each equal the
-        // provider's standard rate; the rest is the base order payout (legacy
-        // rows have null/other earning_type → treated as base).
+        // Four distinct ledger components. RA-completion (combo orders),
+        // Additional Documentation (paid standalone add-on), and Additional
+        // Pet completion each use a separate row; the rest is the base order
+        // payout (legacy rows have null/other earning_type → treated as base).
         // RA-PAYOUT-DISPLAY-001 — DEFENCE 2 OF 2: re-filter cancelled here.
         //
         // The query above already excludes them. This repeats it against the
@@ -523,13 +524,16 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
         if (live.length === 0) return null;
         const addonRows = live.filter((e) => e.earning_type === "additional_documentation");
         const raRows = live.filter((e) => e.earning_type === "ra_completion");
-        const baseRows = live.filter((e) => e.earning_type !== "additional_documentation" && e.earning_type !== "ra_completion");
+        const addPetRows = live.filter((e) => e.earning_type === "additional_pet");
+        const baseRows = live.filter((e) => e.earning_type !== "additional_documentation" && e.earning_type !== "ra_completion" && e.earning_type !== "additional_pet");
         const baseTotal = baseRows.reduce((s, e) => s + num(e.doctor_amount), 0);
         const raTotal = raRows.reduce((s, e) => s + num(e.doctor_amount), 0);
         const addonTotal = addonRows.reduce((s, e) => s + num(e.doctor_amount), 0);
+        const addPetTotal = addPetRows.reduce((s, e) => s + num(e.doctor_amount), 0);
         const anyUnsetBase = baseRows.some((e) => e.doctor_amount == null);
         const anyUnsetRa = raRows.some((e) => e.doctor_amount == null);
         const anyUnsetAddon = addonRows.some((e) => e.doctor_amount == null);
+        const anyUnsetAddPet = addPetRows.some((e) => e.doctor_amount == null);
         return (
           <div className="bg-white rounded-xl border border-violet-200 overflow-hidden">
             <div className="px-4 py-3 bg-violet-50 border-b border-violet-100 flex items-center gap-2">
@@ -558,9 +562,15 @@ export default function PaymentHistoryTab({ order, supabaseUrl, anonKey, onOrder
                   <span className="text-sm font-bold text-sky-700">{anyUnsetAddon && addonTotal === 0 ? "Rate not set" : `+$${addonTotal}`}</span>
                 </div>
               )}
+              {addPetRows.length > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-600 flex items-center gap-1.5"><i className="ri-bear-smile-line text-emerald-500"></i>Additional Pet completion payout{addPetRows.length > 1 ? ` ×${addPetRows.length}` : ""}</span>
+                  <span className="text-sm font-bold text-emerald-700">{anyUnsetAddPet && addPetTotal === 0 ? "Rate not set" : `+$${addPetTotal}`}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                 <span className="text-xs font-bold text-gray-700">Total provider earning</span>
-                <span className="text-base font-extrabold text-violet-700">${baseTotal + raTotal + addonTotal}</span>
+                <span className="text-base font-extrabold text-violet-700">${baseTotal + raTotal + addonTotal + addPetTotal}</span>
               </div>
               <p className="text-[10px] text-gray-400 leading-relaxed pt-1">
                 Recorded in the provider earnings ledger (doctor_earnings). Manage / mark paid in the Providers earnings panel.

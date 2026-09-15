@@ -54,8 +54,8 @@ const STATUS_LABEL: Record<string, string> = {
   clarification_requested: "Clarification requested — awaiting the customer",
   resubmitted: "Customer responded — awaiting your review",
   needs_reassignment: "Returned to PawTenant for reassignment",
-  approved_pending_document: "Approved — awaiting the revised document",
-  completed: "Approved — revised document issued",
+  approved_pending_document: "Approved — awaiting the letter",
+  completed: "Approved — letter issued",
   rejected: "Not approved",
   refund_pending: "Not approved",
   refunded: "Not approved",
@@ -103,8 +103,8 @@ function clinicalRows(answers: Record<string, unknown> | null | undefined): Arra
 }
 
 export default function ProviderAdditionalPetReview({
-  orderId, showClinicalContext = false,
-}: { orderId: string; showClinicalContext?: boolean }) {
+  orderId, showClinicalContext = false, isReplacementCase = false,
+}: { orderId: string; showClinicalContext?: boolean; isReplacementCase?: boolean }) {
   const [view, setView] = useState<ProviderView | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -127,7 +127,7 @@ export default function ProviderAdditionalPetReview({
     if (!view?.request_id) return;
     if ((action !== "approve") && !reason.trim()) {
       setError(action === "reject"
-        ? "Please give a reason for declining — it is recorded for the PawTenant team and the next reviewer."
+        ? "Please give a reason for declining — it is recorded for the PawTenant team."
         : "Please give a reason so the customer understands what is needed.");
       return;
     }
@@ -147,9 +147,11 @@ export default function ProviderAdditionalPetReview({
       setNotice(d.alreadyDecided || d.alreadyDeclined
         ? "This request has already been handled. Showing its current state."
         : action === "approve"
-          ? "Approved. Please submit the revised letter covering every approved pet."
+          ? "Approved. Please submit one letter covering every pet in this case."
           : action === "reject"
-            ? "Declined. PawTenant will arrange for another licensed provider to review this request — it is not a customer rejection and no refund is triggered."
+            ? isReplacementCase
+              ? "Declined. PawTenant will review the case and determine the next step."
+              : "Declined. PawTenant will arrange for another licensed provider to review this request — it is not a customer rejection and no refund is triggered."
             : "Sent to the customer.");
       setMode(null); setReason("");
       await load();
@@ -169,23 +171,50 @@ export default function ProviderAdditionalPetReview({
   const canDecide = DECIDABLE.has(status) && status !== "clarification_requested" && mayDecide;
   const ctx = view.clinical_context;
   const assessment = clinicalRows(ctx?.assessment_answers);
+  const allCasePets = isReplacementCase
+    ? [
+        ...(view.original_pets ?? []),
+        ...(view.approved_added_pets ?? []),
+        ...(view.new_pet ? [view.new_pet] : []),
+      ].filter((pet, index, pets) =>
+        pets.findIndex((candidate) =>
+          candidate?.name === pet?.name && candidate?.type === pet?.type
+        ) === index
+      )
+    : [];
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100 flex items-start justify-between gap-3 flex-wrap">
-        <h3 className="text-sm font-extrabold text-orange-500">Additional Pet Requested</h3>
+        <h3 className="text-sm font-extrabold text-orange-500">
+          {isReplacementCase ? "Case Details" : "Additional Pet Requested"}
+        </h3>
         <span className="text-[11px] font-semibold text-gray-600 whitespace-nowrap">
           {STATUS_LABEL[status] ?? status}
         </span>
       </div>
 
       <div className="px-4 py-3 space-y-3 text-sm">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1">
-            New pet for review
-          </p>
-          <p className="text-gray-900 font-medium break-words">{petLine(view.new_pet)}</p>
-        </div>
+        {isReplacementCase ? (
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Pets</p>
+            {allCasePets.length > 0 ? (
+              <ul className="space-y-0.5">
+                {allCasePets.map((pet, index) => (
+                  <li key={`${pet?.name ?? "pet"}-${index}`} className="text-gray-700 text-[13px] break-words">
+                    {petLine(pet)}
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-gray-500 text-[13px]">None recorded</p>}
+            <p className="mt-1 text-[11px] text-gray-500">Total pets: {view.target_pet_count ?? "—"}</p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1">New pet for review</p>
+            <p className="text-gray-900 font-medium break-words">{petLine(view.new_pet)}</p>
+          </div>
+        )}
 
         {view.new_pet?.support_reason && (
           <div>
@@ -198,7 +227,7 @@ export default function ProviderAdditionalPetReview({
           </div>
         )}
 
-        <div>
+        {!isReplacementCase && <div>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1">
             Pets already covered by this order
           </p>
@@ -214,14 +243,14 @@ export default function ProviderAdditionalPetReview({
             ) : <p className="text-gray-500 text-[13px]">None recorded</p>;
           })()}
           <p className="mt-1 text-[11px] text-gray-500">
-            Total after approval: {view.target_pet_count ?? "—"} of 3
+            Total pets: {view.target_pet_count ?? "—"}
           </p>
-        </div>
+        </div>}
 
         {showClinicalContext && (assessment.length > 0 || ctx?.customer_first_name) && (
           <details className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
             <summary className="cursor-pointer text-[12px] font-semibold text-gray-700">
-              Original assessment{ctx?.customer_first_name ? ` — ${ctx.customer_first_name}` : ""}{ctx?.state ? ` (${ctx.state})` : ""}
+              Assessment{ctx?.customer_first_name ? ` — ${ctx.customer_first_name}` : ""}{ctx?.state ? ` (${ctx.state})` : ""}
             </summary>
             <dl className="mt-2 space-y-1.5">
               {assessment.map(([label, value]) => (
@@ -254,12 +283,6 @@ export default function ProviderAdditionalPetReview({
                   <span className="font-medium text-gray-800">{h.event_type.replace(/_/g, " ")}</span>
                   {" · "}
                   {new Date(h.created_at).toLocaleString("en-US", { dateStyle: "short", timeStyle: "short" })}
-                  {/* A previous provider's decline reason is clinical context for
-                      the next reviewer. Financial fields never reach this
-                      payload — the projection strips them server-side. */}
-                  {h.event_type === "provider_declined" && typeof h.detail?.reason === "string" && (
-                    <span className="block pl-3 text-gray-500">“{h.detail.reason as string}”</span>
-                  )}
                 </li>
               ))}
             </ul>
@@ -314,9 +337,9 @@ export default function ProviderAdditionalPetReview({
             </label>
             {mode === "decline" && (
               <p className="text-[11px] text-gray-500 leading-relaxed">
-                Declining ends only your review of this request. It returns to
-                PawTenant for reassignment to another licensed provider — the
-                customer is not rejected and no refund is triggered.
+                {isReplacementCase
+                  ? "Declining returns the case to PawTenant for internal review. The customer is not automatically rejected."
+                  : "Declining ends only your review of this request. It returns to PawTenant for reassignment to another licensed provider — the customer is not rejected and no refund is triggered."}
               </p>
             )}
             <textarea
