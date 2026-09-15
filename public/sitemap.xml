@@ -312,4 +312,66 @@
   <url><loc>https://pawtenant.com/blog/esa-south-florida-miami-fort-lauderdale-2026-guide</loc><lastmod>2026-04-03</lastmod><priority>0.85</priority><changefreq>monthly</changefreq></url>
   <url><loc>https://pawtenant.com/blog/esa-virginia-northern-va-richmond-2026-guide</loc><lastmod>2026-04-03</lastmod><priority>0.85</priority><changefreq>monthly</changefreq></url>
 
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- STATE BLOG HUBS (50 states + DC) — /blog/state/<slug>       -->
+  <!-- SEO-SITEMAP-STATE-BLOG-HUBS-001 — 2026-09-16.               -->
+  <!-- These 51 routes are indexable, self-canonical and return 200 -->
+  <!-- but were absent from the sitemap, so Google only ever found  -->
+  <!-- them through the single /blog inlink. Source of truth is     -->
+  <!-- STATE_BLOG_MAP in src/mocks/stateBlogMap.ts; drift between   -->
+  <!-- that map and this list hard-fails                            -->
+  <!-- scripts/check-state-blog-sitemap.mjs during the build.       -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <url><loc>https://pawtenant.com/blog/state/new-york</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/florida</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/california</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/texas</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/new-jersey</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/illinois</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/pennsylvania</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/ohio</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/georgia</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/michigan</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/washington</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/arizona</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/virginia</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/colorado</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/maryland</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/alabama</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/alaska</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/arkansas</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/connecticut</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/delaware</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/hawaii</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/idaho</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/indiana</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/iowa</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/kansas</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/kentucky</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/louisiana</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/maine</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/massachusetts</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/minnesota</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/mississippi</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/missouri</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/montana</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/nebraska</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/nevada</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/new-hampshire</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/new-mexico</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/north-carolina</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/north-dakota</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/oklahoma</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/oregon</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/rhode-island</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/south-carolina</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/south-dakota</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/tennessee</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/utah</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/vermont</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/washington-dc</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/west-virginia</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/wisconsin</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://pawtenant.com/blog/state/wyoming</loc><lastmod>2026-09-16</lastmod><priority>0.8</priority><changefreq>monthly</changefreq></url>
+
 </urlset>

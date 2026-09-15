@@ -18,6 +18,8 @@ import { useBusinessDayKey } from "../../hooks/useBusinessClock";
 import BusinessClock from "../../components/admin/BusinessClock";
 import { createRequestGuard, runLatest } from "../../lib/latestRequestGuard";
 import { supabase, getAdminToken } from "../../lib/supabaseClient";
+// ADMIN-ORDER-DELETE-REPAIR-002 — the one client-side order-purge implementation.
+import { adminDeleteOrders } from "../../lib/adminDeleteOrder";
 import { resolveStaffRole } from "../../lib/staffAuth";
 import { canAccessApprovals } from "../../lib/adminPermissions";
 // Phase K3 — shared normalized classifier so the Orders filter, the
@@ -2320,35 +2322,35 @@ export default function AdminOrdersPage() {
     setBulkDeleting(true);
     setBulkDeleteMsg("");
     const ids = Array.from(selectedOrders);
-    let successCount = 0;
-    let failCount = 0;
 
-    for (const confirmationId of ids) {
-      const o = lookupPool.find((x) => x.confirmation_id === confirmationId);
-      if (!o) continue;
-      try {
-        // Clean up related records first
-        await supabase.from("doctor_earnings").delete().eq("order_id", o.id);
-        await supabase.from("order_documents").delete().eq("order_id", o.id);
-        await supabase.from("doctor_notes").delete().eq("order_id", o.id);
-        await supabase.from("order_status_logs").delete().eq("order_id", o.id);
-        await supabase.from("doctor_notifications").delete().eq("order_id", o.id);
-        const { error } = await supabase.from("orders").delete().eq("id", o.id);
-        if (error) { failCount++; } else { successCount++; }
-      } catch { failCount++; }
-    }
+    // ── ADMIN-ORDER-DELETE-REPAIR-002 ────────────────────────────────────────
+    // This used to issue five child DELETEs from the browser and then delete
+    // the parent. That list never learned about the NO ACTION / RESTRICT
+    // children added since (shared_order_notes, the four partner_* tables,
+    // google_ads_conversion_*), so a blocked order surfaced a bare Postgres
+    // constraint string — and the list below was filtered by the SELECTION, so
+    // a failed delete still removed the row from the screen and only came back
+    // on the next refresh. Both are now handled by the shared helper, which
+    // calls the same admin-gated admin_delete_order RPC the order modal uses
+    // and returns the orders the database ACTUALLY removed.
+    const targets = ids
+      .map((confirmationId) => lookupPool.find((x) => x.confirmation_id === confirmationId))
+      .filter((o): o is NonNullable<typeof o> => Boolean(o));
 
-    mutateOrders((prev) => prev.filter((o) => !selectedOrders.has(o.confirmation_id)));
-    setSelectedOrders(new Set());
+    const { deleted, message } = await adminDeleteOrders(targets);
+
+    // Remove only what really went away.
+    const deletedSet = new Set(deleted);
+    mutateOrders((prev) => prev.filter((o) => !deletedSet.has(o.confirmation_id)));
+    // Keep any order that failed still selected, so the operator can retry or
+    // archive it without hunting for it again.
+    setSelectedOrders((prev) => new Set([...prev].filter((cid) => !deletedSet.has(cid))));
     setShowBulkDeleteConfirm(false);
     setBulkDeleteConfirmText("");
     setBulkDeleting(false);
-    setBulkDeleteMsg(failCount === 0
-      ? `${successCount} order${successCount !== 1 ? "s" : ""} permanently deleted.`
-      : `${successCount} deleted, ${failCount} failed.`
-    );
-    setTimeout(() => setBulkDeleteMsg(""), 8000);
-  }, [selectedOrders, orders]);
+    setBulkDeleteMsg(message);
+    setTimeout(() => setBulkDeleteMsg(""), 15000);
+  }, [selectedOrders, orders, lookupPool]);
 
   // ── Toggle follow-up opt-out ─────────────────────────────────────────────
   const handleToggleOptOut = useCallback(async (order: Order) => {
@@ -3199,29 +3201,27 @@ export default function AdminOrdersPage() {
     }
 
     if (request.action_type === "bulk_delete") {
+      // ADMIN-ORDER-DELETE-REPAIR-002 — the approved-request path ran the same
+      // stale browser cascade as handleBulkDelete and filtered the list by the
+      // REQUEST rather than by what was actually removed. Both now go through
+      // the shared admin_delete_order helper. The approval is authorisation to
+      // ask; the RPC's own check_is_admin() gate is what actually permits it.
       const orderIds = (payload.orderIds as string[]) ?? [];
-      let successCount = 0;
-      let failCount = 0;
-      for (const confirmationId of orderIds) {
-        const o = lookupPool.find((x) => x.confirmation_id === confirmationId);
-        if (!o) continue;
-        try {
-          await supabase.from("doctor_earnings").delete().eq("order_id", o.id);
-          await supabase.from("order_documents").delete().eq("order_id", o.id);
-          await supabase.from("doctor_notes").delete().eq("order_id", o.id);
-          await supabase.from("order_status_logs").delete().eq("order_id", o.id);
-          await supabase.from("doctor_notifications").delete().eq("order_id", o.id);
-          const { error } = await supabase.from("orders").delete().eq("id", o.id);
-          if (error) { failCount++; } else { successCount++; }
-        } catch { failCount++; }
-      }
-      mutateOrders((prev) => prev.filter((o) => !orderIds.includes(o.confirmation_id)));
-      setSelectedOrders(new Set());
-      setBulkDeleteMsg(failCount === 0
-        ? `${successCount} order${successCount !== 1 ? "s" : ""} permanently deleted (approved by admin).`
-        : `${successCount} deleted, ${failCount} failed.`
+      const targets = orderIds
+        .map((confirmationId) => lookupPool.find((x) => x.confirmation_id === confirmationId))
+        .filter((o): o is NonNullable<typeof o> => Boolean(o));
+
+      const { deleted, message } = await adminDeleteOrders(targets);
+
+      const deletedSet = new Set(deleted);
+      mutateOrders((prev) => prev.filter((o) => !deletedSet.has(o.confirmation_id)));
+      setSelectedOrders((prev) => new Set([...prev].filter((cid) => !deletedSet.has(cid))));
+      setBulkDeleteMsg(
+        deleted.length && message.endsWith("permanently deleted.")
+          ? `${message.replace(/\.$/, "")} (approved by admin).`
+          : message,
       );
-      setTimeout(() => setBulkDeleteMsg(""), 8000);
+      setTimeout(() => setBulkDeleteMsg(""), 15000);
     }
 
     if (request.action_type === "bulk_assign") {

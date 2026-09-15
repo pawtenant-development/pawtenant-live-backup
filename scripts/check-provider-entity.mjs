@@ -163,14 +163,22 @@ async function main(selfTest) {
   check("HTML sitemap excludes Edna", !EXCLUDED.some((s) => htmlSitemap.includes(`/doctors/${s}`)));
 
   // ── 7) Prerender: exactly 8 provider routes + /our-providers, no Edna/alias ─
+  // SEO-H1-RAW-HTML-COVERAGE-001 widened the prerender to the whole indexable
+  // surface, so SPIKE_ROUTES is now COMPUTED (it expands dynamic patterns from
+  // the route data modules) instead of being a hand-written array literal.
+  // The provider set stayed hand-curated precisely so this assertion keeps its
+  // teeth — it now reads PRERENDERED_DOCTOR_SLUGS, which is the list the
+  // /doctors/:id expansion maps over, and checks /our-providers in the route
+  // table. Same guarantee, matched to the current shape.
   const entry = await rd("src/prerender/entry.tsx");
-  const spikeBlock = (entry.match(/SPIKE_ROUTES[^=]*=\s*\[([\s\S]*?)\];/) || [])[1] || "";
-  const spikeDoctors = [...spikeBlock.matchAll(/\/doctors\/([a-z0-9-]+)/g)].map((m) => m[1]);
+  const spikeBlock =
+    (entry.match(/PRERENDERED_DOCTOR_SLUGS[^=]*=\s*\[([\s\S]*?)\];/) || [])[1] || "";
+  const spikeDoctors = [...spikeBlock.matchAll(/"([a-z0-9-]+)"/g)].map((m) => m[1]);
   check("prerendered provider routes == published set", sameSet(spikeDoctors, PUBLISHED));
   check("unpublished providers are NOT prerendered as indexable", !UNPUBLISHED.some((s) => spikeDoctors.includes(s)));
-  check("prerender includes /our-providers", spikeBlock.includes('"/our-providers"'));
+  check("prerender includes /our-providers", /\{\s*path:\s*"\/our-providers"/.test(entry));
   check("prerender excludes Edna + aliases",
-    ![...EXCLUDED, ...ALIASES].some((s) => spikeBlock.includes(`/doctors/${s}`)));
+    ![...EXCLUDED, ...ALIASES].some((s) => spikeBlock.includes(`"${s}"`)));
 
   // ── 8) Alias redirects preserved (one-hop, permanent, non-www) ─────────────
   const vercel = await rd("vercel.json");

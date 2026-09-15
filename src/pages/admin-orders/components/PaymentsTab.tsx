@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { getAdminToken, getAdminUserToken } from "../../../lib/supabaseClient";
+// ADMIN-ORDER-DELETE-REPAIR-002 — the one client-side order-purge implementation.
+import { adminDeleteOrders } from "../../../lib/adminDeleteOrder";
 import { presetRange, ACCOUNTS_PRESET_BUTTONS, type AccountsPreset } from "../../../lib/accountsPeriods";
 // STRIPE-ADMIN-DAILY-PAYMENT-TIMEZONE-RECONCILIATION-001 — "today" and every
 // daily figure on this tab are America/New_York business days, never the UTC
@@ -311,32 +313,61 @@ export default function PaymentsTab() {
   const handleBulkDeletePayments = async () => {
     if (selectedChargeIds.size === 0) return;
     setBulkDeletingPay(true);
-    // Delete matching orders from Supabase by payment_intent_id
+    // ── ADMIN-ORDER-DELETE-REPAIR-002 ──────────────────────────────────────
+    // This was the worst of the three stale delete paths: it ran the browser
+    // child cascade, never looked at a single result, and then reported
+    // `deleted` — a number counted by the LOOP, not by the database. Every
+    // refused delete was reported as a success. It now goes through the shared
+    // admin_delete_order helper, counts only what the database actually
+    // removed, and clears from the charges list only those charges whose
+    // orders really went away. Stripe is still never touched.
     let deleted = 0;
+    const failures: string[] = [];
+    const clearedChargeIds = new Set<string>();
+
     for (const chargeId of Array.from(selectedChargeIds)) {
       const charge = data?.charges.find((c) => c.id === chargeId);
       const piId = charge?.payment_intent;
-      if (piId) {
-        const { data: matchedOrders } = await supabase.from("orders").select("id").eq("payment_intent_id", piId);
-        for (const o of (matchedOrders ?? []) as { id: string }[]) {
-          await supabase.from("doctor_earnings").delete().eq("order_id", o.id);
-          await supabase.from("order_documents").delete().eq("order_id", o.id);
-          await supabase.from("doctor_notes").delete().eq("order_id", o.id);
-          await supabase.from("order_status_logs").delete().eq("order_id", o.id);
-          await supabase.from("doctor_notifications").delete().eq("order_id", o.id);
-          await supabase.from("orders").delete().eq("id", o.id);
-          deleted++;
-        }
+      if (!piId) continue;
+
+      const { data: matchedOrders, error: lookupError } = await supabase
+        .from("orders")
+        .select("id, confirmation_id")
+        .eq("payment_intent_id", piId);
+
+      if (lookupError) {
+        failures.push(`${piId} — could not look up the matching order: ${lookupError.message}`);
+        continue;
       }
+
+      const rows = (matchedOrders ?? []) as { id: string; confirmation_id: string }[];
+      if (!rows.length) {
+        // No order row for this charge — nothing to delete, so the charge is
+        // already in the desired state. Clear it rather than reporting an error.
+        clearedChargeIds.add(chargeId);
+        continue;
+      }
+
+      const outcome = await adminDeleteOrders(rows);
+      deleted += outcome.deleted.length;
+      for (const f of outcome.failures) failures.push(f.message);
+      if (outcome.failures.length === 0) clearedChargeIds.add(chargeId);
     }
-    // Remove from local charges list
-    setData((prev) => prev ? { ...prev, charges: prev.charges.filter((c) => !selectedChargeIds.has(c.id)) } : prev);
-    setSelectedChargeIds(new Set());
+
+    // Remove from the local charges list ONLY the charges whose orders are gone.
+    setData((prev) =>
+      prev ? { ...prev, charges: prev.charges.filter((c) => !clearedChargeIds.has(c.id)) } : prev,
+    );
+    setSelectedChargeIds((prev) => new Set([...prev].filter((id) => !clearedChargeIds.has(id))));
     setShowBulkDeletePayments(false);
     setBulkDeletePayConfirmText("");
     setBulkDeletingPay(false);
-    setBulkDeletePayMsg(`${deleted} order record${deleted !== 1 ? "s" : ""} deleted from database. Stripe charges are unaffected.`);
-    setTimeout(() => setBulkDeletePayMsg(""), 8000);
+    setBulkDeletePayMsg(
+      failures.length
+        ? `${deleted} order record${deleted !== 1 ? "s" : ""} deleted. ${failures.length} could not be deleted: ${failures.map((f) => `• ${f}`).join(" ")} Stripe charges are unaffected.`
+        : `${deleted} order record${deleted !== 1 ? "s" : ""} deleted from database. Stripe charges are unaffected.`,
+    );
+    setTimeout(() => setBulkDeletePayMsg(""), 15000);
   };
 
   // Monotonic request sequence: a superseded (stale) response can never

@@ -1,6 +1,8 @@
 // OrderDetailModal — Full case management view for admins
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase, getAdminToken } from "../../../lib/supabaseClient";
+// ADMIN-ORDER-DELETE-REPAIR-002 — the one client-side order-purge implementation.
+import { adminDeleteOrder } from "../../../lib/adminDeleteOrder";
 import { isProviderEligibleForState } from "./providerEligibility";
 // PARTIAL-REFUND-TERMINAL-STATE-LIVE-MIRROR-001 (tracker row 392) — canonical
 // refund classification, mirrored from TEST ebe8a46.
@@ -2753,45 +2755,18 @@ export default function OrderDetailModal({
       // has no reason to touch it. Keeping it client-side preserves the
       // existing behaviour exactly rather than quietly changing what a purge
       // removes.
-      try {
-        const auditRes = await supabase.from("audit_logs").delete().eq("object_id", order.confirmation_id);
-        if (auditRes?.error) console.warn("[deleteOrder] audit_logs cleanup failed:", auditRes.error);
-      } catch (err) {
-        console.warn("[deleteOrder] audit_logs cleanup threw:", err);
-      }
-
-      const { data: purge, error } = await supabase.rpc("admin_delete_order", { p_order_id: order.id });
-      if (error) {
-        setDeleteOrderMsg(
-          /admin access required/i.test(error.message)
-            ? "Admin access required to permanently delete orders."
-            : `Delete failed: ${error.message}`,
-        );
-        setDeletingOrder(false);
-        return;
-      }
-      const result = purge as { ok?: boolean; error?: string; child_count?: number } | null;
-      if (!result?.ok) {
-        if (result?.error === "has_child_orders") {
-          setDeleteOrderMsg(
-            `This order has ${result.child_count ?? 1} linked Additional-Pet order(s). ` +
-            "Delete those first — removing this one would orphan them.",
-          );
-        } else if (result?.error === "has_ad_conversion_records") {
-          // LIVE-only. These FKs are RESTRICT on purpose: the rows record what
-          // was reported to Google Ads, so the purge refuses rather than
-          // destroying conversion / refund-retraction provenance.
-          const adj = (result as { adjustments?: number }).adjustments ?? 0;
-          const upl = (result as { uploads?: number }).uploads ?? 0;
-          setDeleteOrderMsg(
-            `This order has Google Ads conversion records (${upl} upload(s), ${adj} adjustment(s)). ` +
-            "Deleting it would destroy what was reported to Google — escalate rather than force it.",
-          );
-        } else if (result?.error === "order_not_found") {
-          setDeleteOrderMsg("This order no longer exists — it may already have been deleted.");
-        } else {
-          setDeleteOrderMsg(`Delete failed: ${result?.error ?? "unknown error"}`);
-        }
+      // ── ADMIN-ORDER-DELETE-REPAIR-002 ──────────────────────────────────────
+      // The audit_logs cleanup, the RPC call and the error-to-sentence mapping
+      // all moved into src/lib/adminDeleteOrder.ts so this modal and the three
+      // bulk controls share ONE implementation. Only this path had ever been
+      // repaired; the others still shipped the browser cascade this comment
+      // describes, which is what made "delete an order" unreliable. The shared
+      // helper keeps every refusal message this branch produced (including the
+      // Google Ads one) and adds blocked_by_related_records, so the partner
+      // billing / provenance FKs no longer surface as a raw Postgres token.
+      const outcome = await adminDeleteOrder(order);
+      if (!outcome.ok) {
+        setDeleteOrderMsg(outcome.message);
         setDeletingOrder(false);
         return;
       }
@@ -6486,6 +6461,22 @@ export default function OrderDetailModal({
                 autoFocus
               />
             </div>
+            {/* ADMIN-ORDER-DELETE-REPAIR-002 — the refusal reason has to be
+                HERE. It was only rendered beside the Danger Zone button, but
+                Hard Delete is also reachable from the header ⋯ menu on every
+                tab, and this dialog stays open when the delete is refused. An
+                admin who opened it from the menu saw the dialog simply do
+                nothing. Browser QA on TEST caught exactly that: the RPC
+                correctly returned has_child_orders and the operator was told
+                nothing at all. */}
+            {deleteOrderMsg && (
+              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5">
+                <p className="text-xs text-red-700 font-semibold flex items-start gap-1.5 leading-relaxed">
+                  <i className="ri-error-warning-line mt-0.5 flex-shrink-0"></i>
+                  <span>{deleteOrderMsg}</span>
+                </p>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <button
                 type="button"

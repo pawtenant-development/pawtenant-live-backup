@@ -1,0 +1,1357 @@
+{
+ "source": "Pawtenant_15-Sep-2026_H1 tag missing or empty.xlsx (Semrush crawl, 2026-09-15)",
+ "note": "Every row was HTTP 200, Is indexable page = True, No. of H1 = 0. Each must now render exactly one non-empty, visible <h1> in RAW prerendered HTML.",
+ "count": 270,
+ "routes": [
+  {
+   "path": "/about-us",
+   "title": "About PawTenant | Our Network of Licensed Professionals",
+   "template": "src/pages/about-us/page.tsx"
+  },
+  {
+   "path": "/airline-pet-policy",
+   "title": "Airline ESA & Pet Policy 2026: Can You Fly with an ESA? | PawTenant",
+   "template": "src/pages/airline-pet-policy/page.tsx"
+  },
+  {
+   "path": "/all-about-service-dogs",
+   "title": "Psychiatric Service Dog Letter Online 2026 — PSD Letter vs ESA Letter | PawTenant",
+   "template": "src/pages/service-dogs/page.tsx"
+  },
+  {
+   "path": "/are-esa-letters-still-valid-after-hud-change",
+   "title": "Are ESA Letters Still Valid After the 2026 HUD Change? | PawTenant",
+   "template": "src/pages/are-esa-letters-still-valid-after-hud-change/page.tsx"
+  },
+  {
+   "path": "/assessment",
+   "title": "Apply for Your ESA Letter | Start Your Evaluation | PawTenant",
+   "template": "src/pages/assessment/page.tsx"
+  },
+  {
+   "path": "/best-online-esa-letter-service",
+   "title": "Best Online ESA Letter Services: How to Choose a Real Provider",
+   "template": "src/pages/best-online-esa-letter-service/page.tsx"
+  },
+  {
+   "path": "/blog/2026-hud-esa-guidelines",
+   "title": "2026 HUD ESA Guidelines: Is Your ESA Letter Still Valid?",
+   "template": "src/pages/blog-2026-hud-esa-guidelines/page.tsx"
+  },
+  {
+   "path": "/blog/apartment-pet-rent-and-esa-letters",
+   "title": "Apartment Pet Rent and ESA Letters: What Renters Should Know",
+   "template": "src/pages/blog-apartment-pet-rent-and-esa-letters/page.tsx"
+  },
+  {
+   "path": "/blog/are-online-esa-letters-legit",
+   "title": "How to Get an ESA Letter Online | Complete Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/california-esa-laws-explained-2025-update",
+   "title": "California ESA Laws Explained | 2026 Update | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/california-pet-rent-and-esa-letters",
+   "title": "California Pet Rent and ESA Letters: What Renters Should Know",
+   "template": "src/pages/blog-california-pet-rent-and-esa-letters/page.tsx"
+  },
+  {
+   "path": "/blog/can-anxiety-qualify-you-for-a-psd",
+   "title": "Can Anxiety Qualify You for a Psychiatric Service Dog?",
+   "template": "src/pages/blog-can-anxiety-qualify-you-for-a-psd/page.tsx"
+  },
+  {
+   "path": "/blog/can-depression-qualify-psychiatric-service-dog",
+   "title": "Can Depression Qualify You for a Psychiatric Service Dog?",
+   "template": "src/pages/blog-can-depression-qualify-psychiatric-service-dog/page.tsx"
+  },
+  {
+   "path": "/blog/can-depression-qualify-you-for-an-esa",
+   "title": "Can Depression Qualify You for an ESA?",
+   "template": "src/pages/blog-can-depression-qualify-you-for-an-esa/page.tsx"
+  },
+  {
+   "path": "/blog/can-landlord-evict-me-for-having-esa-2026",
+   "title": "Can My Landlord Evict Me for Having an ESA? 2026 Tenant Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/can-you-have-esa-in-college-dorms",
+   "title": "Can You Have an ESA in College Dorms? 2026 Complete Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/colorado-pet-rent-and-esa-letters",
+   "title": "Colorado Pet Rent and ESA Letters: What Renters Should Know",
+   "template": "src/pages/blog-colorado-pet-rent-and-esa-letters/page.tsx"
+  },
+  {
+   "path": "/blog/crowds-travel-stress-emotional-support-animal",
+   "title": "Crowds, Travel Stress & Emotional Support Animals | PawTenant",
+   "template": "src/pages/blog-crowds-travel-stress-emotional-support-animal/page.tsx"
+  },
+  {
+   "path": "/blog/emotional-support-animal-travel-anxiety",
+   "title": "Can an Emotional Support Animal Help With Travel Anxiety? | PawTenant",
+   "template": "src/pages/blog-emotional-support-animal-travel-anxiety/page.tsx"
+  },
+  {
+   "path": "/blog/esa-airline-compliance-guide-all-airlines-2026",
+   "title": "ESA Airline Compliance 2026: Every Major Airline Policy Explained | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-annual-renewal-subscription-stay-compliant-2026",
+   "title": "ESA Annual Renewal & Subscription Plan 2026: Stay Compliant | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-arizona-phoenix-tucson-2026-guide",
+   "title": "ESA Arizona 2026: Phoenix & Tucson Renter Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-california-2026-update",
+   "title": "ESA California 2026 Update: AB 468 Enforcement & Renter Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-colorado-denver-2026-guide",
+   "title": "ESA Colorado 2026: Denver Housing Rights & CADA Protections | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-complete-guide-2026-whats-updated",
+   "title": "ESA Complete Guide 2026: What’s New & Updated | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-florida-2026-update",
+   "title": "ESA Florida 2026 Update: Anti-Fraud Enforcement & Renter Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-for-anxiety-depression-mental-health-guide-2026",
+   "title": "ESA for Anxiety & Depression 2026: A Mental Health Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-friendly-hotels-travel-guide-2026",
+   "title": "ESA-Friendly Hotels 2026: Travel Guide & Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-georgia-atlanta-2026-guide",
+   "title": "ESA Georgia 2026: Atlanta Renter Rights & Housing Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-housing-denial-rights-2026",
+   "title": "ESA Housing Denial Rights 2026: What to Do when Your Landlord Says No | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-illinois-chicago-2026-guide",
+   "title": "ESA Illinois 2026: Chicago Apartment Rights & Housing Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-letter-apartments-complete-renters-guide-2026",
+   "title": "ESA Letter for Apartments 2026: Complete Renter's Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-letter-college-dorms-2026-complete-guide",
+   "title": "ESA Letter for College Dorms 2026: Complete Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-letter-college-students-dorm-rights-federal-laws",
+   "title": "ESA Letter for College Students 2026: Dorm Rights & Federal Laws | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-letter-cost-california-2026",
+   "title": "ESA Letter Cost California 2026: Pricing Guide & What to Avoid | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-letter-verification-protects-housing-rights-2026",
+   "title": "ESA Letter Verification Protects Housing Rights 2026 | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-letters-for-veterans-2026",
+   "title": "ESA Letters for Veterans 2026: VA Benefits & Housing Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-maryland-baltimore-2026-guide",
+   "title": "ESA Maryland 2026: Baltimore & Montgomery County Housing Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-michigan-detroit-grand-rapids-2026-guide",
+   "title": "ESA Michigan 2026: Detroit & Grand Rapids Housing Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-new-jersey-newark-jersey-city-2026-guide",
+   "title": "ESA New Jersey 2026: Newark, Jersey City & Hoboken Housing Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-new-york-2026-update",
+   "title": "ESA New York 2026 Update: NYC Enforcement & Tenant Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-nyc-apartments-coop-rent-stabilized-2026-guide",
+   "title": "ESA NYC Apartments 2026: Co-ops, Rent-Stabilized & NYCHA Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-ohio-2026-guide",
+   "title": "ESA Ohio 2026: Columbus, Cleveland & Cincinnati Renter Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-pennsylvania-philadelphia-pittsburgh-2026-guide",
+   "title": "ESA Pennsylvania 2026: Philadelphia & Pittsburgh Housing Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-road-trip-guide-2026",
+   "title": "ESA Road Trip Guide 2026: Planning, Stops & Safety | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-south-florida-miami-fort-lauderdale-2026-guide",
+   "title": "ESA South Florida 2026: Miami, Fort Lauderdale & West Palm Beach Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-texas-2026-update",
+   "title": "ESA Texas 2026 Update: Housing Rights & Landlord Trends | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-travel-readiness-consultation-guide-2026",
+   "title": "ESA Travel Readiness Consultation 2026: Complete Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-virginia-northern-va-richmond-2026-guide",
+   "title": "ESA Virginia 2026: Northern VA, Richmond & Norfolk Housing Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-vs-service-animal-key-differences-2026",
+   "title": "ESA vs Service Animal: Key Legal Differences in 2026 | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/esa-washington-state-2026-guide",
+   "title": "ESA Washington State 2026: Seattle Rights & WLAD Protections | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/exotic-esa-rules-whats-realistically-allowed",
+   "title": "Exotic ESA Rules: What’s Realistically Allowed? | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/florida-esa-laws-what-landlords-can-ask-for",
+   "title": "Florida ESA Laws: What Landlords Can Ask For | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/florida-esa-letter-renters-2026",
+   "title": "ESA Letter for Florida Renters 2026: Housing Rights Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/florida-pet-rent-and-esa-letters",
+   "title": "Florida Pet Rent and ESA Letters: What Renters Should Know",
+   "template": "src/pages/blog-florida-pet-rent-and-esa-letters/page.tsx"
+  },
+  {
+   "path": "/blog/flying-with-esa-travel-letter-guide",
+   "title": "Flying with an ESA in 2026: Travel Letter Guide & Airline Policies | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/hoa-esa-rights-2026",
+   "title": "HOA ESA Rights 2026: What Homeowners & Renters Must Know | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/how-esa-letter-verification-works-pawtenant",
+   "title": "How ESA Letter Verification Works | PawTenant's Unique Verifiable ESA Letters",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/how-esas-help-ptsd-2026",
+   "title": "How ESAs Help PTSD: Science & Evidence 2026 | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/how-to-choose-the-right-esa-for-your-needs",
+   "title": "How to Choose the Right ESA for Your Needs | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/how-to-get-an-esa-letter-online",
+   "title": "How to Get an ESA Letter Online in 2026: Step-by-Step Guide",
+   "template": "src/pages/blog-how-to-get-an-esa-letter-online/page.tsx"
+  },
+  {
+   "path": "/blog/how-to-get-certification-for-emotional-support-dog",
+   "title": "Your Guide To Getting Emotional Support Dog Certification | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/how-to-get-esa-letter-from-doctor",
+   "title": "How to Get an ESA Letter from a Doctor or Therapist in 2026 | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/how-to-renew-esa-letter-2026",
+   "title": "How to Renew Your ESA Letter in 2026: Complete Step-by-Step Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/how-to-request-esa-accommodation-university-2026",
+   "title": "How to Request ESA Accommodation from University 2026 | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/how-to-train-psychiatric-service-dog-tasks",
+   "title": "How to Train a Psychiatric Service Dog: Recognized Tasks & Requirements",
+   "template": "src/pages/blog-how-to-train-psychiatric-service-dog-tasks/page.tsx"
+  },
+  {
+   "path": "/blog/landlord-verification-esa-letter-guide-2026",
+   "title": "Landlord Verification of ESA Letters 2026: Complete Tenant Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/mental-health-conditions-qualify-esa-2026",
+   "title": "Top 10 Mental Health Conditions That Qualify for an ESA in 2026 | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/multiple-esas-one-apartment-2026",
+   "title": "Multiple ESAs in One Apartment 2026: What the Law Says | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/new-york-esa-laws-housing-protections",
+   "title": "New York ESA Laws: Housing Protections That Matter | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/new-york-esa-letter-apartment-2026",
+   "title": "ESA Letter New York Apartment 2026: Complete Tenant Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/new-york-pet-rent-and-esa-letters",
+   "title": "New York Pet Rent and ESA Letters: What Renters Should Know",
+   "template": "src/pages/blog-new-york-pet-rent-and-esa-letters/page.tsx"
+  },
+  {
+   "path": "/blog/pet-deposit-vs-pet-rent",
+   "title": "Pet Deposit vs. Pet Rent: What Is the Difference?",
+   "template": "src/pages/blog-pet-deposit-vs-pet-rent/page.tsx"
+  },
+  {
+   "path": "/blog/pet-rent-explained",
+   "title": "Pet Rent Explained: What Renters Should Know About Monthly Pet Fees",
+   "template": "src/pages/blog-pet-rent-explained/page.tsx"
+  },
+  {
+   "path": "/blog/pet-therapy-vs-esa-difference-2026",
+   "title": "Pet Therapy vs ESA vs Service Animal: Mental Health Guide 2026 | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/psd-california-2026-guide",
+   "title": "Psychiatric Service Dog California 2026: Rights & Letter Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/psd-complete-guide-2026-whats-updated",
+   "title": "PSD Complete Guide 2026: Psychiatric Service Dog Laws & Rights | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/psd-florida-2026-guide",
+   "title": "Psychiatric Service Dog Florida 2026: Rights & Letter Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/psd-letter-for-anxiety",
+   "title": "Can You Get a PSD Letter for Anxiety?",
+   "template": "src/pages/blog-psd-letter-for-anxiety/page.tsx"
+  },
+  {
+   "path": "/blog/psd-letter-vs-service-dog-certificate",
+   "title": "PSD Letter vs Service Dog Certificate: What's Actually Useful?",
+   "template": "src/pages/blog-psd-letter-vs-service-dog-certificate/page.tsx"
+  },
+  {
+   "path": "/blog/psd-new-york-2026-guide",
+   "title": "Psychiatric Service Dog New York 2026: NYC Rights & Housing Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/psd-texas-2026-guide",
+   "title": "Psychiatric Service Dog Texas 2026: Rights, Housing & Air Travel | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/psychiatric-service-dog-housing-rights",
+   "title": "Psychiatric Service Dog Housing Rights: What Renters Should Know",
+   "template": "src/pages/blog-psychiatric-service-dog-housing-rights/page.tsx"
+  },
+  {
+   "path": "/blog/psychiatric-service-dog-letter-explained",
+   "title": "Psychiatric Service Dog Letters Explained: What They Are & When They Help",
+   "template": "src/pages/blog-psychiatric-service-dog-letter-explained/page.tsx"
+  },
+  {
+   "path": "/blog/renters-insurance-pet-owners-complete-guide",
+   "title": "Renters Insurance for ESA & Pet Owners: Complete 2026 Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/state/alabama",
+   "title": "Alabama ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/alaska",
+   "title": "Alaska ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/arizona",
+   "title": "Arizona ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/arkansas",
+   "title": "Arkansas ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/california",
+   "title": "California ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/colorado",
+   "title": "Colorado ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/connecticut",
+   "title": "Connecticut ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/delaware",
+   "title": "Delaware ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/florida",
+   "title": "Florida ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/georgia",
+   "title": "Georgia ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/hawaii",
+   "title": "Hawaii ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/idaho",
+   "title": "Idaho ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/illinois",
+   "title": "Illinois ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/indiana",
+   "title": "Indiana ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/iowa",
+   "title": "Iowa ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/kansas",
+   "title": "Kansas ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/kentucky",
+   "title": "Kentucky ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/louisiana",
+   "title": "Louisiana ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/maine",
+   "title": "Maine ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/maryland",
+   "title": "Maryland ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/massachusetts",
+   "title": "Massachusetts ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/michigan",
+   "title": "Michigan ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/minnesota",
+   "title": "Minnesota ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/mississippi",
+   "title": "Mississippi ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/missouri",
+   "title": "Missouri ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/montana",
+   "title": "Montana ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/nebraska",
+   "title": "Nebraska ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/nevada",
+   "title": "Nevada ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/new-hampshire",
+   "title": "New Hampshire ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/new-jersey",
+   "title": "New Jersey ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/new-mexico",
+   "title": "New Mexico ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/new-york",
+   "title": "New York ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/north-carolina",
+   "title": "North Carolina ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/north-dakota",
+   "title": "North Dakota ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/ohio",
+   "title": "Ohio ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/oklahoma",
+   "title": "Oklahoma ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/oregon",
+   "title": "Oregon ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/pennsylvania",
+   "title": "Pennsylvania ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/rhode-island",
+   "title": "Rhode Island ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/south-carolina",
+   "title": "South Carolina ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/south-dakota",
+   "title": "South Dakota ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/tennessee",
+   "title": "Tennessee ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/texas",
+   "title": "Texas ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/utah",
+   "title": "Utah ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/vermont",
+   "title": "Vermont ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/virginia",
+   "title": "Virginia ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/washington",
+   "title": "Washington ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/washington-dc",
+   "title": "Washington DC ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/west-virginia",
+   "title": "West Virginia ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/wisconsin",
+   "title": "Wisconsin ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/state/wyoming",
+   "title": "Wyoming ESA Housing Rights Blog 2026 | PawTenant",
+   "template": "src/pages/blog-state/page.tsx"
+  },
+  {
+   "path": "/blog/temporary-housing-emotional-support-animal",
+   "title": "ESA in Temporary Housing & Extended Stays: What to Know | PawTenant",
+   "template": "src/pages/blog-temporary-housing-emotional-support-animal/page.tsx"
+  },
+  {
+   "path": "/blog/texas-esa-landlord-rights-2026",
+   "title": "Texas ESA Letter Landlord Rights 2026: Complete Guide | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/texas-pet-rent-and-esa-letters",
+   "title": "Texas Pet Rent and ESA Letters: What Renters Should Know",
+   "template": "src/pages/blog-texas-pet-rent-and-esa-letters/page.tsx"
+  },
+  {
+   "path": "/blog/texas-service-animal-laws-penalties",
+   "title": "Texas Service Animal Laws & Penalties for Misrepresentation",
+   "template": "src/pages/blog-texas-service-animal-laws-penalties/page.tsx"
+  },
+  {
+   "path": "/blog/washington-pet-rent-and-esa-letters",
+   "title": "Washington Pet Rent and ESA Letters: What Renters Should Know",
+   "template": "src/pages/blog-washington-pet-rent-and-esa-letters/page.tsx"
+  },
+  {
+   "path": "/blog/what-a-legit-esa-letter-looks-like-checklist-examples",
+   "title": "What a Legit ESA Letter Looks Like: Checklist & Examples | PawTenant",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/what-is-an-esa-letter",
+   "title": "What Is an ESA Letter? 2026 Legal Requirements & Guide",
+   "template": "src/pages/blog-what-is-an-esa-letter/page.tsx"
+  },
+  {
+   "path": "/blog/what-landlords-cannot-legally-do-esa",
+   "title": "What Landlords Cannot Legally Do when You Have an ESA | PawTenant 2026",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/blog/why-pawtenant-best-verifiable-esa-letter-service",
+   "title": "Why PawTenant Is the #1 Verifiable ESA Letter Service | Best ESA Letters 2026",
+   "template": "src/pages/blog-post/page.tsx"
+  },
+  {
+   "path": "/california-esa-letter-30-day-rule",
+   "title": "California ESA Letter & the 30-Day Rule (AB 468) | PawTenant",
+   "template": "src/pages/california-esa-letter-30-day-rule/page.tsx"
+  },
+  {
+   "path": "/california-esa-letter-for-apartments",
+   "title": "California ESA Letter for Apartments | Renter Housing Guide",
+   "template": "src/pages/california-esa-letter-for-apartments/page.tsx"
+  },
+  {
+   "path": "/can-a-landlord-deny-a-psd-letter",
+   "title": "Can a Landlord Deny a PSD Letter? | PawTenant",
+   "template": "src/pages/can-a-landlord-deny-a-psd-letter/page.tsx"
+  },
+  {
+   "path": "/can-landlord-reject-esa-letter",
+   "title": "Can a Landlord Reject an ESA Letter? Your Housing Rights",
+   "template": "src/pages/can-landlord-reject-esa-letter/page.tsx"
+  },
+  {
+   "path": "/college-pet-policy/brown",
+   "title": "ESA Letter for Brown University Students | PawTenant",
+   "template": "src/pages/college-policy-detail/page.tsx"
+  },
+  {
+   "path": "/college-pet-policy/carnegie-mellon",
+   "title": "ESA Letter for Carnegie Mellon University Students | PawTenant",
+   "template": "src/pages/college-policy-detail/page.tsx"
+  },
+  {
+   "path": "/college-pet-policy/cornell",
+   "title": "ESA Letter for Cornell University Students | PawTenant",
+   "template": "src/pages/college-policy-detail/page.tsx"
+  },
+  {
+   "path": "/college-pet-policy/dartmouth",
+   "title": "ESA Letter for Dartmouth College Students | PawTenant",
+   "template": "src/pages/college-policy-detail/page.tsx"
+  },
+  {
+   "path": "/college-pet-policy/emory",
+   "title": "ESA Letter for Emory University Students | PawTenant",
+   "template": "src/pages/college-policy-detail/page.tsx"
+  },
+  {
+   "path": "/college-pet-policy/georgetown",
+   "title": "ESA Letter for Georgetown University Students | PawTenant",
+   "template": "src/pages/college-policy-detail/page.tsx"
+  },
+  {
+   "path": "/college-pet-policy/johns-hopkins",
+   "title": "ESA Letter for Johns Hopkins University Students | PawTenant",
+   "template": "src/pages/college-policy-detail/page.tsx"
+  },
+  {
+   "path": "/college-pet-policy/nyu",
+   "title": "ESA Letter for NYU Students | PawTenant",
+   "template": "src/pages/college-policy-detail/page.tsx"
+  },
+  {
+   "path": "/college-pet-policy/rice",
+   "title": "ESA Letter for Rice University Students | PawTenant",
+   "template": "src/pages/college-policy-detail/page.tsx"
+  },
+  {
+   "path": "/college-pet-policy/ucla",
+   "title": "ESA Letter for UCLA Students | PawTenant",
+   "template": "src/pages/college-policy-detail/page.tsx"
+  },
+  {
+   "path": "/college-pet-policy/unc-chapel-hill",
+   "title": "ESA Letter for UNC Chapel Hill Students | PawTenant",
+   "template": "src/pages/college-policy-detail/page.tsx"
+  },
+  {
+   "path": "/college-pet-policy/vanderbilt",
+   "title": "ESA Letter for Vanderbilt University Students | PawTenant",
+   "template": "src/pages/college-policy-detail/page.tsx"
+  },
+  {
+   "path": "/contact-us",
+   "title": "Contact PawTenant | ESA Letter Support — Email & Phone Help",
+   "template": "src/pages/contact-us/page.tsx"
+  },
+  {
+   "path": "/do-you-need-a-psd-letter-for-a-service-dog",
+   "title": "Do You Need a PSD Letter for a Psychiatric Service Dog? | PawTenant",
+   "template": "src/pages/do-you-need-a-psd-letter-for-a-service-dog/page.tsx"
+  },
+  {
+   "path": "/esa-accommodation-request-letter",
+   "title": "ESA Accommodation Request Letter | What to Send Your Landlord",
+   "template": "src/pages/esa-accommodation-request-letter/page.tsx"
+  },
+  {
+   "path": "/esa-laws",
+   "title": "ESA Laws & ESA Letter Requirements Explained | PawTenant",
+   "template": "src/pages/esa-laws/page.tsx"
+  },
+  {
+   "path": "/esa-letter-verification",
+   "title": "ESA Letter Verification for Landlords | PawTenant",
+   "template": "src/pages/esa-letter-verification/page.tsx"
+  },
+  {
+   "path": "/esa-letter-verification-id",
+   "title": "ESA Letter Verification: What It Is & Why It Helps",
+   "template": "src/pages/esa-letter-verification-id/page.tsx"
+  },
+  {
+   "path": "/esa-letter-vs-pet-policy",
+   "title": "ESA Letter vs Pet Policy: Does a No-Pet Rule Apply?",
+   "template": "src/pages/esa-letter-vs-pet-policy/page.tsx"
+  },
+  {
+   "path": "/esa-letter/alabama",
+   "title": "ESA Letter Alabama | Licensed LMHP | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/alaska",
+   "title": "ESA Letter Alaska | Valid for Housing | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/arizona",
+   "title": "ESA Letter Arizona | Licensed Professionals | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/arkansas",
+   "title": "ESA Letter Arkansas | 30-Day Rule Explained | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/colorado",
+   "title": "ESA Letter Colorado | Valid for Housing | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/connecticut",
+   "title": "ESA Letter Connecticut | Licensed LMHP | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/delaware",
+   "title": "ESA Letter Delaware | Housing-Compliant | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/florida",
+   "title": "ESA Letter Florida | Legitimate & Legal | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/georgia",
+   "title": "ESA Letter Georgia | Licensed Therapists | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/hawaii",
+   "title": "ESA Letter Hawaii | Valid Housing Documentation | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/idaho",
+   "title": "ESA Letter Idaho | Licensed Professionals | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/illinois",
+   "title": "ESA Letter Illinois | Verify Your LMHP | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/indiana",
+   "title": "ESA Letter Indiana | Fast & Compliant | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/iowa",
+   "title": "ESA Letter Iowa | 30-Day Rule | Licensed LMHP | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/kansas",
+   "title": "ESA Letter Kansas | Housing Rights | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/kentucky",
+   "title": "ESA Letter Kentucky | Licensed & Legitimate | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/louisiana",
+   "title": "ESA Letter Louisiana | Protect Your Housing Rights | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/maine",
+   "title": "ESA Letter Maine | Valid for Housing | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/maryland",
+   "title": "ESA Letter Maryland | Licensed Therapists | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/massachusetts",
+   "title": "ESA Letter Massachusetts | Legitimate & Fast | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/michigan",
+   "title": "ESA Letter Michigan | Licensed LMHP | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/minnesota",
+   "title": "ESA Letter Minnesota | Housing Compliant | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/mississippi",
+   "title": "ESA Letter Mississippi | Valid for Housing | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/montana",
+   "title": "ESA Letter Montana | Legitimate & Compliant | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/nebraska",
+   "title": "ESA Letter Nebraska | Housing Rights | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/nevada",
+   "title": "ESA Letter Nevada | Licensed LMHP | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/new-hampshire",
+   "title": "ESA Letter New Hampshire | Fast & Legitimate | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/new-jersey",
+   "title": "ESA Letter New Jersey | Verify Your Provider | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/new-mexico",
+   "title": "ESA Letter New Mexico | Licensed Therapists | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/north-carolina",
+   "title": "ESA Letter North Carolina | Housing Compliant | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/north-dakota",
+   "title": "ESA Letter North Dakota | Legitimate & Fast | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/ohio",
+   "title": "ESA Letter Ohio | Licensed LMHP | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/oklahoma",
+   "title": "ESA Letter Oklahoma | Valid for Housing | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/oregon",
+   "title": "ESA Letter Oregon | Licensed Professionals | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/pennsylvania",
+   "title": "ESA Letter Pennsylvania | Licensed Therapists | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/rhode-island",
+   "title": "ESA Letter Rhode Island | Fast & Compliant | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/south-carolina",
+   "title": "ESA Letter South Carolina | Housing Rights | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/south-dakota",
+   "title": "ESA Letter South Dakota | Licensed LMHP | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/tennessee",
+   "title": "ESA Letter Tennessee | Legitimate & Legal | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/texas",
+   "title": "ESA Letter Texas | TX-Licensed Professionals | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/utah",
+   "title": "ESA Letter Utah | Valid for Housing | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/vermont",
+   "title": "ESA Letter Vermont | Licensed & Compliant | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/virginia",
+   "title": "ESA Letter Virginia | Licensed Therapists | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/washington-dc",
+   "title": "ESA Letter Washington DC | Housing Compliant | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/west-virginia",
+   "title": "ESA Letter West Virginia | Fast & Legitimate | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/wisconsin",
+   "title": "ESA Letter Wisconsin | Licensed Professionals | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-letter/wyoming",
+   "title": "ESA Letter Wyoming | Valid for Housing | PawTenant",
+   "template": "src/pages/state-esa/page.tsx"
+  },
+  {
+   "path": "/esa-pet-rent-deposit",
+   "title": "ESA Pet Rent & Deposit Guide: What Landlords Can Charge",
+   "template": "src/pages/esa-pet-rent-deposit/page.tsx"
+  },
+  {
+   "path": "/esa-psd-registry-vs-letter",
+   "title": "ESA & PSD Registry vs Letter: What Landlords Actually Need | PawTenant",
+   "template": "src/pages/esa-psd-registry-vs-letter/page.tsx"
+  },
+  {
+   "path": "/everything-you-need-to-know-about-obtaining-an-esa-letter-online",
+   "title": "Everything You Need to Know About Obtaining an ESA Letter Online | PawTenant",
+   "template": "src/pages/everything-esa-online/page.tsx"
+  },
+  {
+   "path": "/faqs",
+   "title": "ESA FAQs 2026: Emotional Support Animal Questions Answered | PawTenant",
+   "template": "src/pages/faqs/page.tsx"
+  },
+  {
+   "path": "/florida-esa-letter-for-apartments",
+   "title": "Florida ESA Letter for Apartments | Renter Housing Guide",
+   "template": "src/pages/florida-esa-letter-for-apartments/page.tsx"
+  },
+  {
+   "path": "/florida-esa-letter-housing-rules",
+   "title": "Florida ESA Letter & Housing Rules (§ 760.27) | PawTenant",
+   "template": "src/pages/florida-esa-letter-housing-rules/page.tsx"
+  },
+  {
+   "path": "/housing-rights-esa",
+   "title": "ESA Housing Rights Explained | Fair Housing Act | PawTenant",
+   "template": "src/pages/housing-rights/page.tsx"
+  },
+  {
+   "path": "/how-to-get-esa-letter-online",
+   "title": "How to Get an ESA Letter Online | Licensed Provider Evaluation",
+   "template": "src/pages/how-to-get-esa-letter-online/page.tsx"
+  },
+  {
+   "path": "/how-to-respond-to-esa-letter-denial",
+   "title": "How to Respond if Your Landlord Denies Your ESA Letter",
+   "template": "src/pages/how-to-respond-to-esa-letter-denial/page.tsx"
+  },
+  {
+   "path": "/how-to-verify-esa-letter",
+   "title": "How to Verify an ESA Letter Online | Real ESA Letter Guide",
+   "template": "src/pages/how-to-verify-esa-letter/page.tsx"
+  },
+  {
+   "path": "/iowa-esa-letter-housing-rules",
+   "title": "Iowa ESA Letter & Housing Rules (§ 216.8B) | PawTenant",
+   "template": "src/pages/iowa-esa-letter-housing-rules/page.tsx"
+  },
+  {
+   "path": "/is-pawtenant-legit",
+   "title": "Is PawTenant Legit? How the ESA Letter Service Works",
+   "template": "src/pages/is-pawtenant-legit/page.tsx"
+  },
+  {
+   "path": "/join-our-network",
+   "title": "Join PawTenant's Licensed Provider Network | PawTenant",
+   "template": "src/pages/join-our-network/page.tsx"
+  },
+  {
+   "path": "/landlord-denied-esa-letter",
+   "title": "Landlord Denied Your ESA? Next Steps & Denial Support | PawTenant",
+   "template": "src/pages/landlord-denied-esa-letter/page.tsx"
+  },
+  {
+   "path": "/landlord-esa-documentation-checklist",
+   "title": "Landlord ESA Documentation Checklist | What to Review",
+   "template": "src/pages/landlord-esa-documentation-checklist/page.tsx"
+  },
+  {
+   "path": "/landlord-says-esa-letter-is-fake",
+   "title": "Landlord Says My ESA Letter Is Fake — What to Do",
+   "template": "src/pages/landlord-says-esa-letter-is-fake/page.tsx"
+  },
+  {
+   "path": "/new-york-esa-letter-for-apartments",
+   "title": "New York ESA Letter for Apartments | Renter Housing Guide",
+   "template": "src/pages/new-york-esa-letter-for-apartments/page.tsx"
+  },
+  {
+   "path": "/no-risk-guarantee",
+   "title": "PawTenant No-Risk Guarantee | ESA Letter Refund",
+   "template": "src/pages/no-risk-guarantee/page.tsx"
+  },
+  {
+   "path": "/pet-rent-savings-calculator",
+   "title": "Pet Rent Savings Calculator | Estimate ESA Housing Savings",
+   "template": "src/pages/pet-rent-savings-calculator/page.tsx"
+  },
+  {
+   "path": "/privacy-policy",
+   "title": "Privacy Policy | PawTenant",
+   "template": "src/pages/privacy-policy/page.tsx"
+  },
+  {
+   "path": "/psd-assessment",
+   "title": "Psychiatric Service Dog Letter Online — ADA Compliant PSD Letter | PawTenant",
+   "template": "src/pages/psd-assessment/page.tsx"
+  },
+  {
+   "path": "/psd-letter-for-apartments",
+   "title": "PSD Letter for Apartments and Housing Requests | PawTenant",
+   "template": "src/pages/psd-letter-for-apartments/page.tsx"
+  },
+  {
+   "path": "/psd-letter-requirements",
+   "title": "PSD Letter Requirements: What You Need to Know | PawTenant",
+   "template": "src/pages/psd-letter-requirements/page.tsx"
+  },
+  {
+   "path": "/psd-letter/arizona",
+   "title": "PSD Letter in Arizona | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/california",
+   "title": "PSD Letter in California | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/colorado",
+   "title": "PSD Letter in Colorado | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/florida",
+   "title": "PSD Letter in Florida | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/georgia",
+   "title": "PSD Letter in Georgia | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/illinois",
+   "title": "PSD Letter in Illinois | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/michigan",
+   "title": "PSD Letter in Michigan | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/minnesota",
+   "title": "PSD Letter in Minnesota | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/new-jersey",
+   "title": "PSD Letter in New Jersey | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/new-york",
+   "title": "PSD Letter in New York | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/north-carolina",
+   "title": "PSD Letter in North Carolina | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/ohio",
+   "title": "PSD Letter in Ohio | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/oregon",
+   "title": "PSD Letter in Oregon | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/pennsylvania",
+   "title": "PSD Letter in Pennsylvania | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/texas",
+   "title": "PSD Letter in Texas | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/virginia",
+   "title": "PSD Letter in Virginia | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psd-letter/washington",
+   "title": "PSD Letter in Washington | Psychiatric Service Dog Evaluation | PawTenant",
+   "template": "src/pages/state-psd/page.tsx"
+  },
+  {
+   "path": "/psychiatric-service-dog-letter-online",
+   "title": "Psychiatric Service Dog Letter Online | Licensed Provider | PawTenant",
+   "template": "src/pages/psychiatric-service-dog-letter-online/page.tsx"
+  },
+  {
+   "path": "/refund-policy",
+   "title": "Refund Policy | PawTenant",
+   "template": "src/pages/refund-policy/page.tsx"
+  },
+  {
+   "path": "/renew-esa-letter",
+   "title": "Renew Your ESA Letter in 2026 — Fast & FHA-Compliant | PawTenant",
+   "template": "src/pages/renew-esa-letter/page.tsx"
+  },
+  {
+   "path": "/service-animal-vs-esa",
+   "title": "Service Animal vs ESA vs Therapy Dog: Key Differences 2026 | PawTenant",
+   "template": "src/pages/service-animal-vs-esa/page.tsx"
+  },
+  {
+   "path": "/sitemap",
+   "title": "Sitemap | PawTenant",
+   "template": "src/pages/sitemap/page.tsx"
+  },
+  {
+   "path": "/states/california-esa-psd-guide",
+   "title": "California ESA & PSD Legal Guide: AB 468 & Housing Protections | PawTenant",
+   "template": "src/pages/states-california-esa-psd-guide/page.tsx"
+  },
+  {
+   "path": "/states/los-angeles-esa-landlord-guide",
+   "title": "Los Angeles Landlord ESA Rules: RSO & AB 468 | PawTenant",
+   "template": "src/pages/states-los-angeles-esa-landlord-guide/page.tsx"
+  },
+  {
+   "path": "/states/san-diego-telehealth-guide",
+   "title": "San Diego Telehealth ESA Guidelines Under AB 468 | PawTenant",
+   "template": "src/pages/states-san-diego-telehealth-guide/page.tsx"
+  },
+  {
+   "path": "/states/san-francisco-hoa-psd-guide",
+   "title": "San Francisco HOA Restrictions & PSD Accommodations | PawTenant",
+   "template": "src/pages/states-san-francisco-hoa-psd-guide/page.tsx"
+  },
+  {
+   "path": "/states/texas-esa-psd-guide",
+   "title": "Texas ESA & PSD Housing Laws: Fair Housing Act & 2026 HUD Shift | PawTenant",
+   "template": "src/pages/states-texas-esa-psd-guide/page.tsx"
+  },
+  {
+   "path": "/terms-of-use",
+   "title": "Terms of Use | PawTenant",
+   "template": "src/pages/terms-of-use/page.tsx"
+  },
+  {
+   "path": "/texas-esa-letter-for-apartments",
+   "title": "Texas ESA Letter for Apartments | Renter Housing Guide",
+   "template": "src/pages/texas-esa-letter-for-apartments/page.tsx"
+  },
+  {
+   "path": "/travel-anxiety-esa-letter",
+   "title": "ESA Letters for Travel Anxiety & Temporary Housing | PawTenant",
+   "template": "src/pages/travel-anxiety-esa-letter/page.tsx"
+  },
+  {
+   "path": "/what-documents-can-landlord-ask-for-esa",
+   "title": "What Documents Can a Landlord Ask For an ESA?",
+   "template": "src/pages/what-documents-can-landlord-ask-for-esa/page.tsx"
+  },
+  {
+   "path": "/what-makes-esa-letter-valid",
+   "title": "What Makes an ESA Letter Valid for Housing?",
+   "template": "src/pages/what-makes-esa-letter-valid/page.tsx"
+  }
+ ]
+}
