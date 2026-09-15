@@ -214,7 +214,7 @@ async function runChecks() {
   // is mounted for EVERY order on every internal surface (no partner branch).
   check("Q10 admin modal, provider detail and the shared intake view mount the neutral assessment for every order",
     /<PartnerNeutralAssessment order=\{order\} audience="admin" showDownload \/>/.test(read(F.MODAL)) && !/isPartnerOrder \? \(\s*<PartnerNeutralAssessment/.test(read(F.MODAL)) &&
-      /<PartnerNeutralAssessment order=\{order\} showDownload \/>/.test(providerDetail) && !/isPartnerCase/.test(providerDetail) &&
+      /<PartnerNeutralAssessment order=\{order\} \/>/.test(providerDetail) && !/isPartnerCase/.test(providerDetail) &&
       /if \(isPartnerOrder\(order\) \|\| variant === "admin"\)/.test(read(F.ESA_VIEW)));
 
   // ── N. Notifications ─────────────────────────────────────────────────────

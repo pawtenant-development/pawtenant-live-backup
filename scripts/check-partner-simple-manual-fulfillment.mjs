@@ -212,7 +212,7 @@ async function runChecks() {
       models.psd.questionnaire.blocks.some((b) => b.answer === "Owner-trained (self-trained with the dog)") &&
       models.partner.questionnaire.additional.length === 1 && /Extra note outside numbering/.test(docs.partner));
   check("B6 every internal surface mounts the neutral assessment for every order",
-    /<PartnerNeutralAssessment order=\{order\} showDownload \/>/.test(providerDetail) && !/PSDAssessmentView|PawTenant ESA Intake Form/.test(stripComments(providerDetail)) &&
+    /<PartnerNeutralAssessment order=\{order\} \/>/.test(providerDetail) && !/PSDAssessmentView|PawTenant ESA Intake Form/.test(stripComments(providerDetail)) &&
       !/PSDAssessmentView|PawTenant ESA Intake Form/.test(stripComments(modal)) &&
       /if \(isPartnerOrder\(order\) \|\| variant === "admin"\)/.test(read(F.ESA_VIEW)));
 

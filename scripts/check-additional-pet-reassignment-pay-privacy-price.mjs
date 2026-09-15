@@ -59,7 +59,7 @@ const checks = [
   ["neutral assessment resolves complete server data and fails closed", /get_internal_assessment_answers/.test(neutralAssessment) && /Unable to load the complete assessment/.test(neutralAssessment) && /aria-busy="true"/.test(neutralAssessment)],
   ["neutral screen and PDF use the same resolved order", /buildAssessmentDocumentModel\(\{ \.\.\.resolvedOrder/.test(neutralAssessment) && /buildPrintHTML\(\{[\s\S]*\.\.\.resolvedOrder/.test(neutralAssessment)],
   ["admin assessment delegates its PDF to the complete neutral renderer", /<PartnerNeutralAssessment order=\{order\} audience="admin" showDownload \/>/.test(adminModal) && !/buildPrintHTML\(order\)/.test(adminModal)],
-  ["provider assessment and quick PDF both resolve complete pets", /<PartnerNeutralAssessment order=\{order\} showDownload \/>/.test(providerDetail) && /resolveInternalAssessmentOrder\(order\)/.test(providerDetail)],
+  ["provider assessment and existing PDF controls resolve complete pets without a duplicate button", /<PartnerNeutralAssessment order=\{order\} \/>/.test(providerDetail) && /resolveInternalAssessmentOrder\(order\)/.test(providerDetail) && !/<PartnerNeutralAssessment order=\{order\} showDownload \/>/.test(providerDetail)],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);

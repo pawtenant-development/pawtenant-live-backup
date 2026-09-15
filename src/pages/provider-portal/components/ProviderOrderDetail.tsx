@@ -1265,7 +1265,7 @@ export default function ProviderOrderDetail({
                   PSD, partner). It renders the same document model the
                   downloadable PDF is built from, so screen and PDF cannot drift.
                   No consent / attestation rows reach a provider. */}
-              <PartnerNeutralAssessment order={order} showDownload />
+              <PartnerNeutralAssessment order={order} />
 
               {/* ORDER-ADDITIONAL-PET-UI-STRIPE-QA-CLOSURE-001 §9: Additional
                   Pet review. Renders nothing unless a request is awaiting or has
