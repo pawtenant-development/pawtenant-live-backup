@@ -292,6 +292,11 @@ async function runChecks() {
     "20260915021810_reopen_assignment_current_provider.sql",
     "20260915054500_additional_pet_reassignment_privacy_earnings_price.sql",
     "20260915061500_additional_pet_full_case_assignment_message.sql",
+    // ADMIN-ORDER-DELETE-REPAIR-002 — rewrites public.admin_delete_order so its
+    // blocking children are read from pg_constraint instead of a hand-list.
+    // Touches no partner object: it only ever REFUSES when partner billing or
+    // provenance rows exist, and never deletes one.
+    "20260916090000_admin_delete_order_catalog_driven_blockers.sql",
   ]);
   const unexpectedAfterClosure = migFiles.filter((f) =>
     f > "20260911210000_partner_order_ux_assessment_finance_repair.sql" && !allowedAfterClosure.has(f));
