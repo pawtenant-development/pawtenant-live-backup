@@ -18,8 +18,8 @@
  *   * providers/customers still see none of it; direct orders untouched;
  *   * every prior partner guard is still wired into the build.
  *
- * `--self-test` PLANTS 18 real weakenings (the task's required negative
- * controls) into copies of the live sources and asserts each one fails the
+ * `--self-test` PLANTS 21 real weakenings (the task's required negative
+ * controls, plus the PARTNER-PLATFORM-TAB-ACCESS-DEFAULT-001 trio) into copies of the live sources and asserts each one fails the
  * guard. Restoration happens in `finally`; process.exit() is never called
  * inside the plant loop (it would skip `finally` and leave a mutation).
  *
@@ -42,6 +42,7 @@ const FINANCE_TAB = `${PP_DIR}/PartnerFinanceTab.tsx`;
 const INTEGRATION_TAB = `${PP_DIR}/PartnerIntegrationTab.tsx`;
 const SETTINGS_TAB = `${PP_DIR}/PartnerSettingsTab.tsx`;
 const REDIRECT = `${PP_DIR}/AdminPartnersRedirect.tsx`;
+const TEAM_TAB = "src/pages/admin-orders/components/TeamTab.tsx";
 const ROUTER_MAIN = "src/router/config.tsx";
 const ROUTER_ADMIN = "src/router/adminRoutes.tsx";
 const PROVIDER_PORTAL = "src/pages/provider-portal/page.tsx";
@@ -114,6 +115,7 @@ function runChecks() {
   const settingsRaw = read(SETTINGS_TAB);
   const settings = stripComments(settingsRaw);
   const redirect = stripComments(read(REDIRECT));
+  const teamTab = stripComments(read(TEAM_TAB));
   const routerMain = stripComments(read(ROUTER_MAIN));
   const routerAdmin = stripComments(read(ROUTER_ADMIN));
   const ordersTabRaw = read(ORDERS_TAB);
@@ -346,6 +348,26 @@ function runChecks() {
     /endpoint has delivery history/.test(fnBlock(migMgmt, "partner_admin_delete_webhook_endpoint")) &&
     /'note', 'PawTenant signed webhook test event — safe to ignore'/.test(fnBlock(migMgmt, "partner_admin_send_test_webhook")),
     "unused-only removal; the test ping is a fixed notice string");
+
+  // ── N33: the Partner Platform tab is GRANTABLE from Team → Tab Access ──
+  // PARTNER-PLATFORM-TAB-ACCESS-DEFAULT-001. Two distinct failures are covered:
+  //   (a) the key missing from TeamTab's ALL_TABS — normalizeSavedAccess() then
+  //       DROPS a saved "partners" grant, so every save through the modal
+  //       silently revokes the tab for anyone on a custom override;
+  //   (b) the key missing from the owner / admin_manager ROLE_DEFAULT_TABS —
+  //       "Reset to role defaults" and the initial seeding then hand an admin
+  //       an override WITHOUT the Partner Platform, diverging from page.tsx
+  //       getVisibleTabs(), where admin roles get ALL_TABS.
+  const ttAllTabs = teamTab.match(/const ALL_TABS = \[[\s\S]*?\n\] as const;/)?.[0] ?? "";
+  const ttGroups = teamTab.match(/const TAB_GROUPS[\s\S]*?\n\];/)?.[0] ?? "";
+  const ttOwnerDefaults = teamTab.match(/\n  owner:\s*\[[^\]]*\]/)?.[0] ?? "";
+  const ttAdminDefaults = teamTab.match(/\n  admin_manager:\s*\[[^\]]*\]/)?.[0] ?? "";
+  check("N33 Partner Platform is grantable in Team → Tab Access and defaults on for admins",
+    /key:\s*"partners",\s*label:\s*"Partner Platform"/.test(ttAllTabs) &&
+    /"partners"/.test(ttGroups) &&
+    /"partners"/.test(ttOwnerDefaults) &&
+    /"partners"/.test(ttAdminDefaults),
+    "TeamTab must list partners in ALL_TABS + a TAB_GROUPS group, and in the owner/admin_manager role defaults");
 }
 
 // ── Reporting ────────────────────────────────────────────────────────────────
@@ -365,7 +387,7 @@ if (!SELF_TEST) {
   runChecks();
   process.exitCode = report("PARTNER PLATFORM WORKSPACE") ? 1 : 0;
 } else {
-  // ── PLANTED NEGATIVE CONTROLS (the task's 18, verbatim) ────────────────────
+  // ── PLANTED NEGATIVE CONTROLS (the task's 18, verbatim, + 3 tab-access) ────────────────────
   const CONTROLS = [
     { name: "complete stored API key exposed through the list projection",
       file: MIG_MGMT,
@@ -452,6 +474,21 @@ if (!SELF_TEST) {
       find: "import { supabase } from \"../../../lib/supabaseClient\";",
       replace: "import { supabase } from \"../../../lib/supabaseClient\";\nimport PartnerIntegrationTab from \"./partner-platform/PartnerIntegrationTab\";",
       expect: "N9" },
+    { name: "Partner Platform grant silently dropped by the Team tab-access editor",
+      file: TEAM_TAB,
+      find: '  { key: "partners",       label: "Partner Platform", icon: "ri-building-2-line" },\n',
+      replace: "",
+      expect: "N33" },
+    { name: "Partner Platform missing from the admin role defaults",
+      file: TEAM_TAB,
+      find: '  admin_manager: ["orders","partners",',
+      replace: '  admin_manager: ["orders",',
+      expect: "N33" },
+    { name: "Partner Platform toggle absent from the tab-access groups",
+      file: TEAM_TAB,
+      find: '{ label: "Core", keys: ["orders", "partners",',
+      replace: '{ label: "Core", keys: ["orders",',
+      expect: "N33" },
     { name: "direct PawTenant order appearing in the Partner Platform",
       file: OVERVIEW,
       find: "          .eq(\"order_origin\", \"partner\").eq(\"partner_id\", partnerId)",

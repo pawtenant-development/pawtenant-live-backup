@@ -19,6 +19,11 @@ import BreaksAdmin from "./BreaksAdmin";
 // (round-tripping through the modal rewrites them canonical).
 const ALL_TABS = [
   { key: "orders",         label: "Orders",        icon: "ri-shopping-bag-line" },
+  // Partner Platform (B2B partner workspace). Admin-level by role default, but
+  // it MUST be listed here: without it, normalizeSavedAccess() would drop a
+  // saved "partners" grant and every save through this modal would silently
+  // revoke the tab for anyone on a custom override.
+  { key: "partners",       label: "Partner Platform", icon: "ri-building-2-line" },
   { key: "analytics",      label: "Analytics",     icon: "ri-bar-chart-2-line" },
   { key: "communications", label: "Communications", icon: "ri-radar-line" },
   { key: "customers",      label: "Customers",     icon: "ri-user-3-line" },
@@ -41,7 +46,7 @@ const ALL_TABS = [
 // (a group appears in the sidebar when any child is granted). Keys here must
 // exist in ALL_TABS above.
 const TAB_GROUPS: { label: string; hint?: string; keys: string[] }[] = [
-  { label: "Core", keys: ["orders", "analytics", "communications", "customers", "doctors"] },
+  { label: "Core", keys: ["orders", "partners", "analytics", "communications", "customers", "doctors"] },
   { label: "HR", hint: "Sidebar shows HR when any child below is granted", keys: ["team", "attendance", "shifts"] },
   { label: "Accounts", hint: "Sidebar shows Accounts when any child below is granted", keys: ["earnings", "payments"] },
   { label: "Admin & System", keys: ["audit", "settings", "health"] },
@@ -85,8 +90,8 @@ const COMMS_SUB_KEY_SET = new Set<string>(COMMS_SUB_KEYS);
 // Default tab access per role — mirrors page.tsx getVisibleTabs() defaults
 // with legacy comms/chats/contacts keys collapsed onto "communications".
 const ROLE_DEFAULT_TABS: Record<string, TabKey[]> = {
-  owner:         ["orders","analytics","communications","customers","doctors","earnings","payments","team","attendance","shifts","settings","audit","health"],
-  admin_manager: ["orders","analytics","communications","customers","doctors","earnings","payments","team","attendance","shifts","settings","audit","health"],
+  owner:         ["orders","partners","analytics","communications","customers","doctors","earnings","payments","team","attendance","shifts","settings","audit","health"],
+  admin_manager: ["orders","partners","analytics","communications","customers","doctors","earnings","payments","team","attendance","shifts","settings","audit","health"],
   support:       ["orders","analytics","communications","customers","doctors","audit","health"],
   finance:       ["orders","analytics","communications","customers","payments","earnings","audit","health"],
   read_only:     ["orders","analytics","communications","customers","doctors","payments","audit","health"],
@@ -159,6 +164,7 @@ const TEAM_INVITE_ROLES_ADMIN = ["admin_manager", "support", "finance", "read_on
 
 const PERMISSIONS: { module: string; owner: string; admin_manager: string; support: string; finance: string; read_only: string; provider: string }[] = [
   { module: "Orders",    owner: "Full", admin_manager: "Full",  support: "Edit",  finance: "View",  read_only: "View",  provider: "—" },
+  { module: "Partner Platform", owner: "Full", admin_manager: "Full", support: "—", finance: "—", read_only: "—", provider: "—" },
   { module: "Customers", owner: "Full", admin_manager: "Full",  support: "View",  finance: "View",  read_only: "View",  provider: "—" },
   { module: "Doctors",   owner: "Full", admin_manager: "Full",  support: "View",  finance: "—",     read_only: "View",  provider: "—" },
   { module: "Payments",  owner: "Full", admin_manager: "Full",  support: "—",     finance: "Full",  read_only: "View",  provider: "—" },
