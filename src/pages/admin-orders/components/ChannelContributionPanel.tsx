@@ -203,7 +203,7 @@ export default function ChannelContributionPanel({ from, to, rangeLabel, onTotal
             {[
               { label: "Paid Orders", value: fmtInt(result.total.paidOrders), color: "text-gray-800", icon: "ri-shopping-bag-3-line", sub: "in range" },
               { label: "Net Revenue", value: fmtUsd(result.total.netRevenue), color: "text-emerald-600", icon: "ri-money-dollar-circle-line", sub: "gross − refunds" },
-              { label: "Provider Payments", value: fmtUsd(result.total.providerPayments), color: "text-amber-600", icon: "ri-stethoscope-line", sub: "completed only" },
+              { label: "Provider Payments (All Orders)", value: fmtUsd(result.total.providerPayments), color: "text-amber-600", icon: "ri-stethoscope-line", sub: "incl. partner orders" },
               { label: "Before Stripe & Ad Spend", value: fmtUsd(result.total.contributionBeforeStripeAndSpend), color: signCls(result.total.contributionBeforeStripeAndSpend), icon: "ri-scales-3-line", sub: "net − provider" },
               { label: "Ad Spend", value: fmtUsd(result.total.adSpend), color: "text-rose-500", icon: "ri-megaphone-line", sub: "Google Ads (synced)" },
               { label: "After Ad Spend, Before Stripe", value: fmtUsd(result.total.netAfterAdSpendBeforeStripe), color: signCls(result.total.netAfterAdSpendBeforeStripe), icon: "ri-funds-line", sub: "not profit" },

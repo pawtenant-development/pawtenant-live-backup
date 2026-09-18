@@ -6,6 +6,7 @@
 import { supabase, getAdminToken, getAdminUserToken } from "./supabaseClient";
 import { monthKeyOfUnix } from "./accountsPeriods";
 import { fetchChargePayouts, resolutionToClassification, type ChargePayoutResolution } from "./companyExpenses";
+import { dedupePartnerRows, type PartnerContributionRow } from "./partnerContribution";
 
 const supabaseUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL as string;
 
@@ -98,6 +99,25 @@ const EMPTY_MONTH_AGG: PanelMonthAgg = {
   gross: 0, fees: 0, refunds: 0, netAfterFees: 0, payouts: 0, businessNet: 0, chargeCount: 0, refundCount: 0,
 };
 
+/**
+ * PARTNER-CONTRIBUTION-ACCOUNTS-001 — the ONE partner-ledger fetch.
+ *
+ * Recognised partner charges for an inclusive America/New_York date range, from
+ * the canonical `get_partner_contribution_summary` RPC (is_chat_admin()-gated,
+ * SECURITY DEFINER). Rows are de-duplicated by billable event at this single
+ * point of entry: the RPC left-joins `partner_invoice_lines`, whose
+ * `billable_event_id` index is NOT unique, so one charge sitting on two invoice
+ * lines would otherwise be counted twice by every caller.
+ *
+ * A non-admin caller (or an RPC error) yields an empty array — never a partial
+ * or fabricated figure.
+ */
+export async function fetchPartnerContributionRows(from: string, to: string): Promise<PartnerContributionRow[]> {
+  const { data, error } = await supabase.rpc("get_partner_contribution_summary", { p_from: from, p_to: to });
+  if (error) { console.warn("[accountsBooks] partner contribution rpc error", error); return []; }
+  return dedupePartnerRows((data as PartnerContributionRow[]) ?? []);
+}
+
 export async function fetchBooksMonthAgg(from: string, to: string): Promise<PanelMonthAgg> {
   try {
     const token = await getAdminToken();
@@ -158,6 +178,14 @@ export interface BooksSnapshot {
   // legacy snapshots stored an operatingNet that never deducted ad spend, so they
   // will read as drifted against current books until "Update Snapshot" is used.
   adSpend?: number;
+  // Net retained partner (B2B) contribution for the month, in USD. Sourced from
+  // the partner finance ledger (get_partner_contribution_summary) — never from
+  // Stripe, and never charged a Stripe fee. Optional for exactly the same reason
+  // adSpend is: snapshots closed before partner accounting existed omit it and
+  // stored an operatingNet that never ADDED partner contribution. A historical
+  // snapshot is displayed exactly as it was closed and is never silently
+  // restated; drift detection flags it so an admin can consciously re-snapshot.
+  partnerContribution?: number;
   operatingNet: number;
   expenseCount: number;
   chargeCount: number;

@@ -54,6 +54,12 @@ const JULY = {
   refundsUsd: 843,
   stripeFeesUsd: 585.56,
   providerPaymentsUsd: 3885,
+  // PARTNER-CONTRIBUTION-ACCOUNTS-001 — the partner stream. Kept at 0 in the
+  // canonical fixture so the historical direct figures below still assert the
+  // owner's real July production numbers unchanged; the partner arithmetic gets
+  // its own cases (and its own guard, check-partner-contribution-accounts.mjs).
+  partnerContributionUsd: 0,
+  partnerEventCount: 0,
   companyExpensesUsd: 8592,
   paidOrders: 150,
   refundCount: 9,
@@ -76,17 +82,45 @@ function runLogic(mod) {
   if (!near(flow.contributionBeforeStripeUsd, 16764 - 843 - 3885))
     f.push(`Contribution Before Stripe wrong (got ${flow.contributionBeforeStripeUsd})`);
   // Must equal the legacy ordering Gross − Fees − Refunds − Provider = 11450.44.
-  if (!near(flow.contributionAfterStripeUsd, 11450.44))
-    f.push(`Contribution After Stripe must equal the production figure 11450.44 (got ${flow.contributionAfterStripeUsd})`);
+  if (!near(flow.directContributionAfterStripeUsd, 11450.44))
+    f.push(`Direct Contribution After Stripe must equal the production figure 11450.44 (got ${flow.directContributionAfterStripeUsd})`);
   if (!near(flow.operatingNetUsd, 11450.44 - JULY.companyExpensesUsd))
-    f.push(`Operating Net !== Contribution After Stripe − Company Expenses (got ${flow.operatingNetUsd})`);
+    f.push(`Operating Net !== Direct Contribution After Stripe + Partner Contribution − Company Expenses (got ${flow.operatingNetUsd})`);
+
+  // ── Partner stream is additive, isolated, and reaches Operating Net ──────
+  // A period with NO partner events must reproduce the direct-only figures
+  // exactly — integrating the stream may not move a single direct number.
+  const withPartner = buildCompanyFlow({ ...JULY, partnerContributionUsd: 1234.56, partnerEventCount: 7 });
+  const p = Object.fromEntries(withPartner.steps.map((x) => [x.key, x]));
+  for (const k of ["gross_charged", "refunds", "net_revenue", "provider_payments", "contribution_before_stripe", "stripe_fees", "contribution_after_stripe"]) {
+    if (!near(p[k].runningUsd, byKey[k].runningUsd) || !near(p[k].amountUsd, byKey[k].amountUsd))
+      f.push(`partner contribution changed the DIRECT step "${k}" — it must only be added after Stripe fees`);
+  }
+  if (!p.partner_contribution) f.push(`the bridge is missing the "partner_contribution" step`);
+  if (p.partner_contribution.kind !== "addition")
+    f.push(`Partner Contribution must be an "addition" (never a red cost delta), got "${p.partner_contribution.kind}"`);
+  if (!near(p.partner_contribution.amountUsd, 1234.56))
+    f.push(`Partner Contribution amount must be the supplied figure (got ${p.partner_contribution.amountUsd})`);
+  if (!near(withPartner.operatingNetUsd, 11450.44 + 1234.56 - JULY.companyExpensesUsd))
+    f.push(`Operating Net must ADD Partner Contribution (got ${withPartner.operatingNetUsd})`);
+  // Ordering: the partner step comes AFTER the Stripe fee step, so no fee can
+  // ever be applied to partner money.
+  const order = withPartner.steps.map((x) => x.key);
+  if (order.indexOf("partner_contribution") < order.indexOf("stripe_fees"))
+    f.push(`Partner Contribution must sit AFTER Stripe Fees in the bridge`);
+  if (order.indexOf("partner_contribution") > order.indexOf("company_expenses"))
+    f.push(`Partner Contribution must sit BEFORE Company Expenses in the bridge`);
+  // A negative partner period (credits exceed charges) is carried, not clamped.
+  const negPartner = buildCompanyFlow({ ...JULY, partnerContributionUsd: -500 });
+  if (!near(negPartner.operatingNetUsd, 11450.44 - 500 - JULY.companyExpensesUsd))
+    f.push(`a negative partner period must be carried through, not clamped`);
 
   // Every step's running total must be reproducible from the one before it —
   // a rendered subtotal can never disagree with the rows above it.
   let running = null;
   for (const s of flow.steps) {
     if (running === null) { running = s.runningUsd; continue; }
-    const expected = s.kind === "delta" ? round2(running + s.amountUsd) : running;
+    const expected = (s.kind === "delta" || s.kind === "addition") ? round2(running + s.amountUsd) : running;
     if (!near(s.runningUsd, expected))
       f.push(`step "${s.key}" running total ${s.runningUsd} != ${expected} derived from the previous step`);
     running = s.runningUsd;
@@ -94,6 +128,12 @@ function runLogic(mod) {
   // Deltas must be signed as costs (negative), never silently positive.
   for (const s of flow.steps.filter((x) => x.kind === "delta")) {
     if (s.amountUsd > 0) f.push(`delta step "${s.key}" should be negative (a deduction), got ${s.amountUsd}`);
+  }
+  // ...and an ADDITION must never be dressed as a cost: it may not be negative
+  // just because a caller flipped a sign somewhere upstream of a positive
+  // partner period.
+  for (const s of buildCompanyFlow({ ...JULY, partnerContributionUsd: 900 }).steps.filter((x) => x.kind === "addition")) {
+    if (s.amountUsd < 0) f.push(`addition step "${s.key}" must not be negative for a positive input, got ${s.amountUsd}`);
   }
   // Every step carries drawer metadata.
   for (const s of flow.steps) {
@@ -121,7 +161,8 @@ function runLogic(mod) {
 
   const garbage = buildCompanyFlow({
     grossChargedUsd: NaN, refundsUsd: Infinity, stripeFeesUsd: undefined,
-    providerPaymentsUsd: null, companyExpensesUsd: NaN, paidOrders: NaN, refundCount: -5,
+    providerPaymentsUsd: null, partnerContributionUsd: NaN, partnerEventCount: Infinity,
+    companyExpensesUsd: NaN, paidOrders: NaN, refundCount: -5,
   });
   for (const s of garbage.steps) {
     if (!isFinite(s.amountUsd) || !isFinite(s.runningUsd))
@@ -265,7 +306,11 @@ function runStatic() {
 
   // Renamed labels — two formulas may never share a visible label.
   forbid(panel, "PaymentsAccountsPanel", /"Contribution Margin"|>Contribution Margin</, "the ambiguous label \"Contribution Margin\" must be gone");
-  need(panel, "PaymentsAccountsPanel", /Contribution After Stripe/, "the company figure must state that Stripe fees are already deducted");
+  need(panel, "PaymentsAccountsPanel", /Direct Contribution After Stripe/, "the company figure must state that Stripe fees are already deducted AND that it is direct-only");
+  need(panel, "PaymentsAccountsPanel", /partnerContributionUsd: partnerContribution/, "the Overview bridge must be fed the partner stream");
+  forbid(panel, "PaymentsAccountsPanel", /partnerContributionUsd: 0\b/, "the Overview must not hard-code partner contribution to zero");
+  need(flow, "FinancialBridgeFlow", /"addition"/, "the bridge must render an additive step distinctly from a deduction");
+  need(flow, "FinancialBridgeFlow", /Plus/, "an additive step must be labelled \"Plus\", never the red \"Less\" cost treatment");
   forbid(channel, "ChannelContributionPanel", /label: "Contribution"/, "the channel KPI must not use the bare label \"Contribution\"");
   need(channel, "ChannelContributionPanel", /Before Stripe &amp; Ad Spend|Before Stripe & Ad Spend/, "the channel figure must say it is before Stripe and ad spend");
 

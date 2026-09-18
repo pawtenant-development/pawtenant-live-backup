@@ -2,15 +2,17 @@ import type { FlowStep } from "../../../lib/accountsFinancialFlow";
 
 // ── Accounts › Financial bridge flow ────────────────────────────────────────
 // Replaces the old row of disconnected KPI cards with the actual arithmetic:
-//   Gross Charged − Refunds = Net Revenue − Provider Payments = Contribution
-//   Before Stripe − Stripe Fees = Contribution After Stripe − Company Expenses
-//   = Operating Net
+//   Gross Charged − Refunds = Net Revenue − Direct Provider Payments =
+//   Contribution Before Stripe − Stripe Fees = Direct Contribution After
+//   Stripe + Partner Contribution − Company Expenses = Operating Net
 //
 // Reads left→right on desktop (horizontally scrollable inside its own
 // container — the page never scrolls sideways) and top→bottom on mobile.
-// Subtraction is communicated by an explicit "−" glyph and the word itself,
-// never by colour alone. Every step is a button that opens the calculation
-// drawer.
+// Direction is communicated by an explicit glyph AND a word — "−"/"Less" for a
+// deduction, "+"/"Plus" for an incoming stream — never by colour alone. An
+// ADDITION (today: Partner Contribution) is therefore never dressed in the red
+// "Less" treatment used for costs. Every step is a button that opens the
+// calculation drawer.
 
 const fmtUsd = (n: number) =>
   `${n < 0 ? "−" : ""}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -56,7 +58,7 @@ export default function FinancialBridgeFlow({ steps, onSelect, activeKey }: Prop
               {i > 0 && (
                 <div className="flex items-center shrink-0" aria-hidden="true">
                   <span className="text-gray-300 text-lg font-bold leading-none">
-                    {s.kind === "delta" ? "−" : "="}
+                    {s.kind === "delta" ? "−" : s.kind === "addition" ? "+" : "="}
                   </span>
                 </div>
               )}
@@ -78,8 +80,10 @@ export default function FinancialBridgeFlow({ steps, onSelect, activeKey }: Prop
             } ${activeKey === s.key ? "ring-2 ring-inset ring-[#3b6ea5]" : "hover:bg-gray-50"}`}
           >
             <span className="flex items-center gap-2 min-w-0">
-              <span className={`shrink-0 w-5 text-center text-sm font-extrabold ${s.kind === "delta" ? "text-rose-500" : "text-gray-300"}`}>
-                {s.kind === "delta" ? "−" : "="}
+              <span className={`shrink-0 w-5 text-center text-sm font-extrabold ${
+                s.kind === "delta" ? "text-rose-500" : s.kind === "addition" ? "text-emerald-600" : "text-gray-300"
+              }`}>
+                {s.kind === "delta" ? "−" : s.kind === "addition" ? "+" : "="}
               </span>
               <span className="min-w-0">
                 <span className={`block text-xs truncate ${s.kind === "subtotal" ? "font-extrabold text-gray-900" : "font-semibold text-gray-600"}`}>
@@ -90,9 +94,13 @@ export default function FinancialBridgeFlow({ steps, onSelect, activeKey }: Prop
             </span>
             <span className="shrink-0 flex items-center gap-1.5">
               <span className={`text-sm font-extrabold tabular-nums ${
-                s.kind === "delta" ? "text-rose-500" : s.runningUsd < 0 ? "text-rose-600" : "text-gray-900"
+                s.kind === "delta" ? "text-rose-500"
+                  : s.kind === "addition" ? "text-emerald-600"
+                  : s.runningUsd < 0 ? "text-rose-600" : "text-gray-900"
               }`}>
-                {fmtUsd0(s.kind === "delta" ? Math.abs(s.amountUsd) : s.runningUsd)}
+                {s.kind === "delta" ? fmtUsd0(Math.abs(s.amountUsd))
+                  : s.kind === "addition" ? fmtUsd0(s.amountUsd)
+                  : fmtUsd0(s.runningUsd)}
               </span>
               <i className="ri-arrow-right-s-line text-gray-300"></i>
             </span>
@@ -103,6 +111,7 @@ export default function FinancialBridgeFlow({ steps, onSelect, activeKey }: Prop
       <p className="mt-2.5 text-[11px] text-gray-400 leading-relaxed">
         <i className="ri-information-line mr-1"></i>
         Rows marked <span className="font-bold text-rose-500">−</span> are deducted; rows marked
+        <span className="font-bold text-emerald-600"> +</span> are added; rows marked
         <span className="font-bold text-gray-500"> =</span> are running totals. Operating Net is an internal estimate, not finalized accounting.
       </p>
     </div>
@@ -111,7 +120,10 @@ export default function FinancialBridgeFlow({ steps, onSelect, activeKey }: Prop
 
 function StepTile({ step, active, onSelect }: { step: FlowStep; active: boolean; onSelect: (s: FlowStep) => void }) {
   const isSubtotal = step.kind === "subtotal";
-  const value = isSubtotal ? step.runningUsd : Math.abs(step.amountUsd);
+  const isAddition = step.kind === "addition";
+  // An addition shows its own signed amount; a deduction shows its magnitude
+  // behind an explicit minus; a subtotal shows the running total.
+  const value = isSubtotal ? step.runningUsd : isAddition ? step.amountUsd : Math.abs(step.amountUsd);
   const negativeTotal = isSubtotal && step.runningUsd < 0;
 
   return (
@@ -121,12 +133,16 @@ function StepTile({ step, active, onSelect }: { step: FlowStep; active: boolean;
       title={step.tooltip}
       aria-label={`${step.label}: ${step.formula}`}
       className={`shrink-0 w-[128px] text-left rounded-xl border px-2.5 py-2.5 cursor-pointer transition-colors ${
-        isSubtotal ? "bg-gray-50 border-gray-200 hover:bg-gray-100" : "bg-white border-dashed border-gray-200 hover:bg-gray-50"
+        isSubtotal ? "bg-gray-50 border-gray-200 hover:bg-gray-100"
+          : isAddition ? "bg-emerald-50/50 border-dashed border-emerald-200 hover:bg-emerald-50"
+          : "bg-white border-dashed border-gray-200 hover:bg-gray-50"
       } ${active ? "ring-2 ring-[#3b6ea5] border-[#3b6ea5]" : ""}`}
     >
       <span className="flex items-center gap-1 mb-1">
-        <span className={`text-[10px] font-bold uppercase tracking-wider leading-tight ${isSubtotal ? "text-gray-500" : "text-rose-400"}`}>
-          {isSubtotal ? "Total" : "Less"}
+        <span className={`text-[10px] font-bold uppercase tracking-wider leading-tight ${
+          isSubtotal ? "text-gray-500" : isAddition ? "text-emerald-600" : "text-rose-400"
+        }`}>
+          {isSubtotal ? "Total" : isAddition ? "Plus" : "Less"}
         </span>
         <i className="ri-information-line text-gray-300 text-[11px] ml-auto"></i>
       </span>
@@ -134,9 +150,9 @@ function StepTile({ step, active, onSelect }: { step: FlowStep; active: boolean;
         {step.label}
       </span>
       <span className={`block text-base font-extrabold tabular-nums ${
-        !isSubtotal ? "text-rose-500" : negativeTotal ? "text-rose-600" : "text-gray-900"
+        isAddition ? "text-emerald-600" : !isSubtotal ? "text-rose-500" : negativeTotal ? "text-rose-600" : "text-gray-900"
       }`}>
-        {!isSubtotal ? "−" : ""}{fmtUsd0(value)}
+        {!isSubtotal && !isAddition ? "−" : ""}{fmtUsd0(value)}
       </span>
     </button>
   );

@@ -194,7 +194,7 @@ export default function AccountsReconciliationBridge({ from, to, rangeLabel, sum
               ok={Math.abs(recon.gross.residualUsd) <= 0.01 && Math.abs(recon.refunds.residualUsd) <= 0.01}
             />
             <TieOutTile
-              label="Provider Payments"
+              label="Provider Payments (All Orders)"
               icon="ri-stethoscope-line"
               stripeValue={fmtUsd(recon.provider.startUsd)}
               orderValue={fmtUsd(recon.provider.orderBasisUsd)}

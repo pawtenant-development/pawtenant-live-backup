@@ -7,11 +7,15 @@ import {
   type CompanyExpense,
 } from "../../../lib/companyExpenses";
 import {
-  fetchBooksMonthAgg,
+  fetchBooksMonthAgg, fetchPartnerContributionRows,
   fetchAccountingPeriods, closeAccountingPeriod, reopenAccountingPeriod,
   sendPayrollSummaryEmail, fetchPayrollSendLog, PAYROLL_RECIPIENTS,
   type PanelMonthAgg, type AccountingPeriod, type BooksSnapshot, type PayrollSendLogRow,
 } from "../../../lib/accountsBooks";
+// PARTNER-CONTRIBUTION-ACCOUNTS-001 — each month's partner figure comes from the
+// SAME canonical RPC + reducer the Accounts Overview uses, queried for that
+// month's own America/New_York range. No second partner calculation exists.
+import { computePartnerTotals, partnerContributionUsd } from "../../../lib/partnerContribution";
 
 // The P&L figures a snapshot stores — used to recompute current books for a
 // closed month and detect drift against the stored snapshot.
@@ -24,6 +28,8 @@ interface BooksFigures {
   expenses: number;
   salary: number;
   adSpend: number;
+  /** Net retained partner (B2B) contribution for the month, USD. */
+  partnerContribution: number;
   operatingNet: number;
   expenseCount: number;
   chargeCount: number;
@@ -38,6 +44,7 @@ interface MonthRow extends MonthlyPeriod {
   expenses: number;
   salary: number;
   adSpend: number;
+  partnerContribution: number;
   operatingNet: number;
   expenseCount: number;
   chargeCount: number;
@@ -59,7 +66,7 @@ interface MonthRow extends MonthlyPeriod {
 
 // Snapshot vs current-books drift: any figure differing by more than half a cent.
 function figuresDrift(snap: BooksFigures, live: BooksFigures): boolean {
-  const keys: (keyof BooksFigures)[] = ["gross", "fees", "refunds", "payouts", "businessNet", "expenses", "salary", "adSpend", "operatingNet"];
+  const keys: (keyof BooksFigures)[] = ["gross", "fees", "refunds", "payouts", "businessNet", "expenses", "salary", "adSpend", "partnerContribution", "operatingNet"];
   return keys.some((k) => Math.abs((snap[k] ?? 0) - (live[k] ?? 0)) > 0.005);
 }
 
@@ -121,12 +128,20 @@ export default function MonthlyBooksSummary({
       // is why its Operating Net disagreed with the detailed P&L by exactly the
       // Google Ads figure.
       const adByKey: Record<string, { spend: number; complete: boolean; note: string }> = {};
+      // Partner (B2B) contribution per month. Queried for each month's OWN
+      // America/New_York range through the same canonical RPC + reducer the
+      // Accounts Overview uses, so a month row and the Overview viewing that
+      // same month produce an identical figure. Test rows are excluded, exactly
+      // as they are in the Overview default.
+      const partnerByKey: Record<string, number> = {};
       await Promise.all(months.map(async (m) => {
-        const [agg, sal, mkt] = await Promise.all([
+        const [agg, sal, mkt, partnerRows] = await Promise.all([
           fetchBooksMonthAgg(m.from, m.to),
           fetchSalaryExpense(m.from, m.to),
           fetchMarketingSpendSummary(m.from, m.to),
+          fetchPartnerContributionRows(m.from, m.to),
         ]);
+        partnerByKey[m.key] = partnerContributionUsd(computePartnerTotals(partnerRows, false));
         if (!mkt) {
           // RPC failed or caller is not admin — we do NOT know spend. Deduct nothing
           // and mark the row incomplete rather than implying a $0 spend month.
@@ -169,10 +184,11 @@ export default function MonthlyBooksSummary({
         const expenses = occ.reduce((sum, e) => sum + expenseUsd(e, fxRate), 0);
         const salaryUsd = salByKey[m.key] ?? 0;
         const ad = adByKey[m.key] ?? { spend: 0, complete: false, note: "Paid-media spend unavailable — Operating Net is an upper bound." };
+        const partnerContribution = partnerByKey[m.key] ?? 0;
         const live: BooksFigures = {
           gross: a.gross, fees: a.fees, refunds: a.refunds, payouts: a.payouts, businessNet: a.businessNet,
-          expenses, salary: salaryUsd, adSpend: ad.spend,
-          operatingNet: computeOperatingNet({ businessNet: a.businessNet, expenses, salary: salaryUsd, adSpend: ad.spend }),
+          expenses, salary: salaryUsd, adSpend: ad.spend, partnerContribution,
+          operatingNet: computeOperatingNet({ businessNet: a.businessNet, partnerContribution, expenses, salary: salaryUsd, adSpend: ad.spend }),
           expenseCount: occ.length, chargeCount: a.chargeCount,
         };
 
@@ -184,7 +200,12 @@ export default function MonthlyBooksSummary({
           // the row so an admin can consciously "Update Snapshot".
           const snapFigures: BooksFigures = {
             gross: s.gross, fees: s.fees, refunds: s.refunds, payouts: s.payouts, businessNet: s.businessNet,
-            expenses: s.expenses, salary: s.salary, adSpend: s.adSpend ?? 0, operatingNet: s.operatingNet,
+            expenses: s.expenses, salary: s.salary, adSpend: s.adSpend ?? 0,
+            // Snapshots closed before partner accounting existed have no
+            // partnerContribution key. Read as 0 so the stored figures display
+            // exactly as they were closed; drift detection then flags the row.
+            partnerContribution: s.partnerContribution ?? 0,
+            operatingNet: s.operatingNet,
             expenseCount: s.expenseCount, chargeCount: s.chargeCount,
           };
           // Closed rows DISPLAY the stored snapshot (req: closed → snapshot), but we
@@ -192,10 +213,12 @@ export default function MonthlyBooksSummary({
           return {
             ...m,
             gross: s.gross, fees: s.fees, refunds: s.refunds, payouts: s.payouts, businessNet: s.businessNet,
-            expenses: s.expenses, salary: s.salary, adSpend: s.adSpend ?? 0, operatingNet: s.operatingNet,
+            expenses: s.expenses, salary: s.salary, adSpend: s.adSpend ?? 0,
+            partnerContribution: s.partnerContribution ?? 0, operatingNet: s.operatingNet,
             expenseCount: s.expenseCount, chargeCount: s.chargeCount,
             adSpendComplete: s.adSpend != null,
-            adSpendNote: s.adSpend == null ? "Snapshot predates paid-media accounting — Operating Net here excludes ad spend." : "",
+            adSpendNote: s.adSpend == null ? "Snapshot predates paid-media accounting — Operating Net here excludes ad spend."
+              : s.partnerContribution == null ? "Snapshot predates partner accounting — Operating Net here excludes Partner Contribution." : "",
             rowStatus: "closed", periodId: closed.id, closedAt: closed.closed_at, reopenedAt: null,
             live, snapshotDrift: figuresDrift(snapFigures, live),
           };
@@ -204,7 +227,8 @@ export default function MonthlyBooksSummary({
         return {
           ...m,
           gross: live.gross, fees: live.fees, refunds: live.refunds, payouts: live.payouts, businessNet: live.businessNet,
-          expenses: live.expenses, salary: live.salary, adSpend: live.adSpend, operatingNet: live.operatingNet,
+          expenses: live.expenses, salary: live.salary, adSpend: live.adSpend,
+          partnerContribution: live.partnerContribution, operatingNet: live.operatingNet,
           expenseCount: live.expenseCount, chargeCount: live.chargeCount,
           adSpendComplete: ad.complete, adSpendNote: ad.note,
           rowStatus: m.status, periodId: anyPeriod?.id ?? null,
@@ -248,13 +272,15 @@ export default function MonthlyBooksSummary({
   const buildSnapshot = (r: MonthRow): BooksSnapshot => {
     const f: BooksFigures = r.live ?? {
       gross: r.gross, fees: r.fees, refunds: r.refunds, payouts: r.payouts, businessNet: r.businessNet,
-      expenses: r.expenses, salary: r.salary, adSpend: r.adSpend, operatingNet: r.operatingNet,
+      expenses: r.expenses, salary: r.salary, adSpend: r.adSpend,
+      partnerContribution: r.partnerContribution, operatingNet: r.operatingNet,
       expenseCount: r.expenseCount, chargeCount: r.chargeCount,
     };
     return {
       month_key: r.key, period_start: r.from, period_end: r.to, label: r.label,
       gross: f.gross, fees: f.fees, refunds: f.refunds, payouts: f.payouts, businessNet: f.businessNet,
-      expenses: f.expenses, salary: f.salary, adSpend: f.adSpend, operatingNet: f.operatingNet,
+      expenses: f.expenses, salary: f.salary, adSpend: f.adSpend,
+      partnerContribution: f.partnerContribution, operatingNet: f.operatingNet,
       expenseCount: f.expenseCount, chargeCount: f.chargeCount, snapshotAt: new Date().toISOString(),
     };
   };
@@ -374,6 +400,7 @@ export default function MonthlyBooksSummary({
                       <th className="text-right py-2 px-2">Expenses</th>
                       <th className="text-right py-2 px-2">Salary (est.)</th>
                       <th className="text-right py-2 px-2">Ad Spend</th>
+                      <th className="text-right py-2 px-2">Partner Contrib.</th>
                       <th className="text-right py-2 px-2">Operating Net</th>
                       <th className="text-center py-2 px-2">Status</th>
                       <th className="text-right py-2 pl-2">Action</th>
@@ -402,6 +429,12 @@ export default function MonthlyBooksSummary({
                           {!r.adSpendComplete && (
                             <i className="ri-error-warning-line ml-1 text-amber-500" title={r.adSpendNote}></i>
                           )}
+                        </td>
+                        {/* PARTNER-CONTRIBUTION-ACCOUNTS-001 — ADDED, not deducted:
+                            shown with an explicit "+" and never in the cost colour. */}
+                        <td className="text-right py-2 px-2 text-emerald-600 whitespace-nowrap"
+                            title="Recognised partner revenue minus partner provider compensation and credits. Invoiced offline — never through Stripe, never charged a Stripe fee.">
+                          +{fmt(r.partnerContribution)}
                         </td>
                         <td className={`text-right py-2 px-2 font-extrabold ${r.operatingNet >= 0 ? "text-emerald-600" : "text-red-600"}`}>{fmt(r.operatingNet)}</td>
                         <td className="text-center py-2 px-2">

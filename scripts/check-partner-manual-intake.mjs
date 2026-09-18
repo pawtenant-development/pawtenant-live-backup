@@ -52,6 +52,10 @@ const SHARED_UI = `${PP_DIR}/shared.tsx`;
 const WORKSPACE = `${PP_DIR}/PartnerPlatformWorkspace.tsx`;
 const ORDERS_TAB = "src/pages/admin-orders/components/PartnerOrdersTab.tsx";
 const CONTRIB_UI = "src/pages/admin-orders/components/PartnerContributionPanel.tsx";
+// PARTNER-CONTRIBUTION-ACCOUNTS-001 moved the ONE partner-ledger fetch up into
+// the Accounts shell so the Overview bridge and this section reduce the SAME
+// rows. G24 follows it there rather than pretending the panel still fetches.
+const PAY_TAB = "src/pages/admin-orders/components/PaymentsTab.tsx";
 const NAV_UI = "src/pages/admin-orders/components/AccountsSectionNav.tsx";
 const FLOW_LIB = "src/lib/accountsFinancialFlow.ts";
 const UTILS = "src/pages/admin-orders/components/assessmentUtils.ts";
@@ -145,6 +149,7 @@ async function runChecks() {
   const workspace = stripComments(read(WORKSPACE));
   const ordersTab = stripComments(read(ORDERS_TAB));
   const contribUi = stripComments(read(CONTRIB_UI));
+  const payTab = stripComments(read(PAY_TAB));
   const navUi = stripComments(read(NAV_UI));
   const flowLib = stripComments(read(FLOW_LIB));
   const utils = stripComments(read(UTILS));
@@ -351,10 +356,28 @@ async function runChecks() {
     "the wizard displays the current rate; only the database decides what is frozen");
 
   // ── G24: Partner Contribution separate from direct revenue ───────────────
-  check("G24 Partner Contribution is its own Accounts section that reads no Stripe data and leaves the company bridge untouched",
+  // PARTNER-CONTRIBUTION-ACCOUNTS-001 restated this contract. Partner money is
+  // now a VISIBLE, ADDITIVE step in the company bridge (the owner's decision) —
+  // so "the flow library must never mention partner" is no longer the invariant.
+  // The invariant that still matters, and is asserted here, is that partner
+  // money never contaminates the STRIPE terms: it is never added to Gross
+  // Charged / Refunds / Net Revenue / Contribution Before Stripe, and a Stripe
+  // fee is never applied to it.
+  check("G24 Partner Contribution is its own Accounts section, reads no Stripe data, and enters the bridge only as an ADDITIVE step after Stripe fees",
     /key: "partners",\s*label: "Partner Contribution"/.test(navUi) &&
-      /get_partner_contribution_summary/.test(contribUi) && !/stripe-payment-history|payment_intent|get_channel_contribution|functions\.invoke|stripe_gross|stripe_net|from\("charges"\)/i.test(contribUi) &&
-      !/partner/i.test(flowLib) && !/stripe/i.test(fnBlock(migRaw, "get_partner_contribution_summary")),
+      // The canonical RPC is still the only source, now called by the shell.
+      /get_partner_contribution_summary/.test(payTab) &&
+      // Neither the section nor the shell's partner path reads Stripe money.
+      !/stripe-payment-history|payment_intent|get_channel_contribution|functions\.invoke|stripe_gross|stripe_net|from\("charges"\)/i.test(contribUi) &&
+      // The bridge adds it once, positively, after the Stripe fee step.
+      /key: "partner_contribution"/.test(flowLib) && /kind: "addition"/.test(flowLib) &&
+      flowLib.indexOf('key: "partner_contribution"') > flowLib.indexOf('key: "stripe_fees"') &&
+      // ...and never folds it into any Stripe term.
+      /const netRevenue = round2\(gross - refunds\);/.test(flowLib) &&
+      /const beforeStripe = round2\(netRevenue - provider\);/.test(flowLib) &&
+      /const afterStripe = round2\(beforeStripe - fees\);/.test(flowLib) &&
+      /const afterPartner = round2\(afterStripe \+ partner\);/.test(flowLib) &&
+      !/stripe/i.test(fnBlock(migRaw, "get_partner_contribution_summary")),
     "Stripe gross/net, channel contribution, marketing and closed periods must not change");
   check("G24b Net Partner Contribution = charge − provider payout − credits, and payout comes from the canonical earnings ledger",
     /e\.amount_cents\s*\n\s*\+ coalesce\(\(select sum\(c\.amount_cents\)/.test(mig) && /from public\.doctor_earnings de/.test(mig) &&
@@ -491,9 +514,12 @@ if (!SELF_TEST) {
     { name: "page images posted to a third-party OCR service", file: OCR_UI, expect: "G17",
       find: "  const { createWorker } = await import(\"tesseract.js\");",
       replace: "  await fetch(\"https://ocr.example.com/upload\", { method: \"POST\", body: JSON.stringify(rendered) });\n  const { createWorker } = await import(\"tesseract.js\");" },
-    { name: "Partner Contribution folded into Stripe figures", file: CONTRIB_UI, expect: "G24",
-      find: 'const { data, error: err } = await supabase.rpc("get_partner_contribution_summary", { p_from: from, p_to: to });',
-      replace: 'const { data, error: err } = await supabase.rpc("get_partner_contribution_summary", { p_from: from, p_to: to });\n      await supabase.functions.invoke("stripe-payment-history", { body: {} });' },
+    { name: "Partner revenue folded into the Stripe Net Revenue term", file: FLOW_LIB, expect: "G24",
+      find: "  const netRevenue = round2(gross - refunds);",
+      replace: "  const netRevenue = round2(gross - refunds + partner);" },
+    { name: "Partner Contribution turned into a deduction instead of an addition", file: FLOW_LIB, expect: "G24",
+      find: '      kind: "addition",\n      amountUsd: partner,',
+      replace: '      kind: "delta",\n      amountUsd: partner,' },
     { name: "page text logged from the intake function", file: FN_INDEX, expect: "G30",
       find: "    if (pageTexts.length && !(await storePages(admin, draftId, \"text\", \"unpdf\", pageTexts))) {",
       replace: "    console.log(pageTexts);\n    if (pageTexts.length && !(await storePages(admin, draftId, \"text\", \"unpdf\", pageTexts))) {" },

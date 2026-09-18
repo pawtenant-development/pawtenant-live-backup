@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import {
   FLOW_SOURCE_LABEL,
   RECONCILIATION_STATUS_META,
+  isFlowMovement,
   type FlowStep,
   type ReconciliationStatus,
 } from "../../../lib/accountsFinancialFlow";
@@ -59,8 +60,18 @@ export default function MetricCalculationDrawer({ step, rangeLabel, from, to, st
           <div className="min-w-0">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">How this is calculated</p>
             <h3 className="text-base font-extrabold text-gray-900 mt-0.5 truncate">{step.label}</h3>
-            <p className={`text-2xl font-extrabold mt-1 tabular-nums ${step.runningUsd < 0 ? "text-rose-600" : "text-gray-900"}`}>
-              {fmtUsd(step.kind === "delta" ? step.amountUsd : step.runningUsd)}
+            {/* PARTNER-CONTRIBUTION-ACCOUNTS-001 — a MOVEMENT step (a delta that
+                deducts OR an addition that adds) headlines its OWN amount; only a
+                subtotal headlines the running total. Testing `kind === "delta"`
+                alone made an addition fall through to runningUsd, so Partner
+                Contribution headlined $172.92 (the post-partner subtotal) instead
+                of the $52.00 the step is actually worth. */}
+            <p className={`text-2xl font-extrabold mt-1 tabular-nums ${
+              isFlowMovement(step.kind)
+                ? (step.amountUsd < 0 ? "text-rose-600" : "text-emerald-600")
+                : (step.runningUsd < 0 ? "text-rose-600" : "text-gray-900")
+            }`}>
+              {fmtUsd(isFlowMovement(step.kind) ? step.amountUsd : step.runningUsd)}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close"

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { getAdminToken, getAdminUserToken } from "../../../lib/supabaseClient";
 // ADMIN-ORDER-DELETE-REPAIR-002 — the one client-side order-purge implementation.
@@ -18,6 +18,17 @@ import ChannelContributionPanel, { type ChannelTotalsResult } from "./ChannelCon
 import MarketingROIHealthPanel, { type MarketingHealthResult } from "./MarketingROIHealthPanel";
 // PARTNER-MULTI-BRAND-MANUAL-PDF-ORDER-INGESTION-001 — separately reconcilable partner economics.
 import PartnerContributionPanel from "./PartnerContributionPanel";
+// PARTNER-CONTRIBUTION-ACCOUNTS-001 — the canonical partner model. The Accounts
+// view fetches the partner ledger EXACTLY ONCE here, for the SAME
+// accountsFrom/accountsTo range every other section uses, and hands the rows to
+// both the Overview bridge (via PaymentsAccountsPanel) and the Partner
+// Contribution tab. One fetch + one reducer is why the Overview figure, the
+// P&L line, the tab total and the CSV export cannot drift apart.
+import {
+  computePartnerTotals, dedupePartnerRows, partnerContributionUsd,
+  EMPTY_PARTNER_TOTALS,
+  type PartnerContributionRow, type PartnerContributionTotals,
+} from "../../../lib/partnerContribution";
 import AccountsCollapsibleSection from "./AccountsCollapsibleSection";
 import AccountsHeader from "./AccountsHeader";
 import AccountsSectionNav, { ACCOUNTS_SECTIONS, sectionId, type AccountsSection } from "./AccountsSectionNav";
@@ -250,6 +261,15 @@ export default function PaymentsTab() {
   const [reconOpen, setReconOpen] = useState(false);
   // Header "Add Expense" quick action → PaymentsAccountsPanel opens its form.
   const [openExpenseSignal, setOpenExpenseSignal] = useState(0);
+  // ── Partner (B2B) contribution ────────────────────────────────────
+  // Recognised partner charges for the Accounts range. `partnerRows` is the ONE
+  // dataset; `includeTestPartner` mirrors the tab's own toggle so the Overview
+  // and the tab always describe the same universe. Test rows are excluded by
+  // default — a synthetic order must never inflate Operating Net.
+  const [partnerRows, setPartnerRows] = useState<PartnerContributionRow[]>([]);
+  const [partnerLoading, setPartnerLoading] = useState(true);
+  const [partnerError, setPartnerError] = useState("");
+  const [includeTestPartner, setIncludeTestPartner] = useState(false);
 
   // ── ONE shared manual ad-spend sync flow (§5) ────────────────────────────
   // Used by BOTH the header "Sync Ads" quick action and the Marketing section's
@@ -601,6 +621,49 @@ export default function PaymentsTab() {
   const accountsFrom = customFrom || businessIsoDate(new Date());
   const accountsTo = customTo || businessIsoDate(new Date());
 
+  // ── Partner contribution: ONE fetch for the whole Accounts view ─────────
+  // Same p_from/p_to as every other Accounts section, so the Overview bridge,
+  // the Estimated P&L, the Partner Contribution tab and the CSV export are
+  // guaranteed to describe the same rows at the same instant. The RPC applies
+  // America/New_York calendar dates server-side and is is_chat_admin()-gated;
+  // a non-admin simply receives no rows.
+  //
+  // NOTE the deliberate absence of any partner filter here. The `?partner=`
+  // query parameter belongs to the Partner Platform WORKSPACE tab and must
+  // never narrow these company-wide Accounts figures.
+  useEffect(() => {
+    if (activeView !== "accounts") return;
+    let cancelled = false;
+    setPartnerLoading(true);
+    setPartnerError("");
+    void (async () => {
+      const { data: rows, error: err } = await supabase.rpc(
+        "get_partner_contribution_summary",
+        { p_from: accountsFrom, p_to: accountsTo },
+      );
+      if (cancelled) return;
+      if (err) {
+        setPartnerError("Partner Contribution could not be loaded (admin access required).");
+        setPartnerRows([]);
+      } else {
+        // De-duplicate at the single point of entry: the RPC left-joins
+        // partner_invoice_lines, whose billable_event_id index is NOT unique,
+        // so one charge on two invoice lines would otherwise be counted twice.
+        setPartnerRows(dedupePartnerRows((rows as PartnerContributionRow[]) ?? []));
+      }
+      setPartnerLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [activeView, accountsFrom, accountsTo, syncSignal]);
+
+  // The ONE reduction of those rows. Everything downstream reads this object;
+  // nothing recomputes partner money from raw rows.
+  const partnerTotals: PartnerContributionTotals = useMemo(
+    () => (partnerError ? EMPTY_PARTNER_TOTALS : computePartnerTotals(partnerRows, includeTestPartner)),
+    [partnerRows, includeTestPartner, partnerError],
+  );
+  const partnerNetUsd = partnerContributionUsd(partnerTotals);
+
   // Shared manual ad-spend sync (see the state block above). Same request the
   // old Marketing Spend panel made — endpoint, payload and auth are unchanged.
   const syncAds = useCallback(async () => {
@@ -686,6 +749,9 @@ export default function PaymentsTab() {
       detail: companyTotals?.metaConnected ? "Auto-synced for the selected range." : "Token not configured — spend stays $0 and is never estimated." },
     { name: "Microsoft Ads", health: "not_connected",
       detail: "Pending OAuth. No spend is imported or fabricated for this platform." },
+    { name: "Partner finance ledger", health: partnerError ? "error" : partnerLoading ? "pending" : "ok",
+      detail: partnerError ? partnerError
+        : `${partnerTotals.eventCount} recognised partner charge${partnerTotals.eventCount === 1 ? "" : "s"} in range; invoiced offline, never through Stripe.` },
     { name: "Salary & company expenses", health: "manual",
       detail: "Payroll estimates plus manually entered expenses; PKR converted at the header rate." },
   ];
@@ -745,6 +811,19 @@ export default function PaymentsTab() {
     { key: "expenses", label: "Company expenses",
       status: companyTotals ? "ok" : "unavailable",
       detail: "Manual entries + salary estimates; PKR converted at the header rate." },
+    // The Overview's Partner Contribution and the Partner Contribution section
+    // are two reductions of ONE fetch, so they tie by construction. This chip
+    // states the shared figure and flags the only way they could disagree: the
+    // canonical per-row net drifting from its own components.
+    { key: "partner", label: "Partner contribution",
+      status: partnerError ? "error"
+        : partnerLoading ? "unavailable"
+        : partnerTotals.componentsReconcile ? "balanced_exact" : "needs_review",
+      detail: partnerError ? partnerError
+        : partnerLoading ? "Waiting for the partner finance ledger."
+        : partnerTotals.componentsReconcile
+          ? `${formatCurrency2(partnerNetUsd)} net retained — Overview, this section and the export share one dataset. No Stripe fee is applied to partner revenue.`
+          : "Recognised revenue less provider compensation and credits does not equal the recorded net." },
   ];
 
   const feesEstimated = data?.summary.fees_include_estimates ?? false;
@@ -866,6 +945,9 @@ export default function PaymentsTab() {
                 onOpenMonth={openAccountsMonth}
                 fxRate={fxRate}
                 reconStatus={reconVerdict.status}
+                partnerTotals={partnerTotals}
+                partnerLoading={partnerLoading}
+                partnerError={partnerError}
                 onTotals={setCompanyTotals}
                 onExportReady={handleExportReady}
                 reloadSignal={syncSignal}
@@ -908,7 +990,12 @@ export default function PaymentsTab() {
                         from={accountsFrom}
                         to={accountsTo}
                         rangeLabel={rangeLabel}
-                        reloadSignal={syncSignal}
+                        rows={partnerRows}
+                        totals={partnerTotals}
+                        loading={partnerLoading}
+                        error={partnerError}
+                        includeTest={includeTestPartner}
+                        onIncludeTestChange={setIncludeTestPartner}
                       />
                     </div>
                   </>

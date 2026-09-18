@@ -14,6 +14,15 @@ import { formatTimeOfDay12, pktTime12String } from "../../../lib/timezones";
 import { businessIsoDate } from "../../../lib/businessTime";
 import { fetchAccountingPeriods, type AccountingPeriod } from "../../../lib/accountsBooks";
 import { buildCompanyFlow, type FlowStep, type ReconciliationStatus } from "../../../lib/accountsFinancialFlow";
+// PARTNER-CONTRIBUTION-ACCOUNTS-001 — partner money is supplied by the Accounts
+// shell (ONE fetch for the whole view); this panel never fetches or recomputes
+// it, so the Overview, the P&L, the Partner Contribution section and the CSV
+// export cannot drift apart.
+import {
+  centsToUsd, partnerBreakdownUsd, partnerContributionUsd,
+  EMPTY_PARTNER_TOTALS, PARTNER_CONTRIBUTION_LABEL,
+  type PartnerContributionTotals,
+} from "../../../lib/partnerContribution";
 import MonthlyBooksSummary from "./MonthlyBooksSummary";
 import PayrollArchivePanel from "./PayrollArchivePanel";
 import CompensationAdjustmentsCard from "./CompensationAdjustmentsCard";
@@ -61,6 +70,15 @@ interface Props {
   fxRate: number;
   /** Reconciliation status shown inside the calculation drawer. */
   reconStatus: ReconciliationStatus;
+  /**
+   * Net partner (B2B) economics for the SAME range, already reduced by
+   * src/lib/partnerContribution.ts. Supplied — never fetched here — so the
+   * Overview step, the P&L line and the Partner Contribution section are
+   * literally the same numbers.
+   */
+  partnerTotals?: PartnerContributionTotals;
+  partnerLoading?: boolean;
+  partnerError?: string;
   /** Publishes the company-wide totals this panel computes to the Accounts shell. */
   onTotals?: (t: CompanyTotals) => void;
   /** Hands the CSV export up so the global header can trigger it. */
@@ -85,9 +103,13 @@ export interface CompanyTotals {
   grossCharged: number;
   refunds: number;
   netRevenue: number;
+  /** DIRECT (Stripe-paid) provider payouts only — never partner provider cost. */
   providerPayments: number;
   stripeFees: number;
-  contributionAfterStripe: number;
+  /** Direct business only. Excludes every partner figure. */
+  directContributionAfterStripe: number;
+  /** Net retained partner contribution for the range. */
+  partnerContribution: number;
   companyExpenses: number;
   operatingNet: number;
   paidOrders: number;
@@ -106,7 +128,8 @@ const todayIso = () => businessIsoDate(new Date());
 
 export default function PaymentsAccountsPanel({
   period, customActive, customFrom, customTo, rangeLabel, summary, charges, resolutionMap, canManageBooks = false, onOpenMonth,
-  fxRate, reconStatus, onTotals, onExportReady, middleSlot, reloadSignal = 0, openExpenseSignal = 0,
+  fxRate, reconStatus, partnerTotals = EMPTY_PARTNER_TOTALS, partnerLoading = false, partnerError = "",
+  onTotals, onExportReady, middleSlot, reloadSignal = 0, openExpenseSignal = 0,
 }: Props) {
   const range = useMemo(
     () => resolveRange(period, customActive, customFrom, customTo),
@@ -222,10 +245,17 @@ export default function PaymentsAccountsPanel({
     return { providerPayouts: deducted, providerPending: pending };
   }, [charges, resolutionMap]);
 
-  // Gross − Stripe fees − refunds − confirmed provider payouts. Labelled
-  // "Contribution After Stripe" everywhere; the channel section's pre-Stripe
-  // figure uses a DIFFERENT label so one word never means two formulas.
-  const contributionAfterStripe = netAfterFees - providerPayouts;
+  // Gross − Stripe fees − refunds − confirmed DIRECT provider payouts. Labelled
+  // "Direct Contribution After Stripe" everywhere; the channel section's
+  // pre-Stripe figure uses a DIFFERENT label so one word never means two
+  // formulas, and "Direct" states that partner work is NOT inside it.
+  const directContributionAfterStripe = netAfterFees - providerPayouts;
+
+  // ── Partner (B2B) stream ──────────────────────────────────────
+  // Already net of partner provider compensation and credits. Added ONCE, after
+  // Stripe fees — partner charges are invoiced offline, so they never belong in
+  // Gross Charged and never attract a Stripe fee.
+  const partnerContribution = partnerContributionUsd(partnerTotals);
 
   // ── Expense side (USD) ───────────────────────────────────────────────────
   const activeExpenses = useMemo(() => expenses.filter((e) => e.status !== "cancelled"), [expenses]);
@@ -280,7 +310,7 @@ export default function PaymentsAccountsPanel({
   const duplicateMarketingRisk = manualAdPlatform > 0 && autoMarketingTotal > 0;
 
   const totalExpenses = manualTotal + salaryUsd + autoMarketingTotal;
-  const operatingNet = contributionAfterStripe - totalExpenses;
+  const operatingNet = directContributionAfterStripe + partnerContribution - totalExpenses;
 
   // ── Add expense ──────────────────────────────────────────────────────────
   const handleAdd = async () => {
@@ -342,16 +372,23 @@ export default function PaymentsAccountsPanel({
         { label: "Gross Revenue", amount: gross },
         { label: "Stripe Fees", amount: -stripeFees },
         { label: "Refunds", amount: -refunds },
-        { label: "Provider Payouts (confirmed)", amount: -providerPayouts, note: "Completed provider work only" },
-        { label: "Contribution After Stripe", amount: contributionAfterStripe, note: "Gross − refunds − provider payments − Stripe fees" },
+        { label: "Direct Provider Payouts (confirmed)", amount: -providerPayouts, note: "Completed provider work on Stripe-paid orders only — excludes partner orders" },
+        { label: "Direct Contribution After Stripe", amount: directContributionAfterStripe, note: "Gross − refunds − direct provider payments − Stripe fees" },
         { label: "Pending Provider Payouts (advisory)", amount: -providerPending, note: "Not yet completed — NOT deducted from margin/net" },
+        // Partner stream — four separate figures, then the net that Operating
+        // Net actually uses. Partner money never enters Gross Revenue above and
+        // is never charged a Stripe fee.
+        { label: "Partner Revenue (recognised)", amount: centsToUsd(partnerTotals.grossContributionCents), note: `${partnerTotals.eventCount} recognised partner charge(s); invoiced offline, never through Stripe` },
+        { label: "Partner Provider Compensation", amount: -centsToUsd(partnerTotals.providerCompensationCents), note: "Deducted here ONLY — not inside Direct Provider Payouts" },
+        { label: "Partner Credits / Reversals", amount: centsToUsd(partnerTotals.creditsCents), note: "Append-only credit events against a recognised charge" },
+        { label: PARTNER_CONTRIBUTION_LABEL, amount: partnerContribution, note: "Recognised partner revenue − partner provider compensation − credits. No Stripe fee applies." },
         { label: "Salary Expenses (est.)", amount: -salaryUsd, note: salaryPkr > 0 ? `Incl. PKR ${Math.round(salaryPkr).toLocaleString()} @ ${fxRate}/USD` : "" },
         { label: "Marketing Expenses (manual)", amount: -manualMarketing },
         { label: "Google Ads Spend (auto-synced)", amount: -googleAdsSpend, note: "From Google Ads API for selected range" },
         { label: "Meta / Facebook Ads Spend (auto-synced)", amount: -metaAdsSpend, note: metaConnected ? "From Meta Ads API for selected range" : "Meta not connected — add META_ADS_ACCESS_TOKEN" },
         { label: "Other Manual Expenses", amount: -manualOther },
-        { label: "Total Expenses", amount: -totalExpenses, note: "Manual + salary + auto ad spend" },
-        { label: "Operating Net", amount: operatingNet, note: "Contribution After Stripe − company expenses (incl. ad spend)" },
+        { label: "Company Expenses", amount: -totalExpenses, note: "Manual + salary + auto ad spend" },
+        { label: "Operating Net", amount: operatingNet, note: "Direct Contribution After Stripe + Partner Contribution − Company Expenses" },
       ],
       expenses,
       profitability,
@@ -382,13 +419,23 @@ export default function PaymentsAccountsPanel({
       refundsUsd: refunds,
       stripeFeesUsd: stripeFees,
       providerPaymentsUsd: providerPayouts,
+      partnerContributionUsd: partnerContribution,
+      partnerEventCount: partnerTotals.eventCount,
       companyExpensesUsd: totalExpenses,
       paidOrders: chargeCount,
       refundCount,
       feesIncludeEstimates: summary?.fees_include_estimates,
     }),
-    [gross, refunds, stripeFees, providerPayouts, totalExpenses, chargeCount, refundCount, summary?.fees_include_estimates],
+    [gross, refunds, stripeFees, providerPayouts, partnerContribution, partnerTotals.eventCount,
+     totalExpenses, chargeCount, refundCount, summary?.fees_include_estimates],
   );
+
+  // Child values shown in the drawer for the Partner Contribution step: the
+  // four figures the owner requires to be visible SEPARATELY — recognised
+  // partner revenue, partner provider compensation, credits/reversals and the
+  // resulting net retained contribution. Aggregates only; no customer or
+  // clinical detail ever reaches this drawer.
+  const partnerBreakdown = useMemo(() => partnerBreakdownUsd(partnerTotals), [partnerTotals]);
 
   // Child values shown in the drawer for the Company Expenses step.
   const expenseBreakdown = useMemo(() => [
@@ -409,7 +456,8 @@ export default function PaymentsAccountsPanel({
       netRevenue: companyFlow.netRevenueUsd,
       providerPayments: providerPayouts,
       stripeFees,
-      contributionAfterStripe: companyFlow.contributionAfterStripeUsd,
+      directContributionAfterStripe: companyFlow.directContributionAfterStripeUsd,
+      partnerContribution: companyFlow.partnerContributionUsd,
       companyExpenses: totalExpenses,
       operatingNet: companyFlow.operatingNetUsd,
       paidOrders: chargeCount,
@@ -716,7 +764,17 @@ export default function PaymentsAccountsPanel({
         <div className="bg-white rounded-xl border border-gray-200 p-5 sticky top-4">
           <p className="text-xs font-bold text-gray-700 uppercase tracking-widest mb-4">Estimated P&amp;L</p>
           <dl className="space-y-2.5 text-sm">
-            <Row label="Contribution After Stripe" value={fmtUSD2(contributionAfterStripe)} strong />
+            <Row label="Direct Contribution After Stripe" value={fmtUSD2(directContributionAfterStripe)} strong />
+            {/* PARTNER-CONTRIBUTION-ACCOUNTS-001 — a DISTINCT positive line, never
+                folded into direct revenue and never charged a Stripe fee. Shown
+                even at $0 so a period with no partner work still explains the
+                stream rather than hiding it. */}
+            <Row
+              label={PARTNER_CONTRIBUTION_LABEL}
+              value={partnerError ? "unavailable" : partnerLoading ? "…" : `+${fmtUSD2(partnerContribution)}`}
+              tone={partnerError || partnerLoading ? undefined : "emerald"}
+              strong
+            />
             <Row label="Salary Expenses (est.)" value={`−${fmtUSD2(salaryUsd)}`} tone="rose" />
             {manualMarketing > 0 && <Row label="Marketing (manual)" value={`−${fmtUSD2(manualMarketing)}`} tone="rose" />}
             <Row label="Google Ads Spend (auto)" value={`−${fmtUSD2(googleAdsSpend)}`} tone="rose" />
@@ -730,7 +788,9 @@ export default function PaymentsAccountsPanel({
                 <dt className="text-sm font-extrabold text-gray-900">Operating Net</dt>
                 <dd className={`text-lg font-extrabold ${operatingNet >= 0 ? "text-emerald-600" : "text-red-600"}`}>{fmtUSD2(operatingNet)}</dd>
               </div>
-              <p className="text-[11px] text-gray-400 mt-1">Estimated profit = contribution margin − company expenses.</p>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Estimated profit = Direct Contribution After Stripe + Partner Contribution − Company Expenses.
+              </p>
             </div>
           </dl>
           {salaryPkr > 0 && (
@@ -740,7 +800,7 @@ export default function PaymentsAccountsPanel({
           )}
           {providerPending > 0 && (
             <p className="mt-3 text-[11px] leading-snug text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
-              {fmtUSD2(providerPending)} of provider payouts are pending (work not yet completed) and are <strong>not</strong> deducted from Contribution After Stripe.
+              {fmtUSD2(providerPending)} of provider payouts are pending (work not yet completed) and are <strong>not</strong> deducted from Direct Contribution After Stripe.
             </p>
           )}
           <p className="mt-3 text-[11px] leading-snug text-gray-400">
@@ -748,6 +808,16 @@ export default function PaymentsAccountsPanel({
           </p>
           <p className="mt-3 text-[11px] leading-snug text-gray-400">
             Recurring subscriptions persist into each new month, so a fresh month opens with its fixed costs already applied. Monthly close/lock is a future feature.
+          </p>
+          {/* Where the partner line comes from, in one sentence, with the four
+              components spelled out. Matches the Partner Contribution section
+              below exactly — both read the same rows. */}
+          <p className="mt-3 text-[11px] leading-snug text-gray-400">
+            <strong>Partner Contribution</strong> is {fmtUSD2(centsToUsd(partnerTotals.grossContributionCents))} recognised partner revenue
+            {" "}− {fmtUSD2(centsToUsd(partnerTotals.providerCompensationCents))} partner provider compensation
+            {partnerTotals.creditsCents !== 0 ? ` − ${fmtUSD2(Math.abs(centsToUsd(partnerTotals.creditsCents)))} credits` : ""}
+            {" "}= <strong>{fmtUSD2(partnerContribution)}</strong> across {partnerTotals.eventCount} recognised charge{partnerTotals.eventCount === 1 ? "" : "s"}.
+            Partners are invoiced offline, so this money is never inside Gross Charged and never pays a Stripe fee. Its provider cost is deducted here only — never again in Direct Provider Payments.
           </p>
         </div>
       </div>
@@ -772,18 +842,24 @@ export default function PaymentsAccountsPanel({
         from={range.from}
         to={range.to}
         status={reconStatus}
-        related={drawerStep?.key === "company_expenses" ? expenseBreakdown : []}
+        related={
+          drawerStep?.key === "company_expenses" ? expenseBreakdown
+          : drawerStep?.key === "partner_contribution" ? partnerBreakdown
+          : []
+        }
         onClose={() => setDrawerStep(null)}
       />
     </div>
   );
 }
 
-function Row({ label, value, tone, strong }: { label: string; value: string; tone?: "rose"; strong?: boolean }) {
+function Row({ label, value, tone, strong }: { label: string; value: string; tone?: "rose" | "emerald"; strong?: boolean }) {
   return (
     <div className="flex items-center justify-between">
       <dt className={`text-xs ${strong ? "font-bold text-gray-700" : "text-gray-500"}`}>{label}</dt>
-      <dd className={`${strong ? "text-sm font-extrabold" : "text-sm font-semibold"} ${tone === "rose" ? "text-rose-500" : "text-gray-800"}`}>{value}</dd>
+      <dd className={`${strong ? "text-sm font-extrabold" : "text-sm font-semibold"} ${
+        tone === "rose" ? "text-rose-500" : tone === "emerald" ? "text-emerald-600" : "text-gray-800"
+      }`}>{value}</dd>
     </div>
   );
 }

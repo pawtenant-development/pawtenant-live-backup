@@ -284,7 +284,7 @@ const METRIC_ORDER: { key: keyof BasisTotals; metric: string; isCount?: boolean 
   { key: "gross", metric: "Gross Charged" },
   { key: "refunds", metric: "Refunds" },
   { key: "net", metric: "Net Revenue" },
-  { key: "provider", metric: "Provider Payments" },
+  { key: "provider", metric: "Provider Payments (All Orders)" },
 ];
 
 function metricRows(

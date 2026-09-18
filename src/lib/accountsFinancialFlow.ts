@@ -24,14 +24,25 @@
  *      bridge cannot display a subtotal that its own +/- rows do not produce.
  *   3. STRIPE FEES ARE COMPANY-LEVEL ONLY. This module never apportions,
  *      estimates, or splits a Stripe fee per order or per channel.
- *   4. RECONCILIATION STATUS IS EVIDENCE-DRIVEN. `resolveReconciliationStatus`
+ *   4. PARTNER MONEY IS ITS OWN STREAM. Partner (B2B) orders are invoiced
+ *      offline and never touch Stripe. Their revenue is therefore NEVER added
+ *      to Gross Charged, Refunds, Net Revenue or Contribution Before Stripe,
+ *      and Stripe fees are NEVER applied to it. It enters the bridge exactly
+ *      once, as a single ADDITIVE step after Direct Contribution After Stripe,
+ *      already net of its own provider compensation and credits (see
+ *      src/lib/partnerContribution.ts). Partner provider compensation is
+ *      subtracted there and ONLY there: "Direct Provider Payments" is derived
+ *      from Stripe charges keyed by payment_intent, which every partner order
+ *      lacks. Renaming steps 4 and 7 to "Direct ..." is what keeps that
+ *      separation legible instead of hidden behind a label.
+ *   5. RECONCILIATION STATUS IS EVIDENCE-DRIVEN. `resolveReconciliationStatus`
  *      returns "balanced" ONLY when the Stripe↔Orders bridge explains every
  *      residual AND the channel partition ties to the order basis. Missing data
  *      is "updating"/"sync_pending"/"data_source_error" — never "balanced".
- *   5. NO NaN / NO Infinity. Every ratio goes through `safeRatio` and returns
+ *   6. NO NaN / NO Infinity. Every ratio goes through `safeRatio` and returns
  *      null instead of a non-finite number. Negative values stay negative and
  *      are never clamped to zero.
- *   6. NO PII. Only amounts, counts and status codes cross this boundary.
+ *   7. NO PII. Only amounts, counts and status codes cross this boundary.
  */
 
 // ── Numeric helpers ──────────────────────────────────────────────────────────
@@ -57,12 +68,19 @@ export function safeRatio(numer: number, denom: number): number | null {
 // ── Step model ───────────────────────────────────────────────────────────────
 
 /**
- * A step is either a running SUBTOTAL (the result of everything above it) or a
- * DELTA applied to the running total. The renderer draws deltas with an explicit
- * +/− and subtotals with an "=" — so subtraction is never communicated by colour
- * alone (accessibility requirement).
+ * A step is a running SUBTOTAL (the result of everything above it), a DELTA
+ * that DEDUCTS from the running total, or an ADDITION that ADDS to it. The
+ * renderer draws a delta with an explicit "−"/"Less", an addition with "+"/
+ * "Plus", and a subtotal with "=" — so direction is never communicated by
+ * colour alone (accessibility requirement), and an incoming stream is never
+ * dressed up as a cost.
  */
-export type FlowStepKind = "subtotal" | "delta";
+export type FlowStepKind = "subtotal" | "delta" | "addition";
+
+/** True for the kinds whose `amountUsd` is applied to the running total. */
+export function isFlowMovement(kind: FlowStepKind): boolean {
+  return kind === "delta" || kind === "addition";
+}
 
 /** Which upstream system owns a step's number — surfaced in the drawer. */
 export type FlowSource =
@@ -70,6 +88,7 @@ export type FlowSource =
   | "orders"        // orders / doctor_earnings (order basis)
   | "expenses"      // company_expenses + salary RPCs
   | "ad_platforms"  // synced Google / Meta ad spend
+  | "partner"       // partner_billable_events ledger (invoiced offline, never Stripe)
   | "derived";      // pure arithmetic over other steps
 
 export const FLOW_SOURCE_LABEL: Record<FlowSource, string> = {
@@ -77,6 +96,7 @@ export const FLOW_SOURCE_LABEL: Record<FlowSource, string> = {
   orders: "Orders database",
   expenses: "Company expenses & payroll",
   ad_platforms: "Ad platform sync",
+  partner: "Partner finance ledger",
   derived: "Calculated from the steps above",
 };
 
@@ -112,11 +132,18 @@ export interface FlowStep {
 /**
  * ONE FORMULA for Operating Net, shared by every surface that reports it.
  *
- *   Operating Net = Business Net − company expenses − salary − paid media
+ *   Operating Net = Business Net + partner contribution
+ *                   − company expenses − salary − paid media
  *
- * This is the same final step as `buildCompanyFlow` ("Contribution After Stripe
- * − Company Expenses = Operating Net"), with Company Expenses decomposed into
- * its three parts. `CompanyFlowInput.companyExpensesUsd` is documented as
+ * This is the same final pair of steps as `buildCompanyFlow` ("Direct
+ * Contribution After Stripe + Partner Contribution − Company Expenses =
+ * Operating Net"), with Company Expenses decomposed into its three parts.
+ *
+ * `partnerContribution` is the NET RETAINED partner figure from
+ * src/lib/partnerContribution.ts — already after partner provider compensation
+ * and credits, and never touched by Stripe fees. It is an ordinary signed term:
+ * a period whose partner credits exceed its charges legitimately contributes a
+ * negative amount, and that is carried through rather than clamped. `CompanyFlowInput.companyExpensesUsd` is documented as
  * "manual + salary + synced ad spend"; the Monthly Books row keeps the three
  * separate for display, so it needs the decomposed form. Both must agree.
  *
@@ -132,8 +159,13 @@ export interface FlowStep {
  * A negative result is a real loss and is returned as-is — never clamped.
  */
 export interface OperatingNetInput {
-  /** Gross − Stripe fees − refunds − confirmed provider payouts. */
+  /** Gross − Stripe fees − refunds − confirmed DIRECT provider payouts. */
   businessNet: number;
+  /**
+   * Net retained partner contribution, USD. Required so a caller can never
+   * forget the stream and silently understate Operating Net.
+   */
+  partnerContribution: number;
   /** Company expenses (recurring-projected), USD. Excludes salary and ad spend. */
   expenses: number;
   /** Prorated non-owner salary, USD. */
@@ -144,7 +176,8 @@ export interface OperatingNetInput {
 
 export function computeOperatingNet(i: OperatingNetInput): number {
   return round2(
-    numOr0(i.businessNet) - numOr0(i.expenses) - numOr0(i.salary) - numOr0(i.adSpend),
+    numOr0(i.businessNet) + numOr0(i.partnerContribution)
+      - numOr0(i.expenses) - numOr0(i.salary) - numOr0(i.adSpend),
   );
 }
 
@@ -155,8 +188,20 @@ export interface CompanyFlowInput {
   refundsUsd: number;
   /** Actual Stripe fees (may include pending estimates — flagged separately). */
   stripeFeesUsd: number;
-  /** Provider payouts deducted (completed provider work only). */
+  /**
+   * DIRECT provider payouts deducted (completed provider work on Stripe-paid
+   * orders only). Resolved from Stripe charges by `payment_intent`, so a
+   * partner order — which has none — can never land here.
+   */
   providerPaymentsUsd: number;
+  /**
+   * Net retained partner contribution, USD: recognised partner revenue, less
+   * partner provider compensation, less credits/reversals. Already complete —
+   * this module adds it once and never applies a Stripe fee to it.
+   */
+  partnerContributionUsd: number;
+  /** Recognised partner charge events in the range (for the worked example). */
+  partnerEventCount?: number;
   /** Company operating expenses: manual + salary + synced ad spend. */
   companyExpensesUsd: number;
   /** Paid Stripe charges in the range. */
@@ -171,7 +216,10 @@ export interface CompanyFlow {
   steps: FlowStep[];
   netRevenueUsd: number;
   contributionBeforeStripeUsd: number;
-  contributionAfterStripeUsd: number;
+  /** Direct (Stripe) business only — excludes every partner figure. */
+  directContributionAfterStripeUsd: number;
+  /** The partner stream, exactly as supplied. */
+  partnerContributionUsd: number;
   operatingNetUsd: number;
 }
 
@@ -183,10 +231,11 @@ export const COMPANY_FLOW_LABELS = [
   "Gross Charged",
   "Refunds",
   "Net Revenue",
-  "Provider Payments",
+  "Direct Provider Payments",
   "Contribution Before Stripe",
   "Stripe Fees",
-  "Contribution After Stripe",
+  "Direct Contribution After Stripe",
+  "Partner Contribution",
   "Company Expenses",
   "Operating Net",
 ] as const;
@@ -201,9 +250,16 @@ const money = (n: number): string => {
  * Build the ordered company P&L bridge.
  *
  * Gross Charged − Refunds = Net Revenue
- * Net Revenue − Provider Payments = Contribution Before Stripe
- * Contribution Before Stripe − Stripe Fees = Contribution After Stripe
- * Contribution After Stripe − Company Expenses = Operating Net
+ * Net Revenue − Direct Provider Payments = Contribution Before Stripe
+ * Contribution Before Stripe − Stripe Fees = Direct Contribution After Stripe
+ * Direct Contribution After Stripe + Partner Contribution − Company Expenses
+ *   = Operating Net
+ *
+ * Partner Contribution is the ONLY additive step. It sits AFTER Stripe Fees on
+ * purpose: everything above it is direct-customer money that went through
+ * Stripe, so a partner charge can never be caught by Gross Charged or by the
+ * fee line. Its own provider compensation and credits are already inside the
+ * figure supplied, and are deducted nowhere else in this bridge.
  *
  * NOTE the ordering choice: provider payments are deducted BEFORE Stripe fees
  * so that "Contribution Before Stripe" is directly comparable to the channel
@@ -218,13 +274,17 @@ export function buildCompanyFlow(input: CompanyFlowInput): CompanyFlow {
   const provider = round2(numOr0(input.providerPaymentsUsd));
   const expenses = round2(numOr0(input.companyExpensesUsd));
 
+  const partner = round2(numOr0(input.partnerContributionUsd));
+
   const netRevenue = round2(gross - refunds);
   const beforeStripe = round2(netRevenue - provider);
   const afterStripe = round2(beforeStripe - fees);
-  const operatingNet = round2(afterStripe - expenses);
+  const afterPartner = round2(afterStripe + partner);
+  const operatingNet = round2(afterPartner - expenses);
 
   const paidOrders = Math.max(0, Math.trunc(numOr0(input.paidOrders)));
   const refundCount = Math.max(0, Math.trunc(numOr0(input.refundCount)));
+  const partnerEvents = Math.max(0, Math.trunc(numOr0(input.partnerEventCount)));
 
   const steps: FlowStep[] = [
     {
@@ -271,17 +331,17 @@ export function buildCompanyFlow(input: CompanyFlowInput): CompanyFlow {
     },
     {
       key: "provider_payments",
-      label: "Provider Payments",
+      label: "Direct Provider Payments",
       kind: "delta",
       amountUsd: -provider,
       runningUsd: beforeStripe,
-      formula: "Provider earnings for orders the provider has completed",
+      formula: "Provider earnings for completed DIRECT (Stripe-paid) orders",
       workedExample: `${money(provider)} deducted`,
-      tooltip: "What you owe the providers who did the clinical work. Only deducted once the provider has completed the order.",
+      tooltip: "What you owe the providers who did the clinical work on orders customers paid for through Stripe. Only deducted once the provider has completed the order. Providers paid for PARTNER orders are not counted here — that cost is already inside Partner Contribution.",
       source: "orders",
       dateBasis: "Order completion (provider notified the patient)",
       includedCount: null,
-      limitation: "Pending provider work is NOT deducted here — it is advisory until the order completes.",
+      limitation: "Direct orders only — resolved from Stripe charges by payment intent, which partner orders do not have. Pending provider work is NOT deducted here; it is advisory until the order completes.",
     },
     {
       key: "contribution_before_stripe",
@@ -289,7 +349,7 @@ export function buildCompanyFlow(input: CompanyFlowInput): CompanyFlow {
       kind: "subtotal",
       amountUsd: beforeStripe,
       runningUsd: beforeStripe,
-      formula: "Net Revenue − Provider Payments",
+      formula: "Net Revenue − Direct Provider Payments",
       workedExample: `${money(netRevenue)} − ${money(provider)} = ${money(beforeStripe)}`,
       tooltip: "What the orders earned after paying providers, before payment-processing fees. This is the figure comparable to the channel breakdown.",
       source: "derived",
@@ -315,17 +375,33 @@ export function buildCompanyFlow(input: CompanyFlowInput): CompanyFlow {
     },
     {
       key: "contribution_after_stripe",
-      label: "Contribution After Stripe",
+      label: "Direct Contribution After Stripe",
       kind: "subtotal",
       amountUsd: afterStripe,
       runningUsd: afterStripe,
       formula: "Contribution Before Stripe − Stripe Fees",
       workedExample: `${money(beforeStripe)} − ${money(fees)} = ${money(afterStripe)}`,
-      tooltip: "What is left to cover the running costs of the business — salaries, marketing and everything else. This is not profit yet.",
+      tooltip: "What the DIRECT (Stripe) side of the business left behind to cover running costs — salaries, marketing and everything else. Partner work is counted in the next step. This is not profit yet.",
       source: "derived",
       dateBasis: "Mixed — see the reconciliation section",
       includedCount: null,
-      limitation: null,
+      limitation: "Direct customer business only. Partner revenue is never inside this figure, and no Stripe fee is ever charged against partner money.",
+    },
+    {
+      key: "partner_contribution",
+      label: "Partner Contribution",
+      kind: "addition",
+      amountUsd: partner,
+      runningUsd: afterPartner,
+      formula: "Recognised partner revenue − partner provider compensation − credits/reversals",
+      workedExample: partnerEvents === 0
+        ? `No recognised partner charges in this range = ${money(partner)}`
+        : `${partnerEvents} recognised partner charge${partnerEvents === 1 ? "" : "s"} = ${money(partner)}`,
+      tooltip: "What partner (B2B) work earned this period, after paying the providers who did it and after any credits. Partners are invoiced directly, so this money never went through Stripe and is never charged a Stripe fee.",
+      source: "partner",
+      dateBasis: "Partner charge recognised (clinical work completed), America/New_York date",
+      includedCount: partnerEvents,
+      limitation: "Recognised charges only. A partner order that is still pending, in review, or cancelled before completion has no charge and contributes nothing; one cancelled AFTER completion keeps the contribution it earned.",
     },
     {
       key: "company_expenses",
@@ -347,8 +423,8 @@ export function buildCompanyFlow(input: CompanyFlowInput): CompanyFlow {
       kind: "subtotal",
       amountUsd: operatingNet,
       runningUsd: operatingNet,
-      formula: "Contribution After Stripe − Company Expenses",
-      workedExample: `${money(afterStripe)} − ${money(expenses)} = ${money(operatingNet)}`,
+      formula: "Direct Contribution After Stripe + Partner Contribution − Company Expenses",
+      workedExample: `${money(afterStripe)} + ${money(partner)} − ${money(expenses)} = ${money(operatingNet)}`,
       tooltip: "The estimated bottom line for this period. Negative means the period cost more than it earned.",
       source: "derived",
       dateBasis: "Mixed — see the reconciliation section",
@@ -357,7 +433,14 @@ export function buildCompanyFlow(input: CompanyFlowInput): CompanyFlow {
     },
   ];
 
-  return { steps, netRevenueUsd: netRevenue, contributionBeforeStripeUsd: beforeStripe, contributionAfterStripeUsd: afterStripe, operatingNetUsd: operatingNet };
+  return {
+    steps,
+    netRevenueUsd: netRevenue,
+    contributionBeforeStripeUsd: beforeStripe,
+    directContributionAfterStripeUsd: afterStripe,
+    partnerContributionUsd: partner,
+    operatingNetUsd: operatingNet,
+  };
 }
 
 /**
