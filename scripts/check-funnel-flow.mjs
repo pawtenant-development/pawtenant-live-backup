@@ -56,6 +56,15 @@ function fnBody(src, name) {
 
 // Each check: { id, run(files) -> problem string | null }. A null return = pass.
 const CHECKS = [
+  { id: "C0-assessment-otp-disabled", run: (f) => {
+      for (const key of ["esa", "psd"]) {
+        const src = f[key] ?? "";
+        if (!/const ASSESSMENT_OTP_ENABLED = false;/.test(src)) return `${key.toUpperCase()} assessment must disable the OTP gate`;
+        if (!/\{ASSESSMENT_OTP_ENABLED && (?:currentStep|step) === 3 && checkoutGate === "otp" && \(/.test(src)) return `${key.toUpperCase()} OTP UI must stay behind the disabled assessment-only gate`;
+        if (!/if \(!ASSESSMENT_OTP_ENABLED\) setCheckoutGate\("pay"\);/.test(src)) return `${key.toUpperCase()} personal-info completion must go directly to checkout`;
+      }
+      return null;
+    } },
   { id: "C1-esa-otp-to-pay", run: (f) => /const target = directCheckout \? "pay" : postOtpGateRef\.current;/.test(f.esa ?? "") ? null : "ESA handleOtpVerified must route verified users to pay in the direct flow" },
   { id: "C1-psd-otp-to-pay", run: (f) => /const target = directCheckout \? "pay" : postOtpGateRef\.current;/.test(f.psd ?? "") ? null : "PSD handleOtpVerified must route verified users to pay in the direct flow" },
   { id: "C2-flag-default-direct", run: (f) => /return "direct_checkout_v1";/.test(f.flag ?? "") ? null : "flowVersion default must be direct_checkout_v1" },
@@ -107,6 +116,7 @@ function runChecks(files) {
 
 // ── Negative controls: (mutator, expected check id that must trip) ──────────────
 const CONTROLS = [
+  ["0: assessment OTP is re-enabled", (f) => ({ ...f, esa: f.esa.replace("const ASSESSMENT_OTP_ENABLED = false;", "const ASSESSMENT_OTP_ENABLED = true;") }), "C0-assessment-otp-disabled"],
   ["A: OTP routes to package not pay", (f) => ({ ...f, esa: f.esa.replace('const target = directCheckout ? "pay" : postOtpGateRef.current;', 'const target = directCheckout ? "package" : postOtpGateRef.current;') }), "C1-esa-otp-to-pay"],
   ["B: package unreachable from Change", (f) => ({ ...f, esa: f.esa.replace('trackPackageChangeOpened(confirmationId.current, "esa"); setCheckoutGate("package")', 'trackPackageChangeOpened(confirmationId.current, "esa")') }), "C4-esa-change-reachable"],
   ["C: RA becomes the default", (f) => ({ ...f, esa: f.esa.replace(': "esa_standard";', ': "esa_ra_bundle";') }), "C7-esa-ra-not-autoselected"],

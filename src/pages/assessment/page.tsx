@@ -47,6 +47,11 @@ import { trackAssessmentStepView, trackAssessmentSubmitted, trackPaymentSuccess,
 // Lazy-loaded Step 3 checkout (payment) — split into its own bundle chunk.
 const Step3Checkout = lazy(() => import("./components/Step3Checkout"));
 
+// Owner decision (2026-09-18): assessment checkout no longer requires an OTP.
+// Keep the OTP component and delivery infrastructure for account/auth flows,
+// but never mount it in the public assessment funnel.
+const ASSESSMENT_OTP_ENABLED = false;
+
 // Lightweight fallback shown only while the payment chunk loads (usually instant).
 function Step3LoadingFallback() {
   return (
@@ -457,7 +462,7 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
   // acknowledgment fires early. After "Your Information" the customer verifies
   // their email via a 6-digit OTP, then sees an assurance screen, then pays.
   const [stateConfirmed, setStateConfirmed] = useState(false);
-  const [checkoutGate, setCheckoutGate] = useState<"otp" | "assurance" | "package" | "pay">("otp");
+  const [checkoutGate, setCheckoutGate] = useState<"otp" | "assurance" | "package" | "pay">("pay");
   const [otpVerified, setOtpVerified] = useState(false);
   const verifiedEmailRef = useRef("");
   // Where OTP verification should land the customer next. First-time flow →
@@ -900,6 +905,15 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
           verifiedEmailRef.current = alreadyAuthed ? orderEmail : "";
           setCurrentStep(1);
           window.scrollTo({ top: 0, behavior: "smooth" });
+        } else if (!ASSESSMENT_OTP_ENABLED) {
+          // A secure resume token or durable checkout slug has already
+          // authorised this order. OTP is no longer part of assessment checkout.
+          setOtpVerified(alreadyAuthed);
+          verifiedEmailRef.current = alreadyAuthed ? orderEmail : "";
+          setCheckoutGate("pay");
+          setCurrentStep(3);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          fetchClientSecret(loadedStep2, confirmationId.current);
         } else if (alreadyAuthed) {
           setOtpVerified(true);
           verifiedEmailRef.current = orderEmail;
@@ -1188,8 +1202,10 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
       // Decide the checkout gate: fresh (or changed) email → OTP first; an
       // already-verified matching email → straight to the pay surface.
       const needOtp =
-        !otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase();
-      if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
+        ASSESSMENT_OTP_ENABLED
+        && (!otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase());
+      if (!ASSESSMENT_OTP_ENABLED) setCheckoutGate("pay");
+      else if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
       else setCheckoutGate(directCheckout ? "pay" : "package");
       // Fire lead tracking
       fireGHLEarlyLead(step1, step2, confirmationId.current);
@@ -2050,7 +2066,7 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
                 />
               )}
               {/* Checkout gates: email OTP → assurance → payment. */}
-              {currentStep === 3 && checkoutGate === "otp" && (
+              {ASSESSMENT_OTP_ENABLED && currentStep === 3 && checkoutGate === "otp" && (
                 <CustomerOtpStep
                   email={step2.email}
                   phone={step2.phone}

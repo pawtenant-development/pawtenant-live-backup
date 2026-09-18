@@ -37,6 +37,11 @@ import {
 // Lazy-loaded PSD Step 3 checkout (payment) — split into its own bundle chunk.
 const PSDStep3Checkout = lazy(() => import("./components/PSDStep3Checkout"));
 
+// Owner decision (2026-09-18): assessment checkout no longer requires an OTP.
+// OTP remains available to account/auth flows, but the public assessment funnel
+// proceeds directly from saved customer details to secure checkout.
+const ASSESSMENT_OTP_ENABLED = false;
+
 // Lightweight fallback shown only while the payment chunk loads (usually instant).
 function PSDStep3LoadingFallback() {
   return (
@@ -155,7 +160,7 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
   const [step, setStep] = useState(1);
   // ── Flow gates (2026-07 restructure) — state first, OTP before checkout ──
   const [stateConfirmed, setStateConfirmed] = useState(false);
-  const [checkoutGate, setCheckoutGate] = useState<"otp" | "assurance" | "package" | "pay">("otp");
+  const [checkoutGate, setCheckoutGate] = useState<"otp" | "assurance" | "package" | "pay">("pay");
   // Optional preselect from the PSD cost-page combo CTA (?package=psd_ra_bundle):
   // pre-highlights the RA card only — OTP and server-side pricing are unaffected.
   const [selectedPackage, setSelectedPackage] = useState<PackageKey>(() => {
@@ -519,7 +524,11 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
         const alreadyAuthed =
           (!!orderEmail && sessionEmail === orderEmail) || stableOtpVerified;
 
-        if (alreadyAuthed) {
+        if (!ASSESSMENT_OTP_ENABLED) {
+          setOtpVerified(alreadyAuthed);
+          verifiedEmailRef.current = alreadyAuthed ? orderEmail : "";
+          setCheckoutGate("pay");
+        } else if (alreadyAuthed) {
           setOtpVerified(true);
           verifiedEmailRef.current = orderEmail;
           setCheckoutGate(directCheckout ? "pay" : nextGate);
@@ -815,8 +824,10 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
-    const needOtp = !otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase();
-    if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
+    const needOtp = ASSESSMENT_OTP_ENABLED
+      && (!otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase());
+    if (!ASSESSMENT_OTP_ENABLED) setCheckoutGate("pay");
+    else if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
     else setCheckoutGate(directCheckout ? "pay" : "package");
     setStep(3);
   };
@@ -1089,7 +1100,7 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
               )}
 
               {/* Checkout gates: email OTP → assurance → payment. */}
-              {step === 3 && checkoutGate === "otp" && (
+              {ASSESSMENT_OTP_ENABLED && step === 3 && checkoutGate === "otp" && (
                 <CustomerOtpStep
                   email={step2.email}
                   phone={step2.phone}
