@@ -428,3 +428,175 @@ async function runChecks() {
     !/Sandbox onboarding checklist/.test(stripComments(overview).replace(/checklistRetired[\s\S]*?\}, \[partner, state\]\);/, "")) &&
       !/label="API access"|label="Webhooks"|label="Last API \/ webhook"/.test(overview) &&
       /<PartnerOnboardingChecklist partner=\{selected\} \/>/.test(settings) && /<PartnerLegacyIntakeHistory partner=\{selected\}/.test(settings) &&
+      /<PartnerCompletionContact partner=\{selected\} \/>/.test(settings) &&
+      (settings.match(/<CollapsibleSection/g) ?? []).length >= 6 && /tone="history"/.test(settings));
+  check("U3 the legacy PDF upload control is gone from the workspace",
+    !/Legacy: PDF upload|setLegacyIntakeOpen|<PartnerManualIntake/.test(read(F.WORKSPACE)));
+  const wizard = read(F.WIZARD);
+  check("U4 the wizard has the four canonical steps, a live provider preview, a neutral attestation, and sends the parsed blocks with the verbatim text",
+    /\["Service", "Customer", "Pets", "Questionnaire"\]/.test(wizard) && /<QuestionnairePreview parsed=\{parsed\} \/>/.test(wizard) &&
+      /I confirm this information is accurate and authorized for clinical review\./.test(wizard) &&
+      !/to PawTenant for clinical review/.test(wizard) &&
+      /p_questionnaire_text: questionnaire,/.test(wizard) && /p_questionnaire_blocks: parsed && parsedLossless \? parsed\.blocks : null,/.test(wizard) &&
+      /p_partner_id: mode === "admin" \? partnerId : null,/.test(wizard) && !/<input[^>]*type="file"/i.test(wizard) &&
+      /disabled=\{submitting \|\| !authorizationConfirmed/.test(wizard) && /No numbered questions were recognised/.test(wizard));
+  const portal = read(F.PORTAL_ORDERS);
+  check("U5 the partner portal rows open by mouse and keyboard, and documents come through the session-scoped edge function",
+    /onKeyDown=\{\(e\) => \{ if \(e\.key === "Enter" \|\| e\.key === " "\)/.test(portal) && /tabIndex=\{0\}/.test(portal) &&
+      /functions\.invoke\("partner-portal-document"/.test(portal) && /document_available/.test(portal) && /clinical_completed_at/.test(portal));
+  const intakeFn = stripComments(read(F.INTAKE_FN));
+  check("U6 the retired legacy PDF intake refuses every write action server-side (410), leaving only source_url",
+    /LEGACY_INTAKE_READ_ONLY_ACTIONS = new Set\(\["source_url"\]\)/.test(intakeFn) &&
+      /if \(!LEGACY_INTAKE_READ_ONLY_ACTIONS\.has\(action\)\) \{/.test(intakeFn) && /fail\(410, "legacy_intake_retired"/.test(intakeFn) &&
+      intakeFn.indexOf("LEGACY_INTAKE_READ_ONLY_ACTIONS.has(action)") < intakeFn.indexOf('if (action === "upload") {') &&
+      !/action=upload|action=commit|action=reparse|action=review|action=ocr_text/.test(codeOnly(read(F.HISTORY))));
+
+  // ── W. Build wiring ──────────────────────────────────────────────────────
+  check("W1 this guard is wired into the build chain",
+    JSON.parse(read(F.PKG)).scripts.build.includes("check-partner-order-ux-assessment-finance.mjs"));
+}
+
+function report(title) {
+  const failed = results.filter((r) => !r.ok);
+  console.log(`\n${title}`);
+  for (const r of results) console.log(`  ${r.ok ? "PASS" : "FAIL"}  ${r.name}${!r.ok && r.detail ? `  [${r.detail}]` : ""}`);
+  console.log(`  ${results.length - failed.length} passed, ${failed.length} failed`);
+  return failed.length > 0;
+}
+
+const SELF = process.argv.includes("--self-test");
+
+if (SELF) {
+  const CONTROLS = [
+    { name: "a numeric answer (\"6 hours or more\" after question 5) is read as question 6", file: F.PARSER, expect: "Q1",
+      from: "  if (/\\?/.test(t)) return true;", to: "  return true;\n  if (/\\?/.test(t)) return true;" },
+    { name: "the parser drops every answer line after the first", file: F.PARSER, expect: "Q3",
+      from: "    current.answer.push(line.replace(/^\\s+/, \"\"));", to: "    if (current.answer.length < 1) current.answer.push(line.replace(/^\\s+/, \"\"));" },
+    { name: "stored blocks are trusted without the lossless check", file: F.PARSER, expect: "Q7",
+      from: "      if (questionnaireIsLossless(raw, candidate)) return candidate;", to: "      return candidate;" },
+    { name: "the PDF stops escaping the question text", file: F.ASSESS, expect: "Q6b",
+      from: "${escapeHtml(b.question)}</p>", to: "${b.question}</p>" },
+    { name: "the on-screen partner assessment grows a company name", file: F.NEUTRAL, expect: "B3",
+      from: "<h2 className=\"text-xl font-bold\">{title}</h2>", to: "<h2 className=\"text-xl font-bold\">PawTenant {title}</h2>" },
+    { name: "the on-screen partner assessment shows the partner reference", file: F.NEUTRAL, expect: "B3",
+      from: "<Row label=\"Case Reference\" value={order.confirmation_id} />", to: "<Row label=\"Case Reference\" value={String((order as { partner_order_id?: string }).partner_order_id)} />" },
+    { name: "send-sms keeps its gate but stops refusing", file: "supabase/functions/send-sms/index.ts", expect: "N1",
+      from: "    if (!contactGate.allowed) {\n      return new Response(JSON.stringify({ ok: false, error: contactGate.detail, reason: contactGate.reason }), {", to: "    if (false) {\n      return new Response(JSON.stringify({ ok: false, error: contactGate.detail, reason: contactGate.reason }), {" },
+    { name: "the partner completion email carries the customer's name", file: F.NPL, expect: "N2",
+      from: "          `Order reference: ${confirmationId}`,", to: "          `Order reference: ${confirmationId} for ${order.first_name}`," },
+    { name: "the partner completion email goes to the customer too", file: F.NPL, expect: "N2",
+      from: "            to: [contact],", to: "            to: [contact, order.email]," },
+    { name: "the partner completion notice sends without claiming (every retry re-sends)", file: F.NPL, expect: "N7",
+      from: "        if (!reservePartner.proceed) {", to: "        if (false) {" },
+    { name: "the partner completion key is time-bucketed, so a retry claims a fresh key", file: F.NPL, expect: "N7",
+      from: "        const partnerDedupeKey = `${confirmationId}:partner_completion`;",
+      to: "        const partnerDedupeKey = `${confirmationId}:partner_completion:${Date.now()}`;" },
+    { name: "a thrown partner send abandons its claim in 'sending' forever", file: F.NPL, expect: "N7b",
+      from: "          } catch (sendErr) {\n            // Release the claim so the partner can still be told later.\n            await finalizeEmailSend(supabase, reservePartner.rowId, {",
+      to: "          } catch (sendErr) {\n            await Promise.resolve({" },
+    { name: "a suppressed partner notice is recorded as a successful send", file: F.NPL, expect: "N7b",
+      from: "                success: false,\n                body: html,\n                errorMessage: `SUPPRESSED (TEST fixture): ${suppression.reason}`,",
+      to: "                success: true,\n                body: html,\n                errorMessage: null," },
+    { name: "the closure smuggles in a new migration", file: "supabase/migrations/20260911210000_partner_order_ux_assessment_finance_repair.sql", expect: "M1",
+      newFile: "supabase/migrations/29991231000000_control_new_migration.sql", content: "-- negative control\nselect 1;\n" },
+    { name: "the provider submission promises a patient notification again", file: F.PROVIDER_DETAIL, expect: "N3",
+      from: "Submit Documents for Review?", to: "Submit Documents & Complete Order?" },
+    { name: "force-complete asks the client to notify a partner customer", file: F.MIG, expect: "N4",
+      from: "  v_notify   := v_has_doc AND coalesce(v_order.order_origin, 'direct') <> 'partner';", to: "  v_notify   := v_has_doc;" },
+    { name: "the identity gate fails OPEN on a partner match", file: F.GATE, expect: "N6",
+      from: "  if (!hit) {\n    return { allowed: true,", to: "  if (true) {\n    return { allowed: true," },
+    { name: "the portal document function stops scoping the order to the session's partner", file: F.PORTAL_DOC_FN, expect: "A2",
+      from: "    .eq(\"order_origin\", \"partner\")\n    .eq(\"partner_id\", partnerId)", to: "    .eq(\"order_origin\", \"partner\")" },
+    { name: "adjustments are subtracted twice (sign flipped)", file: F.MIG, expect: "F1",
+      from: "         coalesce(b.wholesale_fee_cents, 0) - coalesce(c.cents, 0) + coalesce(a.cents, 0),", to: "         coalesce(b.wholesale_fee_cents, 0) - coalesce(c.cents, 0) - coalesce(a.cents, 0)," },
+    { name: "provider cost counts cancelled earnings", file: F.MIG, expect: "F2",
+      from: "     where coalesce(d.status, '') not in ('cancelled', 'voided', 'refunded')\n     group by d.order_id", to: "     group by d.order_id" },
+    { name: "a missing provider cost is silently treated as zero", file: F.MIG, expect: "F4",
+      from: "         (b.fin_order_id is null) or (b.billable_status = 'billable' and c.rows_n is null),", to: "         (b.fin_order_id is null)," },
+    { name: "the Payments tab shows customer recovery actions on a partner order again", file: F.PAYMENTS, expect: "F8",
+      from: "  if (isPartnerOrder(order)) {\n    return (", to: "  if (false) {\n    return (" },
+    { name: "a direct load of ?kpi=partner_orders seeds a status that does not exist (empty list under a card reading 2)", file: F.PAGE, expect: "O3",
+      from: "    return seeded ? kpiCardListSelection(seeded).statusFilter : \"all\";", to: "    return seeded ?? \"all\";" },
+    { name: "the Partner Orders card opens direct orders", file: F.FACETS, expect: "O1",
+      from: "  if (key === \"partner_orders\") return { statusFilter: \"all\", orderOrigin: \"partner\" };", to: "  if (key === \"partner_orders\") return { statusFilter: \"all\", orderOrigin: \"direct\" };" },
+    { name: "the lead bucket keys on payment_intent_id alone again", file: F.FACETS, expect: "O2",
+      from: "      return q.or(`status.eq.lead,${NO_CONFIRMED_PAYMENT_ARM}`);\n    case \"paid_unassigned\"", to: "      return q.or(\"payment_intent_id.is.null,status.eq.lead\");\n    case \"paid_unassigned\"" },
+    { name: "the client classifier calls a partner-funded order a lead", file: F.LIFECYCLE, expect: "O5",
+      from: "  const partnerPaid = o.order_origin === \"partner\" && Boolean(o.paid_at);", to: "  const partnerPaid = false;" },
+    { name: "day ribbons regroup on lifecycle activity", file: F.PAGE, expect: "O6",
+      from: "    const groupIso = orderGroupingIso(order, \"created\") ?? order.created_at;", to: "    const groupIso = orderGroupingIso(order, effDateBasis) ?? order.created_at;" },
+    { name: "the list card calls a partner order a lead again", file: F.CARD, expect: "O4",
+      from: "  const isLead = order.status === \"lead\" || !hasConfirmedPayment(order);", to: "  const isLead = order.status === \"lead\" || !order.payment_intent_id;" },
+    { name: "the wizard attestation describes sharing with an outside brand", file: F.WIZARD, expect: "U4",
+      from: "              I confirm this information is accurate and authorized for clinical review.", to: "              I confirm this organization is authorized to submit this information to PawTenant for clinical review." },
+    { name: "Partner Orders filters open by default", file: F.ORDERS_TAB, expect: "U1",
+      from: "  const [filtersOpen, setFiltersOpen] = useState<boolean>(false);", to: "  const [filtersOpen, setFiltersOpen] = useState<boolean>(true);" },
+    { name: "the onboarding checklist returns to Overview", file: F.OVERVIEW, expect: "U2",
+      from: "        <StatCard\n          label=\"Needs action\"", to: "        <h3>Sandbox onboarding checklist</h3>\n        <StatCard\n          label=\"Needs action\"" },
+    { name: "the server accepts legacy PDF uploads again", file: F.INTAKE_FN, expect: "U6",
+      from: "  if (!LEGACY_INTAKE_READ_ONLY_ACTIONS.has(action)) {", to: "  if (false) {" },
+    { name: "the guard falls out of the build chain", file: F.PKG, expect: "W1",
+      from: " && node scripts/check-partner-order-ux-assessment-finance.mjs", to: "" },
+  ];
+
+  let missed = 0;
+  const originals = new Map();
+  /** Files a control ADDED, so the finally block can remove them too. */
+  const added = new Set();
+  try {
+    await runChecks();
+    if (report("BASELINE (must be clean before planting)")) {
+      console.log("\n  baseline dirty — controls would be meaningless");
+      missed++;
+    } else {
+      for (const c of CONTROLS) {
+        // Two plant shapes: edit an existing file in place, or ADD a file that
+        // must not exist (used to prove the "no new migration" check).
+        if (c.newFile) {
+          const addedPath = join(ROOT, c.newFile);
+          if (existsSync(addedPath)) { console.log(`  ANCHOR MISSING  ${c.name} (control file already exists)`); missed++; continue; }
+          added.add(c.newFile);
+          writeFileSync(addedPath, c.content, "utf8");
+          let caught = false;
+          try {
+            await runChecks();
+            const t = results.find((r) => r.name.startsWith(c.expect + " "));
+            caught = Boolean(t && !t.ok);
+          } catch { caught = true; }
+          console.log(`  ${caught ? "DETECTED" : "MISSED  "}  ${c.name}  → ${c.expect}`);
+          if (!caught) missed++;
+          rmSync(addedPath, { force: true });
+          added.delete(c.newFile);
+          continue;
+        }
+        const path = join(ROOT, c.file);
+        if (!originals.has(c.file)) originals.set(c.file, readFileSync(path, "utf8"));
+        const src = read(c.file);
+        if (!src.includes(c.from)) { console.log(`  ANCHOR MISSING  ${c.name}`); missed++; continue; }
+        writeFileSync(path, src.replace(c.from, c.to), "utf8");
+        let caught = false;
+        try {
+          await runChecks();
+          const t = results.find((r) => r.name.startsWith(c.expect + " "));
+          caught = Boolean(t && !t.ok);
+        } catch { caught = true; }
+        console.log(`  ${caught ? "DETECTED" : "MISSED  "}  ${c.name}  → ${c.expect}`);
+        if (!caught) missed++;
+        writeFileSync(path, originals.get(c.file), "utf8");
+      }
+    }
+  } finally {
+    for (const [rel, content] of originals) writeFileSync(join(ROOT, rel), content, "utf8");
+    for (const rel of added) rmSync(join(ROOT, rel), { force: true });
+  }
+
+  await runChecks();
+  const after = report("AFTER RESTORE (must be clean)");
+  console.log(`\nSELF-TEST: ${CONTROLS.length - missed}/${CONTROLS.length} controls detected${after ? ", RESTORE FAILED" : ", tree restored"}`);
+  // Never process.exit() here: it would abandon the restore in the finally block.
+  process.exitCode = missed || after ? 1 : 0;
+} else {
+  await runChecks();
+  const failed = report("PARTNER ORDER · UX · ASSESSMENT · FINANCE REPAIR");
+  process.exitCode = failed ? 1 : 0;
+}
