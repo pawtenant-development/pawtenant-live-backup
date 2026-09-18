@@ -303,6 +303,21 @@ async function runChecks() {
     // The migration refuses invoiced/reconciled/credited rows, preserves Vitala,
     // restores both immutability triggers, and writes a durable audit record.
     "20260918175350_partner_production_rate_and_historical_60_correction.sql",
+    // PAWTENANT-LIVE-STAFF-AUTHORITY-HARDENING-001 — closes a privilege-escalation
+    // path in public.doctor_profiles (a capability probe showed ANY authenticated
+    // user could insert themselves a row with is_admin = true) and moves
+    // administrative authority into private.staff_authority.
+    //
+    // No partner object is created, altered or dropped. check_is_admin() keeps
+    // its exact signature and semantics -- every role that was an admin before
+    // is an admin after -- so the partner RLS policies and the partner admin
+    // reads that call it are unaffected, which the partner guards in this same
+    // build chain re-prove on every run.
+    "20260918100000_staff_authority_hardening.sql",
+    "20260918100100_staff_authority_backfill.sql",
+    // Part 3: the reverse-sync trigger and the service-role-only reader that the
+    // TEST repository never captured, plus the privileged-writer predicate fix.
+    "20260919090000_staff_authority_reverse_sync_and_reader.sql",
   ]);
   const unexpectedAfterClosure = migFiles.filter((f) =>
     f > "20260911210000_partner_order_ux_assessment_finance_repair.sql" && !allowedAfterClosure.has(f));

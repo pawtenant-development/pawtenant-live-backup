@@ -4,6 +4,7 @@ import { supabase, getAdminToken } from "../../../lib/supabaseClient";
 import { logAudit } from "../../../lib/auditLogger";
 import { canManageTeam, ADMIN_REQUIRED_LABEL } from "../../../lib/adminPermissions";
 import { ensureEmployeeForStaff } from "../../../lib/employeeHr";
+import { setStaffAccess, type StaffRole } from "../../../lib/staffAccess";
 import EmployeeHrDirectory from "./EmployeeHrDirectory";
 import LeaveRequestsAdmin from "./LeaveRequestsAdmin";
 import LeaveCorrectionsAdmin from "./LeaveCorrectionsAdmin";
@@ -205,6 +206,11 @@ function TabAccessEditor({
   const [selectedSubs, setSelectedSubs] = useState<Set<CommsSubKey>>(new Set(initialSubs));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // A refused save must SAY so. Before the hardening this write could not fail
+  // for an admin, so there was nowhere to show a refusal; now the RPC can
+  // legitimately refuse (e.g. changing your own access) and silence would look
+  // exactly like success.
+  const [saveError, setSaveError] = useState("");
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const commsEnabled = selected.has("communications");
@@ -252,6 +258,7 @@ function TabAccessEditor({
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError("");
     const tabs = Array.from(selected);
     // Only persist child grants when the parent is on — otherwise the
     // child would silently re-enable the parent on the next page load.
@@ -259,15 +266,23 @@ function TabAccessEditor({
       ? Array.from(selectedSubs).map((s) => `communications_${s}`)
       : [];
     const merged: string[] = [...tabs, ...subKeys];
-    const { error } = await supabase
-      .from("doctor_profiles")
-      .update({ custom_tab_access: merged })
-      .eq("id", member.id);
+    // PAWTENANT-LIVE-STAFF-AUTHORITY-HARDENING-001:
+    // custom_tab_access is no longer writable from the browser by ANY role —
+    // that column was how a provider could grant themselves every Company OS
+    // tab. admin_set_staff_access() is the one path, and it writes the hardened
+    // authority table and this mirror together.
+    const result = await setStaffAccess({
+      userId: member.user_id,
+      accessRole: (member.role ?? "read_only") as StaffRole,
+      tabAccess: merged,
+    });
     setSaving(false);
-    if (!error) {
+    if (result.ok) {
       setSaved(true);
       onSaved({ ...member, custom_tab_access: merged });
       setTimeout(() => { setSaved(false); onClose(); }, 1200);
+    } else {
+      setSaveError(result.error ?? "Could not save access.");
     }
   };
 
@@ -445,6 +460,9 @@ function TabAccessEditor({
           >
             Cancel
           </button>
+          {saveError && (
+            <p className="mr-auto max-w-[22rem] text-xs text-red-600" role="alert">{saveError}</p>
+          )}
           <button
             type="button"
             onClick={handleSave}
@@ -541,10 +559,15 @@ export default function TeamTab({ canSeeApprovals = false, pendingApprovalCount 
     setTogglingId(member.id);
     const cfg = ROLE_CONFIG[newRole] ?? ROLE_CONFIG.provider;
     const oldRole = member.role ?? "admin_manager";
-    const { error } = await supabase
-      .from("doctor_profiles")
-      .update({ role: newRole, is_admin: cfg.isAdmin })
-      .eq("id", member.id);
+    // Role and is_admin are set only by admin_set_staff_access(); the columns
+    // are revoked from `authenticated` so this cannot be done with a direct
+    // update any more, by anyone.
+    const roleResult = await setStaffAccess({
+      userId: member.user_id,
+      accessRole: newRole as StaffRole,
+      tabAccess: member.custom_tab_access,
+    });
+    const error = roleResult.ok ? null : { message: roleResult.error ?? "Could not change the role." };
     if (!error) {
       setMembers((prev) => prev.map((m) => m.id === member.id ? { ...m, role: newRole, is_admin: cfg.isAdmin } : m));
       if (currentUser) {
@@ -742,29 +765,12 @@ export default function TeamTab({ canSeeApprovals = false, pendingApprovalCount 
       const result = await res.json() as { ok: boolean; error?: string; invite_sent?: boolean };
       if (!result.ok) throw new Error(result.error ?? "Failed to send invite");
 
-      // Update role after creation — retry up to 3 times to handle async profile creation
-      let roleUpdated = false;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
-        // .select() with the count/head options is a valid Supabase v2 call
-        // at runtime, but the typed overload for UpdateBuilder doesn't accept
-        // the options arg. Cast the builder to bypass the type-level mismatch
-        // without changing runtime behavior.
-        const builder = supabase.from("doctor_profiles")
-          .update({ role: form.role, is_admin: cfg.isAdmin })
-          .eq("email", form.email.trim()) as unknown as {
-            select: (cols: string, opts: { count: "exact"; head: true }) =>
-              Promise<{ error: { message: string } | null; count: number | null }>;
-          };
-        const { error: roleErr, count } = await builder.select("id", { count: "exact", head: true });
-        if (!roleErr && (count ?? 0) > 0) { roleUpdated = true; break; }
-      }
-      if (!roleUpdated) {
-        // Fallback: find by user metadata from auth
-        await supabase.from("doctor_profiles")
-          .update({ role: form.role, is_admin: cfg.isAdmin })
-          .ilike("email", form.email.trim());
-      }
+      // PAWTENANT-LIVE-STAFF-AUTHORITY-HARDENING-001:
+      // the browser retry that used to PATCH role/is_admin here is gone. Those
+      // columns are revoked from `authenticated`, so the retry could only ever
+      // fail now — and it was never doing the work: create-team-member already
+      // sets the role with the service role, and a trigger syncs that privileged
+      // write into private.staff_authority. One writer, no race to retry.
 
       if (currentUser) {
         await logAudit({
