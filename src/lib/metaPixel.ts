@@ -154,19 +154,14 @@ function dispatchCapiMirror(opts: {
       event_source_url: sanitizeAnalyticsUrl(typeof window !== "undefined" && window.location ? window.location.href : null),
     });
 
-    // Prefer sendBeacon for reliability across navigations; fall back to fetch.
-    const beaconOk = (() => {
-      try {
-        if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") return false;
-        const blob = new Blob([body], { type: "application/json" });
-        return navigator.sendBeacon(`${url}?apikey=${encodeURIComponent(anonKey)}`, blob);
-      } catch { return false; }
-    })();
-    if (beaconOk) return;
-
+    // sendBeacon includes credentials on cross-origin requests. The Edge
+    // Function intentionally returns a wildcard CORS origin, so a credentialed
+    // beacon is rejected by browsers. A keepalive fetch preserves navigation
+    // reliability without cookies and keeps the Pixel-side event unaffected.
     void fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
+      credentials: "omit",
       body,
       keepalive: true,
     }).catch(() => { /* ignore */ });

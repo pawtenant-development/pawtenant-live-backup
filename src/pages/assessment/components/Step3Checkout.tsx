@@ -1,5 +1,5 @@
 // Step3Checkout — Payment orchestration (Card / Klarna tabs)
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import type { StripeElementsOptions } from "@stripe/stripe-js";
@@ -1049,6 +1049,7 @@ export default function Step3Checkout({
   // is itself on screen we hide the sticky bar so the user only sees ONE
   // primary payment button at a time — removes the "two buttons, which is
   // real?" trust-killer reported on mobile screenshots.
+  const mobilePaymentHelperRef = useRef<HTMLDivElement>(null);
   const [paymentVisible, setPaymentVisible] = useState(false);
   useEffect(() => {
     const el = document.getElementById(PAYMENT_SECTION_ID);
@@ -1060,7 +1061,14 @@ export default function Step3Checkout({
         // Show the sticky helper only when the payment surface is mostly off
         // screen. 25% threshold gives a soft handoff so the bar doesn't
         // flicker as the user scrolls past it.
-        setPaymentVisible(entry.intersectionRatio > 0.25);
+        const nextPaymentVisible = entry.intersectionRatio > 0.25;
+        if (
+          nextPaymentVisible &&
+          mobilePaymentHelperRef.current?.contains(document.activeElement)
+        ) {
+          (document.activeElement as HTMLElement | null)?.blur();
+        }
+        setPaymentVisible(nextPaymentVisible);
       },
       { threshold: [0, 0.15, 0.25, 0.4, 0.6] },
     );
@@ -1881,6 +1889,7 @@ export default function Step3Checkout({
           when the user scrolls away. The button still calls scrollToPayment
           — it never duplicates payment logic. */}
       <div
+        ref={mobilePaymentHelperRef}
         className={`fixed bottom-0 left-0 right-0 z-50 lg:hidden bg-white border-t border-slate-200 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.18)] transition-transform duration-200 ${
           paymentVisible ? "translate-y-full pointer-events-none" : "translate-y-0"
         }`}

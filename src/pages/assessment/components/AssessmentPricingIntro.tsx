@@ -50,7 +50,7 @@ function alignVisibleFeatures(cards: PlanCard[]): PlanCard[] {
   // This screen is a lightweight pricing introduction, not the full package
   // comparison. Keep the essential benefits visible without making desktop
   // visitors scroll through three oversized cards before the questionnaire.
-  const targetCount = Math.min(5, standardFeatures.length);
+  const targetCount = Math.min(6, standardFeatures.length);
 
   return cards.map((card) => {
     const directFeatures = card.features.filter(
@@ -60,11 +60,24 @@ function alignVisibleFeatures(cards: PlanCard[]): PlanCard[] {
       (feature) => !directFeatures.includes(feature),
     );
 
+    const resourceBenefit = [...directFeatures, ...standardFeatures].find(
+      (feature) => /Pet Care Planner|PSD Training Workbook/i.test(feature),
+    );
+    const visibleFeatures = sortFeaturesByCanonicalSequence([
+      ...directFeatures,
+      ...supplementalFeatures,
+    ]).slice(0, targetCount);
+
+    // The free downloadable resource is included with every package. Preserve
+    // that entitlement in this compact summary even when lower-ranked benefits
+    // are trimmed from the full canonical list.
+    if (resourceBenefit && !visibleFeatures.includes(resourceBenefit)) {
+      visibleFeatures[visibleFeatures.length - 1] = resourceBenefit;
+    }
+
     return {
       ...card,
-      features: sortFeaturesByCanonicalSequence(
-        [...directFeatures, ...supplementalFeatures].slice(0, targetCount),
-      ),
+      features: sortFeaturesByCanonicalSequence(visibleFeatures),
     };
   });
 }
@@ -147,7 +160,7 @@ export default function AssessmentPricingIntro({
             type="button"
             onClick={onContinue}
             aria-label={`Start assessment after viewing ${card.name} pricing`}
-            className={`group relative flex h-full w-full cursor-pointer flex-col rounded-2xl border-2 bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 sm:p-6 ${
+            className={`group relative flex w-full cursor-pointer flex-col rounded-2xl border-2 bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 sm:p-6 lg:h-full ${
               card.highlight
                 ? isPsd
                   ? "border-amber-500 focus-visible:ring-amber-200"
@@ -155,9 +168,8 @@ export default function AssessmentPricingIntro({
                 : "border-gray-200 hover:border-gray-300 focus-visible:ring-gray-200"
             }`}
           >
-            <span className="mb-3 flex h-7 items-center">
+            <span className={`mb-3 items-center ${card.badge ? "flex" : "hidden lg:flex lg:h-7"}`}>
               <span
-                aria-hidden={!card.badge}
                 className={`w-fit rounded-full px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-white ${
                   isPsd ? "bg-amber-600" : "bg-[#1A5C4F]"
                 } ${card.badge ? "" : "invisible"}`}
@@ -166,12 +178,12 @@ export default function AssessmentPricingIntro({
               </span>
             </span>
 
-            <span className="flex min-h-[5rem] flex-col lg:min-h-16">
+            <span className="flex flex-col lg:min-h-16">
               <span className="text-lg font-black text-gray-950">{card.name}</span>
               <span className="mt-1 text-sm font-semibold text-gray-500">{card.scope}</span>
             </span>
 
-            <span className="mt-4 flex min-h-[8.75rem] flex-col lg:min-h-[6.5rem]">
+            <span className="mt-3 flex flex-col lg:min-h-[6.5rem]">
               <span className="flex items-end gap-2">
               <span className="text-4xl font-black tracking-tight text-gray-950">
                 ${card.price}
@@ -193,7 +205,7 @@ export default function AssessmentPricingIntro({
             )}
             </span>
 
-            <span className="flex flex-1 flex-col gap-2.5 pb-5">
+            <span className="mt-1 flex flex-col gap-2.5 pb-4 lg:flex-1 lg:pb-5">
               {card.features.map((feature) => (
                 <span key={feature} className="flex items-start gap-2 text-sm leading-5 text-gray-700">
                   <i
