@@ -165,6 +165,7 @@ async function main() {
   need(intro, ASSESSMENT_INTRO, /targetCount\s*=\s*Math\.min\(5, standardFeatures\.length\)[\s\S]*slice\(0, targetCount\)/, "assessment intro must cap every card at five aligned benefit rows");
   need(intro, ASSESSMENT_INTRO, /sortFeaturesByCanonicalSequence[\s\S]*FEATURE_SEQUENCE/, "matching benefits must keep one canonical sequence across cards");
   need(intro, ASSESSMENT_INTRO, /items-stretch[\s\S]*h-full[\s\S]*lg:min-h-16[\s\S]*lg:min-h-\[6\.5rem\][\s\S]*pb-5[\s\S]*mt-2/, "desktop card rows must stay aligned without the oversized pricing intro");
+  need(intro, ASSESSMENT_INTRO, /lg:w-\[min\(1120px,calc\(100vw-3rem\)\)\]/, "assessment pricing intro must escape the narrow form wrapper on desktop");
   for (const signal of ["HIPAA Secure", "Licensed Professionals", "24-Hour Delivery", "Money-Back Guarantee"]) {
     need(intro, ASSESSMENT_INTRO, new RegExp(signal), `missing assessment trust signal: ${signal}`);
   }

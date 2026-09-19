@@ -93,7 +93,10 @@ export default function AssessmentPricingIntro({
   ];
 
   return (
-    <section aria-labelledby="assessment-pricing-heading" className="mx-auto max-w-6xl">
+    <section
+      aria-labelledby="assessment-pricing-heading"
+      className="mx-auto max-w-6xl lg:relative lg:left-1/2 lg:w-[min(1120px,calc(100vw-3rem))] lg:-translate-x-1/2"
+    >
       <div className="mb-6 text-center sm:mb-8">
         <p
           className={`mb-2 text-xs font-extrabold uppercase tracking-[0.22em] ${
