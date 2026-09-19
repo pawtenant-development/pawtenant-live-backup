@@ -145,21 +145,6 @@ export async function adminDeleteOrder(order: {
 }): Promise<AdminDeleteOrderOutcome> {
   const confirmationId = order.confirmation_id;
 
-  // audit_logs is keyed by confirmation_id with no FK, so it never blocks the
-  // delete and the RPC has no reason to touch it. Clearing it here preserves
-  // exactly what a purge has always removed. A failure is logged, not fatal.
-  try {
-    const auditRes = await supabase
-      .from("audit_logs")
-      .delete()
-      .eq("object_id", confirmationId);
-    if (auditRes?.error) {
-      console.warn("[adminDeleteOrder] audit_logs cleanup failed:", auditRes.error);
-    }
-  } catch (err) {
-    console.warn("[adminDeleteOrder] audit_logs cleanup threw:", err);
-  }
-
   let data: unknown;
   let error: { message?: string } | null = null;
   try {
@@ -201,6 +186,22 @@ export async function adminDeleteOrder(order: {
     };
   }
 
+  // audit_logs is keyed by confirmation_id with no FK, so it never blocks the
+  // order delete. Clear it only AFTER the RPC confirms success: deleting audit
+  // history before a refused/failed purge destroys evidence for an order that
+  // still exists. Cleanup remains warn-only because the order is already gone.
+  try {
+    const auditRes = await supabase
+      .from("audit_logs")
+      .delete()
+      .eq("object_id", confirmationId);
+    if (auditRes?.error) {
+      console.warn("[adminDeleteOrder] audit_logs cleanup failed:", auditRes.error);
+    }
+  } catch (err) {
+    console.warn("[adminDeleteOrder] audit_logs cleanup threw:", err);
+  }
+
   return { ok: true, message: `${confirmationId} permanently deleted.` };
 }
 
@@ -230,6 +231,74 @@ export async function adminDeleteOrders(
   }
 
   return { deleted, failures, message: summarise(deleted, failures) };
+}
+
+/**
+ * Resolve bulk selections by their durable confirmation IDs before deleting.
+ *
+ * The orders page is server-paged, so its historical `orders` snapshot can be
+ * non-empty while omitting a row that is visible in the current `orderRows`
+ * page. Resolving only against that snapshot silently produced an empty target
+ * list and the misleading "Nothing was deleted" result. Loaded rows are used
+ * as a fast path; every missing selection is resolved from the database.
+ */
+export async function adminDeleteOrdersByConfirmationIds(
+  confirmationIds: string[],
+  loadedOrders: { id: string; confirmation_id: string }[] = [],
+): Promise<AdminBulkDeleteOutcome> {
+  const ids = [...new Set(confirmationIds.map((id) => id.trim()).filter(Boolean))];
+  if (!ids.length) {
+    const failures = [{
+      confirmationId: "selection",
+      message: "No selected order IDs were available. Refresh the order list and try again.",
+    }];
+    return { deleted: [], failures, message: summarise([], failures) };
+  }
+
+  const byConfirmationId = new Map(
+    loadedOrders.map((order) => [order.confirmation_id, order] as const),
+  );
+  const missing = ids.filter((id) => !byConfirmationId.has(id));
+  const failures: { confirmationId: string; message: string }[] = [];
+
+  if (missing.length) {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("id, confirmation_id")
+      .in("confirmation_id", missing);
+
+    if (error) {
+      for (const confirmationId of missing) {
+        failures.push({
+          confirmationId,
+          message: `${confirmationId} — could not resolve the selected order: ${error.message}`,
+        });
+      }
+    } else {
+      for (const order of data ?? []) {
+        if (order.id && order.confirmation_id) byConfirmationId.set(order.confirmation_id, order);
+      }
+      for (const confirmationId of missing) {
+        if (!byConfirmationId.has(confirmationId)) {
+          failures.push({
+            confirmationId,
+            message: `${confirmationId} could not be found. Refresh the order list and try again.`,
+          });
+        }
+      }
+    }
+  }
+
+  const targets = ids
+    .map((confirmationId) => byConfirmationId.get(confirmationId))
+    .filter((order): order is { id: string; confirmation_id: string } => Boolean(order));
+  const outcome = await adminDeleteOrders(targets);
+  const allFailures = [...failures, ...outcome.failures];
+  return {
+    deleted: outcome.deleted,
+    failures: allFailures,
+    message: summarise(outcome.deleted, allFailures),
+  };
 }
 
 function summarise(

@@ -159,7 +159,7 @@ async function collectFindings(overrides = {}) {
   // ── 3: every delete control routes through the shared helper ─────────────
   for (const rel of DELETE_CALL_SITES) {
     const code = stripComments(await read(rel));
-    if (!/\badminDeleteOrders?\s*\(/.test(code)) {
+    if (!/\badminDeleteOrder(?:s|sByConfirmationIds)?\s*\(/.test(code)) {
       findings.push(
         `${rel}: has an order-delete control but never calls adminDeleteOrder/adminDeleteOrders from ${HELPER}.`,
       );
@@ -191,6 +191,33 @@ async function collectFindings(overrides = {}) {
     }
   }
 
+  // ── 6: paged selections must be resolved by durable ID on the server ────
+  const pageCode = stripComments(await read("src/pages/admin-orders/page.tsx"));
+  if (!/adminDeleteOrdersByConfirmationIds\s*\(/.test(pageCode)) {
+    findings.push(
+      "src/pages/admin-orders/page.tsx: bulk deletion does not use the server-backed confirmation-ID resolver.",
+    );
+  }
+  if (/\.map\(\s*\(confirmationId\)[\s\S]{0,160}lookupPool\.find/.test(pageCode)) {
+    findings.push(
+      "src/pages/admin-orders/page.tsx: bulk deletion resolves selections only from lookupPool; paged rows can disappear and produce an empty delete.",
+    );
+  }
+  if (!/\.from\(\s*["']orders["']\s*\)\s*\.select\(\s*["']id, confirmation_id["']\s*\)\s*\.in\(\s*["']confirmation_id["']\s*,\s*missing\s*\)/.test(helperCode)) {
+    findings.push(
+      `${HELPER}: missing selections are not resolved from orders by confirmation_id.`,
+    );
+  }
+
+  // ── 7: a refused delete must retain its audit history ────────────────────
+  const successCheck = helperCode.indexOf("if (!result?.ok)");
+  const auditDelete = helperCode.indexOf('.from("audit_logs")');
+  if (successCheck < 0 || auditDelete < 0 || auditDelete < successCheck) {
+    findings.push(
+      `${HELPER}: audit_logs cleanup must occur only after admin_delete_order confirms success.`,
+    );
+  }
+
   return findings;
 }
 
@@ -207,7 +234,7 @@ async function selfTest() {
   const helper = await readSource(HELPER);
   const payments = await readSource("src/pages/admin-orders/components/PaymentsTab.tsx");
 
-  const anchor = "const { deleted, message } = await adminDeleteOrders(targets);";
+  const anchor = "const { deleted, message } = await adminDeleteOrdersByConfirmationIds(ids, [";
   if (!page.includes(anchor)) {
     console.error(
       "[check-admin-order-delete-paths] --self-test ABORTED: the page.tsx anchor moved; " +
@@ -227,6 +254,36 @@ async function selfTest() {
         ),
       },
       expect: /deletes from "orders" in the browser/,
+    },
+    {
+      name: "bulk deletion falls back to the stale lookupPool snapshot",
+      overrides: {
+        "src/pages/admin-orders/page.tsx": page.replace(
+          anchor,
+          "const targets = ids.map((confirmationId) => lookupPool.find((x) => x.confirmation_id === confirmationId));\n    const { deleted, message } = await adminDeleteOrders(targets.filter(Boolean));\n    // " + anchor,
+        ),
+      },
+      expect: /resolves selections only from lookupPool/,
+    },
+    {
+      name: "the helper stops resolving missing selections on the server",
+      overrides: {
+        [HELPER]: helper.replace('.from("orders")', '.from("orders_disabled")'),
+      },
+      expect: /missing selections are not resolved from orders/,
+    },
+    {
+      name: "audit history is deleted before the order RPC succeeds",
+      overrides: {
+        [HELPER]: helper.replace(
+          'const successCheck = "not present";',
+          'const successCheck = "still not present";',
+        ).replace(
+          '  let data: unknown;',
+          '  await supabase.from("audit_logs").delete().eq("object_id", confirmationId);\n\n  let data: unknown;',
+        ),
+      },
+      expect: /audit_logs cleanup must occur only after/,
     },
     {
       name: "the hand-rolled child cascade reintroduced",

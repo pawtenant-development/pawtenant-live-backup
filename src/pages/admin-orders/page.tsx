@@ -19,7 +19,7 @@ import BusinessClock from "../../components/admin/BusinessClock";
 import { createRequestGuard, runLatest } from "../../lib/latestRequestGuard";
 import { supabase, getAdminToken } from "../../lib/supabaseClient";
 // ADMIN-ORDER-DELETE-REPAIR-002 — the one client-side order-purge implementation.
-import { adminDeleteOrders } from "../../lib/adminDeleteOrder";
+import { adminDeleteOrdersByConfirmationIds } from "../../lib/adminDeleteOrder";
 import { resolveStaffRole } from "../../lib/staffAuth";
 import { canAccessApprovals } from "../../lib/adminPermissions";
 // Phase K3 — shared normalized classifier so the Orders filter, the
@@ -2333,11 +2333,10 @@ export default function AdminOrdersPage() {
     // on the next refresh. Both are now handled by the shared helper, which
     // calls the same admin-gated admin_delete_order RPC the order modal uses
     // and returns the orders the database ACTUALLY removed.
-    const targets = ids
-      .map((confirmationId) => lookupPool.find((x) => x.confirmation_id === confirmationId))
-      .filter((o): o is NonNullable<typeof o> => Boolean(o));
-
-    const { deleted, message } = await adminDeleteOrders(targets);
+    const { deleted, message } = await adminDeleteOrdersByConfirmationIds(ids, [
+      ...orderRows,
+      ...lookupPool,
+    ]);
 
     // Remove only what really went away.
     const deletedSet = new Set(deleted);
@@ -2350,7 +2349,7 @@ export default function AdminOrdersPage() {
     setBulkDeleting(false);
     setBulkDeleteMsg(message);
     setTimeout(() => setBulkDeleteMsg(""), 15000);
-  }, [selectedOrders, orders, lookupPool]);
+  }, [selectedOrders, orderRows, lookupPool]);
 
   // ── Toggle follow-up opt-out ─────────────────────────────────────────────
   const handleToggleOptOut = useCallback(async (order: Order) => {
@@ -3207,11 +3206,10 @@ export default function AdminOrdersPage() {
       // the shared admin_delete_order helper. The approval is authorisation to
       // ask; the RPC's own check_is_admin() gate is what actually permits it.
       const orderIds = (payload.orderIds as string[]) ?? [];
-      const targets = orderIds
-        .map((confirmationId) => lookupPool.find((x) => x.confirmation_id === confirmationId))
-        .filter((o): o is NonNullable<typeof o> => Boolean(o));
-
-      const { deleted, message } = await adminDeleteOrders(targets);
+      const { deleted, message } = await adminDeleteOrdersByConfirmationIds(orderIds, [
+        ...orderRows,
+        ...lookupPool,
+      ]);
 
       const deletedSet = new Set(deleted);
       mutateOrders((prev) => prev.filter((o) => !deletedSet.has(o.confirmation_id)));
@@ -3257,7 +3255,7 @@ export default function AdminOrdersPage() {
       );
       setTimeout(() => setBulkMsg(""), 6000);
     }
-  }, [orders, supabaseUrl, anonKey, doctorContacts]);
+  }, [orders, orderRows, lookupPool, supabaseUrl, anonKey, doctorContacts]);
 
   // Synchronous visible-tabs list used for both the sidebar and render-side
   // guarding. Until the admin profile loads we render an EMPTY list — that
