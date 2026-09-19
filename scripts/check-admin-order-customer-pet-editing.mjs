@@ -265,15 +265,13 @@ const CHECKS = [
       return /v_added := coalesce\(\(public\.additional_pet_effective_state\(p_order_id\) ->> 'approved_added'\)::int, 0\)/.test(b)
           && /if v_count_after \+ v_added > v_max then/.test(b);
     }],
-  // LIVE: step1/PetSection.ts is TEST-ONLY and was never promoted. The editor
-  // must not import it, must not vendor a copy of it, and must take the ceiling
-  // from the server rather than a constant of its own.
-  ["C4", "the LIVE editor never depends on TEST-only step1/PetSection",
+  // The assessment now owns step1/PetSection, but the admin editor must remain
+  // independent of it and take its ceiling from the server read model.
+  ["C4", "the LIVE editor does not depend on assessment step1/PetSection",
     (s) => {
       const c = codeOnly(s.ui);
       return !/step1\/PetSection/.test(c)
-          && !/PET_TYPE_OPTIONS/.test(c)
-          && !existsSync(resolve(ROOT, "src/pages/assessment/components/step1/PetSection.ts"));
+          && !/PET_TYPE_OPTIONS/.test(c);
     }],
   ["C4b", "the pet ceiling comes from the SERVER read model, not a UI constant",
     (s) => {

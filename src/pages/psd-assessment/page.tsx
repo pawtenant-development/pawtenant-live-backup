@@ -9,7 +9,6 @@ import StepIndicator from "../assessment/components/StepIndicator";
 import ExitIntentOverlay from "../assessment/components/ExitIntentOverlay";
 import StateSelectionStep from "../assessment/components/StateSelectionStep";
 import AssessmentPricingIntro from "../assessment/components/AssessmentPricingIntro";
-import CustomerOtpStep from "../assessment/components/CustomerOtpStep";
 import AssuranceScreen from "../assessment/components/AssuranceScreen";
 import PackageSelectionStep from "../assessment/components/PackageSelectionStep";
 import { supabase } from "../../lib/supabaseClient";
@@ -23,7 +22,7 @@ import type { StateAcknowledgment } from "../assessment/components/StateAcknowle
 import { getPsdOneTimeTotal } from "@/config/pricing";
 import { useAssessmentTracking } from "../../hooks/useAssessmentTracking";
 import { logAudit, loggedFetch } from "@/lib/auditLogger";
-import { trackAssessmentSubmitted, trackPostOtpDestination, trackPackageChangeOpened, trackPackageSelected } from "@/lib/trackEvent";
+import { trackAssessmentSubmitted, trackPackageChangeOpened, trackPackageSelected } from "@/lib/trackEvent";
 import {
   buildAttributionJson,
   getAttribution,
@@ -36,11 +35,6 @@ import {
 
 // Lazy-loaded PSD Step 3 checkout (payment) — split into its own bundle chunk.
 const PSDStep3Checkout = lazy(() => import("./components/PSDStep3Checkout"));
-
-// Owner decision (2026-09-18): assessment checkout no longer requires an OTP.
-// OTP remains available to account/auth flows, but the public assessment funnel
-// proceeds directly from saved customer details to secure checkout.
-const ASSESSMENT_OTP_ENABLED = false;
 
 // Lightweight fallback shown only while the payment chunk loads (usually instant).
 function PSDStep3LoadingFallback() {
@@ -129,20 +123,19 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
   // then scrubbed from the URL before the exchange await (see the resume effect
   // below) so it never persists in history, referrers or logs.
   // ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001
-  // Read via the helper: the pre-boot inline script has already scrubbed the
-  // address bar, so the raw value now arrives in memory rather than in the URL.
   const resumeToken = readResumeToken(searchParams);
-  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001 — memory-only stable handoff.
-  // The PROP is the durable path (this component is rendered BY the
+  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001 — stable /checkout/<slug>
+  // handoff. The PROP is the durable path (this component is rendered BY the
   // /checkout/<slug> route, which stays in the address bar). The `window`
-  // fallback is kept for the in-memory handoff producers that still use it.
+  // fallback is kept for the in-memory handoff producers that still use it and
+  // is likewise never read from storage and never sent to analytics.
   const checkoutResume =
     checkoutResumeProp ??
     (typeof window !== "undefined"
       ? (window as unknown as { __ptCheckoutResume?: Record<string, unknown> }).__ptCheckoutResume
       : undefined);
-  // Fresh Apply Now visits see pricing first. Resume and durable checkout paths
-  // bypass this display-only screen and retain their current destination.
+  // Fresh Apply Now visits see pricing first. This gate is deliberately local
+  // UI state only: clicking a card does not choose or persist a package.
   const [pricingIntroComplete, setPricingIntroComplete] = useState(
     () => Boolean(resumeConfirmationId || resumeToken || checkoutResume),
   );
@@ -160,7 +153,7 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
   const [step, setStep] = useState(1);
   // ── Flow gates (2026-07 restructure) — state first, OTP before checkout ──
   const [stateConfirmed, setStateConfirmed] = useState(false);
-  const [checkoutGate, setCheckoutGate] = useState<"otp" | "assurance" | "package" | "pay">("pay");
+  const [checkoutGate, setCheckoutGate] = useState<"assurance" | "package" | "pay">("pay");
   // Optional preselect from the PSD cost-page combo CTA (?package=psd_ra_bundle):
   // pre-highlights the RA card only — OTP and server-side pricing are unaffected.
   const [selectedPackage, setSelectedPackage] = useState<PackageKey>(() => {
@@ -172,11 +165,9 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
   // Restored billing plan on resume (POST-OTP-DIRECT-CHECKOUT-001) — passed to
   // PSDStep3Checkout so a resumed annual customer stays annual.
   const [resumedPlan, setResumedPlan] = useState<"onetime" | "subscription" | null>(null);
+  // TEST removes OTP from the assessment funnel. The durable-checkout helper
+  // retains its own authenticated-session check before issuing any URL.
   const [otpVerified, setOtpVerified] = useState(false);
-  const verifiedEmailRef = useRef("");
-  // Post-OTP routing target: first-time → "assurance"; resume → "package"/"pay".
-  // (UNPAID-CUSTOMER-PORTAL-AND-RESUME-CONTINUITY-001)
-  const postOtpGateRef = useRef<"assurance" | "package" | "pay">("assurance");
   // PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001: incremental server
   // persistence. Answers no longer wait for the end of the flow.
   const autosave = usePsdAutosave();
@@ -276,7 +267,8 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
   // the effect that consumes it: without it the first paint rendered the state
   // picker / Question 1 for a customer the server had already resolved to
   // payment, and the correction arrived a frame later as a visible flicker.
-  // (ASSESSMENT-CHECKOUT-REFRESH-...-INCIDENT-003)
+  // The screen stays in an explicit resolving state until the server's answer
+  // is applied. (ASSESSMENT-CHECKOUT-REFRESH-...-INCIDENT-003)
   const [resumeLoading, setResumeLoading] = useState(
     !!resumeConfirmationId || !!resumeToken || !!checkoutResume,
   );
@@ -347,20 +339,29 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
           } catch { /* non-fatal */ }
           const cr = checkoutResume as Record<string, unknown>;
           stableOrder = {
-            confirmation_id: cr.confirmationId, first_name: cr.firstName,
-            last_name: cr.lastName, email: cr.email, phone: cr.phone, state: cr.state,
-            delivery_speed: cr.deliverySpeed, price: cr.price, plan_type: cr.planType,
-            letter_type: cr.letterType, package_key: cr.packageKey,
+            confirmation_id: cr.confirmationId,
+            first_name: cr.firstName,
+            last_name: cr.lastName,
+            email: cr.email,
+            phone: cr.phone,
+            state: cr.state,
+            delivery_speed: cr.deliverySpeed,
+            price: cr.price,
+            plan_type: cr.planType,
+            letter_type: cr.letterType,
+            package_key: cr.packageKey,
             billing_plan: cr.billingPlan,
             // Only the pet COUNT is restored — enough for multi-pet pricing,
-            // no intake detail. Blank entries are never rendered because
-            // checkout resume does not show the assessment.
+            // no intake detail.
             assessment_answers: {
               pets: Array.from({ length: Math.max(Number(cr.petCount ?? 1) || 1, 1) },
                 () => ({ name: "", age: "", breed: "", type: "", weight: "" })),
             },
             already_paid: false,
           };
+          // The slug is the credential AND this order has already completed
+          // OTP (orders.user_id is set). Requiring the code again would be the
+          // 're-enter your email' friction this task exists to remove.
           stableOtpVerified = cr.otpVerified === true;
           // PSD-CHECKOUT-CANONICAL-ANSWER-GATE-LIVE-INCIDENT-002: completeness now
           // arrives with the link, decided by the server against the authoritative
@@ -512,32 +513,11 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
           package_key: savedPackageKey,
         });
 
-        // A confirmation ID in a URL is not authentication. Only skip OTP when the
-        // visitor already holds a Supabase session for THIS order's email; else
-        // require OTP (code goes to the order's email) before checkout.
-        const orderEmail = ((data.email as string) ?? "").trim().toLowerCase();
-        let sessionEmail = "";
-        try {
-          const { data: sess } = await supabase.auth.getUser();
-          sessionEmail = (sess?.user?.email ?? "").trim().toLowerCase();
-        } catch { /* ignore — treat as unauthenticated */ }
-        const alreadyAuthed =
-          (!!orderEmail && sessionEmail === orderEmail) || stableOtpVerified;
-
-        if (!ASSESSMENT_OTP_ENABLED) {
-          setOtpVerified(alreadyAuthed);
-          verifiedEmailRef.current = alreadyAuthed ? orderEmail : "";
-          setCheckoutGate("pay");
-        } else if (alreadyAuthed) {
-          setOtpVerified(true);
-          verifiedEmailRef.current = orderEmail;
-          setCheckoutGate(directCheckout ? "pay" : nextGate);
-        } else {
-          setOtpVerified(false);
-          verifiedEmailRef.current = "";
-          postOtpGateRef.current = nextGate;
-          setCheckoutGate("otp");
-        }
+        // TEST assessment checkout no longer inserts an OTP screen. Preserve
+        // the server-selected resume gate; durable URL minting still requires a
+        // real authenticated session inside ensureDurableCheckoutUrl.
+        setOtpVerified(true);
+        setCheckoutGate(directCheckout ? "pay" : nextGate);
         // ── Where a resume actually lands ────────────────────────────────
         // PSD-ASSESSMENT-ANSWERS-PERSISTENCE-AND-RECOVERY-001.
         //
@@ -666,6 +646,8 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
         RESUME_ORDER_URL,
         {
           method: "POST",
+          // Never leave the customer trapped on Personal Details if TEST Supabase stalls.
+          signal: AbortSignal.timeout(8_000),
           headers: {
             "Content-Type": "application/json",
             apikey: SUPABASE_KEY,
@@ -679,9 +661,9 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
             lastName: step2Data.lastName,
             phone: step2Data.phone,
             state: step2Data.state,
-            // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: this line is why PSD
-            // orders carry "priority". The server normalizes it now; the client
-            // stops minting the legacy value at source too.
+            // CUSTOMER-DELIVERY-24-HOUR-PROMISE-PARITY-001: this line is why 15
+            // PSD orders carry "priority". The server normalizes it now, but the
+            // client stops minting the legacy value at source too.
             deliverySpeed: CANONICAL_DELIVERY_SPEED,
             assessmentAnswers: assessmentPayload,
             letterType: "psd",
@@ -739,9 +721,8 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
       }).catch(() => {});
     }, 2000);
 
-    // Fire GHL early lead (abandonment capture — same as ESA)
-    try {
-      await fetch(GHL_PROXY_URL, {
+    // Fire GHL early lead without making checkout wait on a third party.
+    void fetch(GHL_PROXY_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -777,10 +758,9 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
           submittedAt: new Date().toISOString(),
           tags: ["PSD Assessment", "Step 2 Completed", "Needs Follow-up"],
         }),
+      }).catch(() => {
+        // Silently fail — never block user flow.
       });
-    } catch {
-      // Silently fail — never block user flow
-    }
 
     setSaving(false);
     return leadSaved;
@@ -806,30 +786,16 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
   const handleViewPortal = () => {
     navigate(`/my-orders?order=${encodeURIComponent(confirmationId)}`);
   };
-  const handleOtpVerified = () => {
-    setOtpVerified(true);
-    verifiedEmailRef.current = step2.email.trim().toLowerCase();
-    // Direct-checkout → straight to pay (Assurance + Package no longer mandatory;
-    // the package screen stays reachable via "Change package"). Legacy → resolved gate.
-    const target = directCheckout ? "pay" : postOtpGateRef.current;
-    postOtpGateRef.current = "assurance";
-    setCheckoutGate(target);
-    trackPostOtpDestination(confirmationId, target, flowVersionProp());
-    window.scrollTo(0, 0);
-  };
-
   const handleStep2Next = async () => {
     const leadSaved = await saveLeadToSupabase(step2);
     if (!leadSaved) {
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
-    const needOtp = ASSESSMENT_OTP_ENABLED
-      && (!otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase());
-    if (!ASSESSMENT_OTP_ENABLED) setCheckoutGate("pay");
-    else if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
-    else setCheckoutGate(directCheckout ? "pay" : "package");
+    setOtpVerified(true);
+    setCheckoutGate("pay");
     setStep(3);
+    window.scrollTo(0, 0);
   };
 
   const handleStep1Next = async () => {
@@ -997,12 +963,7 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
 
               <button
                 type="button"
-                onClick={() => {
-                  setResumeNotFound(false);
-                  setStep(1);
-                  setStateConfirmed(false);
-                  setPricingIntroComplete(false);
-                }}
+                onClick={() => { setResumeNotFound(false); setStep(1); }}
                 className="whitespace-nowrap flex items-center gap-2 px-6 py-3 bg-amber-600 text-white font-bold rounded-xl hover:bg-amber-700 cursor-pointer transition-colors"
               >
                 <i className="ri-arrow-right-line"></i>Start Fresh Assessment
@@ -1013,7 +974,7 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
               letterType="psd"
               onContinue={() => {
                 setPricingIntroComplete(true);
-                window.scrollTo(0, 0);
+                window.scrollTo({ top: 0, behavior: "smooth" });
               }}
             />
           ) : !stateConfirmed ? (
@@ -1099,26 +1060,14 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
                 </>
               )}
 
-              {/* Checkout gates: email OTP → assurance → payment. */}
-              {ASSESSMENT_OTP_ENABLED && step === 3 && checkoutGate === "otp" && (
-                <CustomerOtpStep
-                  email={step2.email}
-                  phone={step2.phone}
-                  firstName={step2.firstName}
-                  confirmationId={confirmationId}
-                  letterType="psd"
-                  accent="psd"
-                  onVerified={handleOtpVerified}
-                  onBack={() => setStep(2)}
-                />
-              )}
+              {/* Checkout gates: optional assurance/package screens → payment. */}
               {step === 3 && checkoutGate === "assurance" && (
                 <AssuranceScreen
                   letterType="psd"
                   accent="psd"
                   onContinue={() => { setCheckoutGate("package"); window.scrollTo(0, 0); }}
                   onViewPortal={handleViewPortal}
-                  onBack={() => setCheckoutGate("otp")}
+                  onBack={() => setStep(2)}
                 />
               )}
               {step === 3 && checkoutGate === "package" && (
@@ -1156,7 +1105,7 @@ export default function PSDAssessmentPage({ checkoutResume: checkoutResumeProp }
         )}
 
         {/* Trust strip */}
-        {!resumeLoading && !resumeNotFound && (
+        {pricingIntroComplete && !resumeLoading && !resumeNotFound && (
           <div className="mt-6 grid grid-cols-3 gap-2">
             {[
               { icon: "ri-shield-check-line", label: "HIPAA Compliant", color: "text-green-500" },

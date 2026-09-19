@@ -47,7 +47,10 @@ function sortFeaturesByCanonicalSequence(features: string[]): string[] {
  */
 function alignVisibleFeatures(cards: PlanCard[]): PlanCard[] {
   const standardFeatures = cards[0]?.features ?? [];
-  const targetCount = standardFeatures.length;
+  // This screen is a lightweight pricing introduction, not the full package
+  // comparison. Keep the essential benefits visible without making desktop
+  // visitors scroll through three oversized cards before the questionnaire.
+  const targetCount = Math.min(5, standardFeatures.length);
 
   return cards.map((card) => {
     const directFeatures = card.features.filter(
@@ -160,12 +163,12 @@ export default function AssessmentPricingIntro({
               </span>
             </span>
 
-            <span className="flex min-h-[5rem] flex-col">
+            <span className="flex min-h-[5rem] flex-col lg:min-h-16">
               <span className="text-lg font-black text-gray-950">{card.name}</span>
               <span className="mt-1 text-sm font-semibold text-gray-500">{card.scope}</span>
             </span>
 
-            <span className="mt-4 flex min-h-[8.75rem] flex-col">
+            <span className="mt-4 flex min-h-[8.75rem] flex-col lg:min-h-[6.5rem]">
               <span className="flex items-end gap-2">
               <span className="text-4xl font-black tracking-tight text-gray-950">
                 ${card.price}
@@ -187,7 +190,7 @@ export default function AssessmentPricingIntro({
             )}
             </span>
 
-            <span className="flex flex-1 flex-col gap-2.5 pb-6">
+            <span className="flex flex-1 flex-col gap-2.5 pb-5">
               {card.features.map((feature) => (
                 <span key={feature} className="flex items-start gap-2 text-sm leading-5 text-gray-700">
                   <i

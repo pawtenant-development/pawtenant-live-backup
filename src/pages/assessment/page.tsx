@@ -2,6 +2,13 @@
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import AssessmentNavbar from "./components/AssessmentNavbar";
 import StepIndicator from "./components/StepIndicator";
+import { countAnsweredStep1 } from "./components/step1/QuestionManifest";
+import {
+  ASSESSMENT_ANSWERS_VERSION,
+  buildStep1Screens,
+  countAnsweredPetScreens,
+  normalizePets,
+} from "./components/step1/PetSection";
 import Step1Assessment, { type Step1Data } from "./components/Step1Assessment";
 import Step2PersonalInfo, { type Step2Data } from "./components/Step2PersonalInfo";
 // Step 3 (payment) is code-split: Stripe.js, Klarna and the payment forms only
@@ -13,7 +20,6 @@ import WhatHappensNext from "./components/WhatHappensNext";
 import LiveStatusBanner from "./components/LiveStatusBanner";
 import StateSelectionStep from "./components/StateSelectionStep";
 import AssessmentPricingIntro from "./components/AssessmentPricingIntro";
-import CustomerOtpStep from "./components/CustomerOtpStep";
 import AssuranceScreen from "./components/AssuranceScreen";
 import PackageSelectionStep from "./components/PackageSelectionStep";
 import type { StateAcknowledgment } from "./components/StateAcknowledgmentModal";
@@ -42,15 +48,10 @@ import { readResumeToken, hadLegacyResumeParam } from "@/lib/resumeTokenParam";
 import { ensureDurableCheckoutUrl, isDurableCheckoutPath, enforceNoindexOnDurableCheckout } from "@/lib/durableCheckoutUrl";
 import { getEsaOneTimeTotal, getEsaAnnualTotal, getPackageTotal } from "@/config/pricing";
 import type { PackageKey } from "@/config/pricing";
-import { trackAssessmentStepView, trackAssessmentSubmitted, trackPaymentSuccess, trackAssessmentCompleted, trackRecoveryConversionIfFlagged, trackPostOtpDestination, trackPlanChanged, trackPackageChangeOpened, trackPackageSelected } from "@/lib/trackEvent";
+import { trackAssessmentStepView, trackAssessmentSubmitted, trackPaymentSuccess, trackAssessmentCompleted, trackRecoveryConversionIfFlagged, trackPlanChanged, trackPackageChangeOpened, trackPackageSelected } from "@/lib/trackEvent";
 
 // Lazy-loaded Step 3 checkout (payment) — split into its own bundle chunk.
 const Step3Checkout = lazy(() => import("./components/Step3Checkout"));
-
-// Owner decision (2026-09-18): assessment checkout no longer requires an OTP.
-// Keep the OTP component and delivery infrastructure for account/auth flows,
-// but never mount it in the public assessment funnel.
-const ASSESSMENT_OTP_ENABLED = false;
 
 // Lightweight fallback shown only while the payment chunk loads (usually instant).
 function Step3LoadingFallback() {
@@ -69,6 +70,8 @@ const defaultStep1: Step1Data = {
   lifeChangeStress: "",
   challengeDuration: "",
   dailyImpact: "",
+  functionalImpactAreas: [],
+  functionalImpactNote: "",
   sleepQuality: "",
   socialFunctioning: "",
   medication: "",
@@ -115,6 +118,8 @@ const testStep1: Step1Data = {
   lifeChangeStress: "yes",
   challengeDuration: "more-than-1-year",
   dailyImpact: "moderate",
+  functionalImpactAreas: ["Sleeping", "Concentrating"],
+  functionalImpactNote: "",
   sleepQuality: "poor",
   socialFunctioning: "somewhat-impaired",
   medication: "no",
@@ -359,7 +364,14 @@ async function fireGHLFinalLead(
           breed: p.breed,
           age: p.age,
           weight: p.weight,
+          // ASSESSMENT-PET-SUPPORT-AND-STEP-STRUCTURE-001 — the multiple-choice
+          // support selections only. The customer's free-text descriptions are
+          // deliberately NOT projected into the CRM: they are clinical review
+          // context for the provider, not marketing/automation data.
+          supportFunctions: p.supportFunctions ?? [],
+          vaccinated: p.vaccinated === true,
         })),
+        petsDifferentiation: step1.petsDifferentiation ?? "",
         emotionalFrequency: step1.emotionalFrequency,
         mentalHealthConditions: step1.conditions.join(", "),
         lifeChangeStress: step1.lifeChangeStress,
@@ -416,18 +428,7 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
   // resume effect below) so it never persists in history, referrers or logs.
   // It is deliberately captured from window.location rather than held in
   // component state, and never written to localStorage/sessionStorage.
-  // Read via the helper: the pre-boot inline script has already scrubbed the
-  // address bar, so the raw value now arrives in memory rather than in the URL.
   const resumeToken = readResumeToken(searchParams);
-  // Stable checkout/resume arrivals bypass the presentation-only pricing intro.
-  const checkoutResume =
-    checkoutResumeProp ??
-    (typeof window !== "undefined"
-      ? (window as unknown as { __ptCheckoutResume?: Record<string, unknown> }).__ptCheckoutResume
-      : undefined);
-  const [pricingIntroComplete, setPricingIntroComplete] = useState(
-    () => Boolean(resumeConfirmationId || resumeToken || checkoutResume),
-  );
   // TRACK 2 · REPEAT-CUSTOMER-NEW-ESA-LINK-TEST
   // Opt-in flag: when present on a resume URL, pre-fill still runs so the
   // customer's identity stays loaded, but we land on Step 1 instead of jumping
@@ -462,15 +463,19 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
   // acknowledgment fires early. After "Your Information" the customer verifies
   // their email via a 6-digit OTP, then sees an assurance screen, then pays.
   const [stateConfirmed, setStateConfirmed] = useState(false);
-  const [checkoutGate, setCheckoutGate] = useState<"otp" | "assurance" | "package" | "pay">("pay");
+  const [checkoutGate, setCheckoutGate] = useState<"assurance" | "package" | "pay">("pay");
+  // TEST removes OTP from the assessment funnel. This flag only allows the
+  // existing durable-checkout helper to attempt a session-authorized URL; that
+  // helper still refuses callers without an authenticated customer session.
   const [otpVerified, setOtpVerified] = useState(false);
-  const verifiedEmailRef = useRef("");
-  // Where OTP verification should land the customer next. First-time flow →
-  // "assurance"; a resume of a package-selected lead → "pay"; else → "package".
-  // (UNPAID-CUSTOMER-PORTAL-AND-RESUME-CONTINUITY-001)
-  const postOtpGateRef = useRef<"assurance" | "package" | "pay">("assurance");
   const [step1, setStep1] = useState<Step1Data>(defaultStep1);
-  const [step2, setStep2] = useState<Step2Data>({ ...defaultStep2, state: preSelectedState });
+  const [step2, setStep2] = useState<Step2Data>({
+    ...defaultStep2,
+    // normalizePets mints the stable per-animal id and the empty support
+    // fields, so every card the customer touches already has its own identity.
+    pets: normalizePets(defaultStep2.pets),
+    state: preSelectedState,
+  });
   const [step3, setStep3] = useState<Step3Data>({ selectedDoctorId: preSelectedDoctorId, plan: "one-time" });
   // RA bundle selection (PACKAGE-RA-LETTER-BUNDLE-001): esa_standard | esa_ra_bundle.
   // Optional preselect from the ESA cost-page combo CTA (?package=esa_ra_bundle):
@@ -489,9 +494,29 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
   const [stripeSecretError, setStripeSecretError] = useState("");
   const [stripePaymentIntentId, setStripePaymentIntentId] = useState("");
   const stripeSecretInFlight = useRef(false); // dedupe concurrent calls
-  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001 — checkoutResume was
-  // resolved above so both the pricing-intro gate and resume-loading state use
-  // the same first-render signal.
+  // ORDER-STABLE-SIMPLE-CHECKOUT-RESUME-LINKS-001
+  // The stable /checkout/<slug> route resolves the slug server-side and hands
+  // the order to this screen, reusing its Stripe payment-intent lifecycle,
+  // duplicate-order guards and package/plan restore rather than forking them.
+  // The PROP is the durable path — this component is rendered BY that route,
+  // which now STAYS in the address bar. The `window` fallback is kept for the
+  // in-memory handoff producers that still use it (memory only — never storage,
+  // so the payload cannot outlive the tab or reach analytics).
+  //
+  // Declared HERE, above `resumeLoading`, because the initial loading value
+  // depends on it — see the next statement.
+  const checkoutResume =
+    checkoutResumeProp ??
+    (typeof window !== "undefined"
+      ? (window as unknown as { __ptCheckoutResume?: Record<string, unknown> }).__ptCheckoutResume
+      : undefined);
+  // Fresh Apply Now visits see pricing first. This gate is deliberately local
+  // UI state only: clicking a card does not choose or persist a package.
+  const [pricingIntroComplete, setPricingIntroComplete] = useState(
+    () =>
+      Boolean(resumeConfirmationId || resumeToken || checkoutResume) ||
+      (import.meta.env.DEV && searchParams.get("testCheckout") === "1"),
+  );
   // NO STEP-1 FLASH. `checkoutResume` belongs in this initial value, not just in
   // the effect that consumes it: without it the first paint rendered the state
   // picker / Question 1 for a customer the server had already resolved to
@@ -593,21 +618,26 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
   }, [currentStep, checkoutGate]);
 
   // ── answeredInStep1 must be computed BEFORE any effect that uses it ────────
-  const answeredInStep1 = [
-    step1.safetyCheck,
-    step1.emotionalFrequency,
-    step1.conditions.length > 0 ? "yes" : "",
-    step1.lifeChangeStress,
-    step1.challengeDuration,
-    step1.dailyImpact,
-    step1.sleepQuality,
-    step1.socialFunctioning,
-    step1.medication,
-    step1.priorDiagnosis,
-    step1.currentTreatment,
-    step1.symptomDescription && step1.symptomDescription.trim().length >= 10 ? "yes" : "",
-    step1.housingType,
-  ].filter(Boolean).length;
+  // ASSESSMENT-PROGRESS-CONSISTENCY-001: counted by the SAME canonical helper
+  // the in-flow router uses, so the two progress displays can never report a
+  // different number. The previous hand-rolled list counted a truthy
+  // safetyCheck, so answering the safety screen "yes" (which the manifest
+  // treats as NOT satisfied, because it hard-stops the flow) over-counted here.
+  const answeredInStep1 = countAnsweredStep1(step1);
+  // ── ASSESSMENT-PET-SUPPORT-AND-STEP-STRUCTURE-001 ─────────────────────────
+  // THE canonical Step-1 sequence: the 13 clinical questions, then the animal
+  // count, then one card per animal, then (2+ animals only) the comparison
+  // screen. Position, total and progress all read this ONE array, so a screen
+  // that does not apply is never counted and the header can never disagree
+  // with the flow.
+  const step1Screens = buildStep1Screens(step2.pets);
+  const step1ScreenTotal = step1Screens.length;
+  const answeredInStep1WithPets = answeredInStep1 + countAnsweredPetScreens(step1, step2.pets);
+
+  // ── CANONICAL current question index for Step 1 v2 (0-based) ──────────────
+  // Owned here and passed BOTH to StepIndicator (header) and to the router, so
+  // there is exactly one source of "which question am I on".
+  const [step1Index, setStep1Index] = useState(0);
 
   // ── Subscription cleanup refs ─────────────────────────────────────────────
   // Track the current subscription ID so we can cancel it if the user
@@ -632,12 +662,21 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
         // A confirmation id appears in emails, SMS, URLs, analytics and support
         // threads, so it must never act as a credential.
         // (ORDER-RESUME-SECURE-TOKEN-AND-PII-CONFIDENTIALITY-001)
+        // `checkoutResume` is the stable /checkout/<slug> handoff and carries no
+        // token by design — it must NOT be treated as a bare confirmation-id link.
         if (!resumeToken && !checkoutResume) {
           setResumeNeedsSecureLink(true);
           setResumeLoading(false);
           return;
         }
 
+        // ── Stable /checkout/<slug> handoff — preferred path. ──────────────
+        // resolve-checkout-link already resolved and authorised this order
+        // server-side, so there is nothing to exchange and nothing to consume:
+        // the link stays reusable across refresh, scanners and devices. Mapped
+        // onto the SAME shape the prefill below already understands so the
+        // step-3 landing, directCheckout gate and package restore are reused
+        // rather than forked.
         let stableOrder: (Record<string, unknown> & { already_paid?: boolean }) | null = null;
         let stableOtpVerified = false;
         if (checkoutResume) {
@@ -646,10 +685,17 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
           } catch { /* non-fatal */ }
           const cr = checkoutResume as Record<string, unknown>;
           stableOrder = {
-            confirmation_id: cr.confirmationId, first_name: cr.firstName,
-            last_name: cr.lastName, email: cr.email, phone: cr.phone, state: cr.state,
-            delivery_speed: cr.deliverySpeed, price: cr.price, plan_type: cr.planType,
-            letter_type: cr.letterType, package_key: cr.packageKey,
+            confirmation_id: cr.confirmationId,
+            first_name: cr.firstName,
+            last_name: cr.lastName,
+            email: cr.email,
+            phone: cr.phone,
+            state: cr.state,
+            delivery_speed: cr.deliverySpeed,
+            price: cr.price,
+            plan_type: cr.planType,
+            letter_type: cr.letterType,
+            package_key: cr.packageKey,
             billing_plan: cr.billingPlan,
             // Only the pet COUNT is restored — enough for multi-pet pricing,
             // no intake detail. Blank entries are never rendered because
@@ -666,6 +712,9 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
             },
             already_paid: false,
           };
+          // The slug is the credential AND this order has already completed
+          // OTP (orders.user_id is set). Requiring the code again would be the
+          // 're-enter your email' friction this task exists to remove.
           stableOtpVerified = cr.otpVerified === true;
         }
 
@@ -761,6 +810,12 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
           lifeChangeStress: (answers.lifeChangeStress as string) ?? "",
           challengeDuration: (answers.challengeDuration as string) ?? "",
           dailyImpact: (answers.dailyImpact as string) ?? "",
+          // ASSESSMENT-FUNCTIONAL-IMPACT-DETAIL-002 — absent on every order
+          // saved before this task. Load as EMPTY; never invent an answer.
+          functionalImpactAreas: Array.isArray(answers.functionalImpactAreas)
+            ? (answers.functionalImpactAreas as unknown[]).filter((v): v is string => typeof v === "string")
+            : [],
+          functionalImpactNote: (answers.functionalImpactNote as string) ?? "",
           sleepQuality: (answers.sleepQuality as string) ?? "",
           socialFunctioning: (answers.socialFunctioning as string) ?? "",
           medication: (answers.medication as string) ?? "",
@@ -795,7 +850,10 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
           phone: (data.phone as string) ?? "",
           dob: (answers.dob as string) ?? "",
           state: (data.state as string) ?? "",
-          pets: (answers.pets as Step2Data["pets"]) ?? [{ name: "", age: "", breed: "", type: "", weight: "" }],
+          // A historical order has pets WITHOUT the pet-support fields. They
+          // must load as empty, never as an error and never as an invented
+          // answer — normalizePets is the one place that guarantees it.
+          pets: normalizePets(answers.pets),
           deliverySpeed: (data.delivery_speed as string) ?? "",
           additionalDocs: (answers.additionalDocs as Step2Data["additionalDocs"]) ?? undefined,
           stateAcknowledgment: (answers.stateAcknowledgment as Step2Data["stateAcknowledgment"]) ?? undefined,
@@ -882,71 +940,20 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
           package_key: savedPackageKey,
         });
 
-        // A confirmation ID in a URL is not authentication. Only skip OTP when the
-        // visitor already holds a Supabase session for THIS order's email; otherwise
-        // require OTP (the code goes to the order's email — only the owner can
-        // complete it) before any checkout data is actionable.
-        const orderEmail = (loadedStep2.email ?? "").trim().toLowerCase();
-        let sessionEmail = "";
-        try {
-          const { data: sess } = await supabase.auth.getUser();
-          sessionEmail = (sess?.user?.email ?? "").trim().toLowerCase();
-        } catch { /* ignore — treat as unauthenticated */ }
-        // Stable-slug arrival on an order that already completed OTP counts as
-        // authenticated — the slug is the credential and the order is bound to a
-        // verified auth user, so re-prompting is pure friction.
-        const alreadyAuthed =
-          (!!orderEmail && sessionEmail === orderEmail) || stableOtpVerified;
-
+        // TEST assessment checkout no longer inserts an OTP screen. Existing
+        // resume/payment routing is preserved, and the durable URL helper still
+        // performs its own session authorization before minting a credential.
         if (resumeEditPet) {
-          // Repeat-customer new-pet review: land on Step 1; the normal Step 2 → OTP
-          // path handles auth. Skip the eager PI mint.
-          setOtpVerified(alreadyAuthed);
-          verifiedEmailRef.current = alreadyAuthed ? orderEmail : "";
+          setOtpVerified(true);
           setCurrentStep(1);
           window.scrollTo({ top: 0, behavior: "smooth" });
-        } else if (!ASSESSMENT_OTP_ENABLED) {
-          // A secure resume token or durable checkout slug has already
-          // authorised this order. OTP is no longer part of assessment checkout.
-          setOtpVerified(alreadyAuthed);
-          verifiedEmailRef.current = alreadyAuthed ? orderEmail : "";
-          setCheckoutGate("pay");
-          setCurrentStep(3);
-          window.scrollTo({ top: 0, behavior: "smooth" });
-          fetchClientSecret(loadedStep2, confirmationId.current);
-        } else if (alreadyAuthed) {
+        } else {
           setOtpVerified(true);
-          verifiedEmailRef.current = orderEmail;
-          // Direct-checkout: an authenticated resume is never forced through the
-          // package screen — land on pay with the restored package/plan.
           const landGate = directCheckout ? "pay" : nextGate;
           setCheckoutGate(landGate);
           setCurrentStep(3);
           window.scrollTo({ top: 0, behavior: "smooth" });
-          // ASSESSMENT-CHECKOUT-REFRESH-...-INCIDENT-003 — THE root cause of the
-          // unlinked resumed ESA PaymentIntent.
-          //
-          // This passed `resumeConfirmationId`, i.e. `searchParams.get("resume")`,
-          // straight past the ref that the block above has just resolved from the
-          // RESOLVED ORDER. A stable `/checkout/<slug>` arrival carries no
-          // `?resume=`, so every resumed ESA checkout minted its PaymentIntent
-          // with `confirmationId: ""`. In create-payment-intent that falsy id
-          // skips open-intent reuse, skips the reuse-pointer write, skips the
-          // trusted quote — and stamps NO `confirmation_id` into the Stripe
-          // metadata, so the intent is orphaned from the order and invisible to
-          // reconciliation. Captured live: request confirmationId "", HTTP 200,
-          // a brand-new pi_ on every reload.
-          //
-          // `confirmationId.current` is authoritative here — it is assigned from
-          // `data.confirmation_id` earlier in this same effect.
           if (landGate === "pay") fetchClientSecret(loadedStep2, confirmationId.current);
-        } else {
-          setOtpVerified(false);
-          verifiedEmailRef.current = "";
-          postOtpGateRef.current = nextGate;
-          setCheckoutGate("otp");
-          setCurrentStep(3);
-          window.scrollTo({ top: 0, behavior: "smooth" });
         }
       } catch (err) {
         setResumeNotFound(true);
@@ -980,10 +987,9 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
     if (!isTestMode) return;
     setStep1(testStep1);
     setStep2(testStep2);
-    // Test shortcut bypasses the state + OTP gates and lands on the package step.
+    // Test shortcut bypasses the state gate and lands on the package step.
     setStateConfirmed(true);
     setOtpVerified(true);
-    verifiedEmailRef.current = testStep2.email.trim().toLowerCase();
     setCheckoutGate("package");
     setCurrentStep(3);
     window.scrollTo(0, 0);
@@ -1168,28 +1174,9 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
     window.scrollTo(0, 0);
   };
   const handleViewPortal = () => {
-    // The customer is authenticated after OTP (magic-link session established in
-    // CustomerOtpStep). Send them to their portal focused on this saved order.
+    // Send an authenticated returning customer to their saved order.
     navigate(`/my-orders?order=${encodeURIComponent(confirmationId.current)}`);
   };
-  const handleOtpVerified = () => {
-    setOtpVerified(true);
-    verifiedEmailRef.current = step2.email.trim().toLowerCase();
-    // Direct-checkout flow → straight to the pay surface (Assurance + Package are
-    // no longer mandatory; the package screen stays reachable via "Change package").
-    // Legacy → the resume-resolved gate (assurance / package / pay).
-    const target = directCheckout ? "pay" : postOtpGateRef.current;
-    postOtpGateRef.current = "assurance";
-    // Reuse the one-time PaymentIntent already minted on Step 2 → 3; mint only if
-    // it is missing (e.g. eager mint failed) so we never duplicate an identical PI.
-    if (target === "pay" && !stripeClientSecret) {
-      fetchClientSecret(step2, confirmationId.current, appliedCoupon, selectedPackage);
-    }
-    setCheckoutGate(target);
-    trackPostOtpDestination(confirmationId.current, target, flowVersionProp());
-    window.scrollTo(0, 0);
-  };
-
   const goNext = async () => {
     // Structured event: about to advance from currentStep — log the next view.
     // Fire-and-forget. Step 1 view is already fired by useAssessmentTracking.
@@ -1199,14 +1186,10 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
     } catch { /* analytics must never block the user */ }
 
     if (currentStep === 2) {
-      // Decide the checkout gate: fresh (or changed) email → OTP first; an
-      // already-verified matching email → straight to the pay surface.
-      const needOtp =
-        ASSESSMENT_OTP_ENABLED
-        && (!otpVerified || verifiedEmailRef.current !== step2.email.trim().toLowerCase());
-      if (!ASSESSMENT_OTP_ENABLED) setCheckoutGate("pay");
-      else if (needOtp) { setOtpVerified(false); setCheckoutGate("otp"); }
-      else setCheckoutGate(directCheckout ? "pay" : "package");
+      // TEST: proceed directly to checkout after the canonical lead save.
+      // Package choice remains available from the checkout's Change package control.
+      setOtpVerified(true);
+      setCheckoutGate("pay");
       // Fire lead tracking
       fireGHLEarlyLead(step1, step2, confirmationId.current);
       // Save lead FIRST and await it — saveLeadToSupabase may rewrite
@@ -1399,6 +1382,8 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
         `${supabaseUrl}/functions/v1/get-resume-order`,
         {
           method: "POST",
+          // Never leave the customer trapped on Personal Details if TEST Supabase stalls.
+          signal: AbortSignal.timeout(8_000),
           headers: {
             "Content-Type": "application/json",
             apikey: supabaseKey,
@@ -1431,6 +1416,7 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
             lastTouchJson: lastTouchVal,
             assessmentAnswers: {
               ...step1,
+              assessmentVersion: ASSESSMENT_ANSWERS_VERSION,
               pets: step2.pets,
               dob: step2.dob,
               additionalDocs: step2.additionalDocs ?? null,
@@ -1592,6 +1578,7 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
           // doesn't overwrite the full assessment saved at lead time.
           assessmentAnswers: {
             ...step1,
+            assessmentVersion: ASSESSMENT_ANSWERS_VERSION,
             pets: step2.pets,
             dob: step2.dob,
             additionalDocs: step2.additionalDocs ?? null,
@@ -1812,7 +1799,11 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
   // answeredInStep1 already computed above — remove the duplicate declaration below
   // Compute the same progress % used in StepIndicator
   function getProgressPercent(): number {
-    if (currentStep === 1) return Math.round((answeredInStep1 / 13) * 30);
+    if (currentStep === 1) {
+      const answered = useStep1V2 ? answeredInStep1WithPets : answeredInStep1;
+      const total = useStep1V2 ? step1ScreenTotal : 13;
+      return Math.round((answered / total) * 30);
+    }
     if (currentStep === 2) return 42;
     if (currentStep === 3) return 78;
     return 100;
@@ -1938,12 +1929,7 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
 
             <button
               type="button"
-              onClick={() => {
-                setResumeNotFound(false);
-                setCurrentStep(1);
-                setStateConfirmed(false);
-                setPricingIntroComplete(false);
-              }}
+              onClick={() => { setResumeNotFound(false); setCurrentStep(1); }}
               className="whitespace-nowrap flex items-center gap-2 px-6 py-3 bg-[#1A5C4F] text-white font-bold rounded-xl hover:bg-[#14493E] cursor-pointer transition-colors"
             >
               <i className="ri-arrow-right-line"></i>Start Fresh Assessment
@@ -1954,7 +1940,7 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
             letterType="esa"
             onContinue={() => {
               setPricingIntroComplete(true);
-              window.scrollTo(0, 0);
+              window.scrollTo({ top: 0, behavior: "smooth" });
             }}
           />
         ) : !stateConfirmed ? (
@@ -2009,8 +1995,14 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
             {currentStep !== 3 && (
               <StepIndicator
                 currentStep={currentStep}
-                answeredInStep1={answeredInStep1}
-                totalInStep1={13}
+                /* v2 counts the pet screens; the ?step1=v1 long form has no pet
+                   section, so it keeps reporting the 13 clinical questions. */
+                answeredInStep1={useStep1V2 ? answeredInStep1WithPets : answeredInStep1}
+                totalInStep1={useStep1V2 ? step1ScreenTotal : 13}
+                /* v2 only: the header question number comes from the canonical
+                   index. v1 shows every question at once, so it keeps the
+                   legacy "next unanswered" behaviour (prop omitted). */
+                currentQuestion={useStep1V2 && currentStep === 1 ? step1Index + 1 : undefined}
               />
             )}
 
@@ -2054,7 +2046,16 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
             {/* Form Steps */}
             <div className="bg-transparent">
               {currentStep === 1 && (
-                <Step1Assessment data={step1} onChange={setStep1} onNext={goNext} useStep1V2={useStep1V2} />
+                <Step1Assessment
+                  data={step1}
+                  onChange={setStep1}
+                  pets={step2.pets}
+                  onPetsChange={(pets) => setStep2((s) => ({ ...s, pets }))}
+                  onNext={goNext}
+                  useStep1V2={useStep1V2}
+                  currentIndex={step1Index}
+                  onIndexChange={setStep1Index}
+                />
               )}
               {currentStep === 2 && (
                 <Step2PersonalInfo
@@ -2063,28 +2064,20 @@ export default function AssessmentPage({ checkoutResume: checkoutResumeProp }: A
                   onNext={goNext}
                   onBack={goBack}
                   onEditState={() => { setStateConfirmed(false); window.scrollTo(0, 0); }}
+                  /* Default v2 collects every animal in Step 1, so this screen
+                     is bio/contact only. The ?step1=v1 rollback long form has
+                     no pet section, so it keeps collecting them here. */
+                  showPets={!useStep1V2}
                 />
               )}
-              {/* Checkout gates: email OTP → assurance → payment. */}
-              {ASSESSMENT_OTP_ENABLED && currentStep === 3 && checkoutGate === "otp" && (
-                <CustomerOtpStep
-                  email={step2.email}
-                  phone={step2.phone}
-                  firstName={step2.firstName}
-                  confirmationId={confirmationId.current}
-                  letterType="esa"
-                  accent="esa"
-                  onVerified={handleOtpVerified}
-                  onBack={goBack}
-                />
-              )}
+              {/* Checkout gates: optional assurance/package screens → payment. */}
               {currentStep === 3 && checkoutGate === "assurance" && (
                 <AssuranceScreen
                   letterType="esa"
                   accent="esa"
                   onContinue={() => { setCheckoutGate("package"); window.scrollTo(0, 0); }}
                   onViewPortal={handleViewPortal}
-                  onBack={() => setCheckoutGate("otp")}
+                  onBack={() => setCurrentStep(2)}
                 />
               )}
               {currentStep === 3 && checkoutGate === "package" && (

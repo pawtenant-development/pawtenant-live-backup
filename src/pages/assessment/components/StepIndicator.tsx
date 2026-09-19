@@ -3,6 +3,20 @@ interface StepIndicatorProps {
   answeredInStep1?: number;
   totalInStep1?: number;
   /**
+   * ASSESSMENT-PROGRESS-CONSISTENCY-001 — the CANONICAL current question
+   * number (1-based) when the caller has one, i.e. the Step-1 v2 flow where
+   * exactly one question is on screen.
+   *
+   * Without it this component inferred the position from the ANSWERED COUNT
+   * (`answeredInStep1 + 1`), which is not the position: after answering Q1 and
+   * pressing Back, one answer existed but the customer was on Q1, so the header
+   * read "Question 2" while the flow showed Question 1.
+   *
+   * Omitted by the legacy v1 long-form render and by the PSD flow, which show
+   * every question at once and so keep the "next unanswered" heuristic.
+   */
+  currentQuestion?: number;
+  /**
    * Optional caller-provided step labels. Currently ignored at runtime — the
    * component uses the internal STEPS array unconditionally so ESA and PSD
    * flows render the same visual chrome. Accepted here so PSD assessment can
@@ -101,7 +115,7 @@ function getMotivationalCopy(
     };
   return {
     headline: `Last step — your ${productName} is minutes away!`,
-    sub: "Choose your provider and complete your secure payment.",
+    sub: "Complete your secure payment — we'll match you with a licensed provider.",
   };
 }
 
@@ -109,8 +123,16 @@ export default function StepIndicator({
   currentStep,
   answeredInStep1 = 0,
   totalInStep1 = 12,
+  currentQuestion,
   letterType = "esa",
 }: StepIndicatorProps) {
+  // Prefer the canonical position when the caller owns one; otherwise fall back
+  // to the legacy "next unanswered" heuristic for flows that show every
+  // question at once (v1 long form, PSD).
+  const questionNumber = Math.min(
+    typeof currentQuestion === "number" ? currentQuestion : answeredInStep1 + 1,
+    totalInStep1,
+  );
   const progress = getProgressPercent(currentStep, answeredInStep1, totalInStep1);
   const { headline, sub } = getMotivationalCopy(currentStep, answeredInStep1, totalInStep1, letterType);
 
@@ -121,7 +143,7 @@ export default function StepIndicator({
         <p className="text-sm sm:text-base font-bold text-gray-900 mb-0.5 sm:mb-1 px-2">{headline}</p>
         {currentStep === 1 && (
           <p className="text-xs text-gray-500 mt-1 px-2">
-            <span className="font-semibold text-[#F97316]">Question {Math.min(answeredInStep1 + 1, totalInStep1)}</span>
+            <span className="font-semibold text-[#F97316]">Question {questionNumber}</span>
             <span> of {totalInStep1}</span>
             <span className="text-gray-400"> · {answeredInStep1} answered</span>
           </p>

@@ -34,11 +34,44 @@ export const CONDITIONS: string[] = [
   "Emotional dysregulation",
 ];
 
+/**
+ * ASSESSMENT-FUNCTIONAL-IMPACT-DETAIL-002 (owner, 2026-08-26).
+ *
+ * The functional-impact question already asked HOW OFTEN symptoms interfere.
+ * The reviewing provider repeatedly had to come back and ask WHAT becomes
+ * harder, so that is now captured on the SAME screen — no new screen, no new
+ * essay. Customer-reported areas of difficulty; not a diagnosis, not a score,
+ * and nothing here decides eligibility.
+ */
+export const FUNCTIONAL_IMPACT_OPTIONS: string[] = [
+  "Sleeping",
+  "Concentrating",
+  "Working or studying",
+  "Getting out of bed or staying motivated",
+  "Maintaining a daily routine",
+  "Completing household responsibilities",
+  "Caring for myself",
+  "Leaving home",
+  "Interacting with others",
+  "Isolation or withdrawal",
+  "Other",
+];
+
+/** Cap for the optional companion explanation. Short by design. */
+export const FUNCTIONAL_IMPACT_NOTE_MAX = 400;
+
 // ── Discriminated-union question definitions ────────────────────────────────
 
 type RadioFieldId = Exclude<
   keyof Step1Data,
-  "conditions" | "symptomDescription" | "medicationDetails" | "specificDiagnosis" | "treatmentDetails" | "hasESA" | "petSupport" | "petType"
+  | "conditions" | "symptomDescription" | "medicationDetails" | "specificDiagnosis" | "treatmentDetails"
+  | "hasESA" | "petSupport" | "petType"
+  // Pet-section fields are answered by the pet screens, never by a manifest
+  // radio question — the manifest stays the 13 clinical questions only.
+  | "petCountConfirmed" | "petsDifferentiation" | "petsDifferentiationNote"
+  // Answered by the multi-select companion on the functional-impact screen,
+  // never by a plain radio question.
+  | "functionalImpactAreas" | "functionalImpactNote"
 >;
 
 export interface RadioQuestion {
@@ -48,6 +81,9 @@ export interface RadioQuestion {
   question: string;
   required: true;
   hint?: string;
+  /** Short plain-language explanation of WHY this question is asked. Presentation
+   *  only — never part of validation, scoring or the clinical rules. */
+  context?: string;
   options: { label: string; value: string }[];
   check: (d: Step1Data) => boolean;
 }
@@ -59,6 +95,9 @@ export interface CheckboxQuestion {
   question: string;
   required: true;
   hint?: string;
+  /** Short plain-language explanation of WHY this question is asked. Presentation
+   *  only — never part of validation, scoring or the clinical rules. */
+  context?: string;
   options: string[];
   check: (d: Step1Data) => boolean;
 }
@@ -70,6 +109,9 @@ export interface RadioWithTextQuestion {
   question: string;
   required: true;
   hint?: string;
+  /** Short plain-language explanation of WHY this question is asked. Presentation
+   *  only — never part of validation, scoring or the clinical rules. */
+  context?: string;
   options: { label: string; value: string }[];
   check: (d: Step1Data) => boolean;
   conditionalField: "medicationDetails" | "specificDiagnosis" | "treatmentDetails";
@@ -86,21 +128,68 @@ export interface TextareaQuestion {
   question: string;
   required: true;
   hint?: string;
+  /** Short plain-language explanation of WHY this question is asked. Presentation
+   *  only — never part of validation, scoring or the clinical rules. */
+  context?: string;
   minLen: number;
   maxLen: number;
   check: (d: Step1Data) => boolean;
+}
+
+/**
+ * The functional-impact question: the ORIGINAL frequency radio (id, number and
+ * answer VALUES untouched) plus a required multi-select companion and an
+ * optional short explanation, all on ONE screen.
+ */
+export interface RadioWithImpactQuestion {
+  kind: "radio+impact";
+  id: "dailyImpact";
+  number: number;
+  question: string;
+  required: true;
+  hint?: string;
+  context?: string;
+  options: { label: string; value: string }[];
+  check: (d: Step1Data) => boolean;
+  /** Required multi-select — what actually becomes harder. */
+  impactField: "functionalImpactAreas";
+  impactQuestion: string;
+  impactOptions: string[];
+  /** ALWAYS optional, and only offered once an area has been selected, so it is
+   *  conditional on the customer actually reporting interference. */
+  impactNoteField: "functionalImpactNote";
+  impactNoteLabel: string;
+  impactNotePlaceholder: string;
+  impactNoteMax: number;
 }
 
 export type QuestionDef =
   | RadioQuestion
   | CheckboxQuestion
   | RadioWithTextQuestion
+  | RadioWithImpactQuestion
   | TextareaQuestion;
 
 // ── The 13-question manifest ─────────────────────────────────────────────────
 // The FINAL question is a safety screen. When the answer is "yes" the router
 // hard-stops the flow and shows CrisisSupportPanel — no continue, no checkout —
 // until the user changes the answer. See QuestionRouter.tsx.
+
+/**
+ * ASSESSMENT-PROGRESS-CONSISTENCY-001 — the ONE answered-count source.
+ *
+ * Both progress displays (the page-level StepIndicator and the in-flow router
+ * counter) must report the same number, so both call THIS. Counting by the
+ * manifest's own `check` predicates is what makes it canonical: a question is
+ * "answered" if and only if it would pass validation.
+ *
+ * The page previously counted a truthy `safetyCheck` field, so answering the
+ * safety screen "yes" — which the manifest deliberately treats as NOT satisfied,
+ * because it hard-stops the flow — inflated the header's count by one.
+ */
+export function countAnsweredStep1(data: Step1Data): number {
+  return QUESTION_MANIFEST.filter((q) => q.check(data)).length;
+}
 
 export const QUESTION_MANIFEST: QuestionDef[] = [
   {
@@ -118,6 +207,8 @@ export const QUESTION_MANIFEST: QuestionDef[] = [
     number: 2,
     question: "Which of the following do you currently experience? (Select all that apply)",
     required: true,
+    context:
+      "Select everything that applies. This is not a diagnosis — it gives the licensed professional reviewing your evaluation a starting picture of what you are experiencing.",
     options: CONDITIONS,
     check: (d) => d.conditions.length > 0,
   },
@@ -151,13 +242,24 @@ export const QUESTION_MANIFEST: QuestionDef[] = [
     check: (d) => !!d.challengeDuration,
   },
   {
-    kind: "radio",
+    // ASSESSMENT-FUNCTIONAL-IMPACT-DETAIL-002: the frequency radio below is the
+    // ORIGINAL question — same id, same number, same answer values. What is new
+    // is the companion multi-select on the same screen, which is the detail the
+    // reviewing provider kept having to ask for.
+    kind: "radio+impact",
     id: "dailyImpact",
     number: 5,
     question: "How often do your symptoms interfere with your daily life, work, or responsibilities?",
     required: true,
     options: FREQUENCY_OPTIONS,
-    check: (d) => !!d.dailyImpact,
+    check: (d) => !!d.dailyImpact && (d.functionalImpactAreas?.length ?? 0) > 0,
+    impactField: "functionalImpactAreas",
+    impactQuestion: "When your symptoms interfere with daily functioning, what becomes more difficult?",
+    impactOptions: FUNCTIONAL_IMPACT_OPTIONS,
+    impactNoteField: "functionalImpactNote",
+    impactNoteLabel: "Optional: add a short example",
+    impactNotePlaceholder: "Example: I miss morning shifts because I cannot get out of bed.",
+    impactNoteMax: FUNCTIONAL_IMPACT_NOTE_MAX,
   },
   {
     kind: "radio",
@@ -183,6 +285,8 @@ export const QUESTION_MANIFEST: QuestionDef[] = [
     number: 8,
     question: "Are you currently taking any prescribed medication for a mental health condition?",
     required: true,
+    context:
+      "Medication is not required to qualify, and taking it does not disqualify you. The professional reviewing your evaluation asks because it is part of a complete clinical picture.",
     options: [
       { label: "Yes, currently prescribed and taking", value: "yes_taking" },
       { label: "Yes, prescribed but not currently taking", value: "yes_not_taking" },
@@ -202,6 +306,8 @@ export const QUESTION_MANIFEST: QuestionDef[] = [
     number: 9,
     question: "Have you previously received a mental health diagnosis from a licensed professional?",
     required: true,
+    context:
+      "A previous diagnosis is not required. Answering “no” does not count against you — your evaluation is based on what you describe here.",
     options: [
       { label: "Yes, I have a formal diagnosis", value: "yes" },
       { label: "I have been told I may have a condition, but not formally diagnosed", value: "informal" },
@@ -251,6 +357,8 @@ export const QUESTION_MANIFEST: QuestionDef[] = [
     number: 12,
     question: "What type of housing do you currently live in?",
     required: true,
+    context:
+      "Your housing situation is the context an ESA letter is written for. It does not change whether you qualify — that depends on your clinical evaluation.",
     options: [
       { label: "Apartment with a no-pet policy", value: "apt_nopet" },
       { label: "Condo or townhouse", value: "condo" },

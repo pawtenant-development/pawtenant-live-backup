@@ -51,7 +51,7 @@ interface CardModel {
   recommended: boolean;
   badge: string | null;
   /** ESA-PLANNER-CUSTOMER-RESOURCE-TEST-001 — a non-clinical bonus line rendered
-   *  under the 7 benefits. Service-aware via plannerBenefitFor(family). */
+   *  under the 7 benefits. Service-aware: null for PSD until its planner ships. */
   bonus: string | null;
 }
 
@@ -279,7 +279,8 @@ export default function PackageSelectionStep({
                   ))}
                 </ul>
 
-                {/* Free resource bonus — service-aware via plannerBenefitFor. Not a clinical item. */}
+                {/* Free planner bonus — ESA only today (plannerBenefitFor returns null
+                    for PSD until its own planner is published). Not a clinical item. */}
                 {c.bonus && (
                   <div className="flex items-start gap-2 rounded-lg px-3 py-2 mb-2.5 bg-[#FFF7ED] border border-[#FFEDD5]">
                     <i className="ri-gift-line text-sm flex-shrink-0 mt-0.5 text-orange-500"></i>

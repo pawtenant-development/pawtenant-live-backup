@@ -13,6 +13,7 @@
 
 import { useEffect, useRef } from "react";
 import type { Step1Data } from "../Step1Assessment";
+import type { PetInfo } from "../Step2PersonalInfo";
 
 const KEY = "pawtenant_step1_draft_v1";
 const TTL_DAYS = 14;
@@ -24,6 +25,16 @@ interface Draft {
   currentIndex: number;
   savedAt: string;
   schemaVersion: 1;
+  /**
+   * ASSESSMENT-PET-SUPPORT-AND-STEP-STRUCTURE-001 — the pet cards now live in
+   * Step 1, so a refresh mid-pet-section must restore them too.
+   *
+   * ADDITIVE and OPTIONAL, and the schemaVersion is deliberately NOT bumped: a
+   * draft written before this task has no `pets` key, reads back cleanly as
+   * `undefined`, and the caller simply keeps whatever the parent already holds.
+   * Bumping the version would have thrown away every in-flight draft on deploy.
+   */
+  pets?: PetInfo[];
 }
 
 /** Returns true if every required Step 1 field is empty / unset. */
@@ -64,7 +75,7 @@ export function readStep1Draft(): Draft | null {
 }
 
 /** Write a draft to localStorage. Best-effort; swallows quota / private-mode errors. */
-export function writeStep1Draft(data: Step1Data, currentIndex: number): void {
+export function writeStep1Draft(data: Step1Data, currentIndex: number, pets?: PetInfo[]): void {
   try {
     if (typeof window === "undefined") return;
     const payload: Draft = {
@@ -72,6 +83,7 @@ export function writeStep1Draft(data: Step1Data, currentIndex: number): void {
       currentIndex,
       savedAt: new Date().toISOString(),
       schemaVersion: 1,
+      ...(pets ? { pets } : {}),
     };
     window.localStorage.setItem(KEY, JSON.stringify(payload));
   } catch {
@@ -97,20 +109,22 @@ export function clearStep1Draft(): void {
 export function useStep1AutosaveWriter(
   data: Step1Data,
   currentIndex: number,
+  pets: PetInfo[] | undefined,
   enabled: boolean,
 ): void {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const serialized = JSON.stringify(data);
+  const serializedPets = JSON.stringify(pets ?? null);
 
   useEffect(() => {
     if (!enabled) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      writeStep1Draft(data, currentIndex);
+      writeStep1Draft(data, currentIndex, pets);
     }, DEBOUNCE_MS);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serialized, currentIndex, enabled]);
+  }, [serialized, serializedPets, currentIndex, enabled]);
 }

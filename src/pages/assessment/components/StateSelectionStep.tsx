@@ -58,9 +58,15 @@ export default function StateSelectionStep({ state, service, priceShown, existin
           <i className={`ri-map-pin-2-line text-xl ${isPsd ? "text-amber-700" : "text-[#1A5C4F]"}`}></i>
         </div>
         <h2 className="text-2xl font-extrabold text-gray-900">Where do you live?</h2>
+        {/* ASSESSMENT-PRESENTATION-TRUST-001 — owner-approved state copy, verbatim.
+            It explains WHY the state is collected and states plainly that approval
+            depends on the clinical evaluation. It must never be reworded into a
+            promise that a letter will be issued or accepted. */}
         <p className="text-sm text-gray-500 mt-2 leading-relaxed max-w-md mx-auto">
-          We ask first because a few states have rules that affect when a signed
-          {isPsd ? " PSD" : " ESA"} letter can be issued. This takes a few seconds.
+          Licensing and service requirements vary by state. We ask where you are
+          physically located so we can match you with a professional licensed for
+          your state and confirm service availability. Approval depends on your
+          clinical evaluation.
         </p>
       </div>
 

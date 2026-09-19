@@ -12,6 +12,20 @@ export interface PetInfo {
   breed: string;
   type: string;
   weight: string;
+  // ── ASSESSMENT-PET-SUPPORT-AND-STEP-STRUCTURE-001 (additive) ─────────────
+  // Every field below is OPTIONAL on the type because a historical order was
+  // saved before they existed. Readers must fail safe to empty — never block,
+  // never invent an answer. See step1/PetSection.ts for the full contract.
+  /** Stable identifier so a pet's answers travel with it when the list shrinks. */
+  petId?: string;
+  /** Customer-reported vaccination status. Optional; never gates the flow. */
+  vaccinated?: boolean;
+  /** Customer-reported ways THIS animal helps. Evidence for the reviewing
+   *  provider — not a diagnosis, not a score, not an eligibility rule. */
+  supportFunctions?: string[];
+  /** Optional per-pet narrative. ALWAYS optional; never blocks progression or
+   *  checkout, and never auto-inserted into the final letter. */
+  supportNarrative?: string;
 }
 
 export interface AdditionalDocInfo {
@@ -51,6 +65,20 @@ interface Step2PersonalInfoProps {
    * acknowledgment modal are shown (legacy behavior).
    */
   onEditState?: () => void;
+  /**
+   * ASSESSMENT-PET-SUPPORT-AND-STEP-STRUCTURE-001.
+   *
+   * Whether the ANIMAL block is collected here. Step 2 is now bio/contact only
+   * for the default ESA flow, because the animal cards moved into Step 1 (one
+   * card per screen, with the per-animal support questions).
+   *
+   * Still TRUE for:
+   *   • the PSD flow, whose dog questions and eligibility gates are unchanged;
+   *   • the `?step1=v1` emergency rollback, whose long-form Step 1 has no pet
+   *     section — so pets are collected here exactly as they were before.
+   * Defaults to true so every existing call site keeps its old behaviour.
+   */
+  showPets?: boolean;
 }
 
 interface FieldProps {
@@ -95,10 +123,6 @@ const inputClass =
 const errorInputClass =
   "w-full px-4 py-2.5 text-sm border border-red-400 rounded-lg bg-white focus:outline-none focus:border-red-400 transition-colors text-gray-800";
 
-// ADMIN-ORDER-CUSTOMER-PET-EDITING-LIVE-001: exported so the admin
-// Edit Customer & Pets editor offers the SAME animal types the customer was
-// offered at intake. Exporting is the whole change — the list, its order and
-// its use in this file are untouched, and this stays the single source.
 export const PET_TYPES = ["Dog", "Cat", "Bird", "Rabbit", "Hamster", "Guinea Pig", "Other"];
 
 const emptyPet = (): PetInfo => ({ name: "", age: "", breed: "", type: "", weight: "" });
@@ -113,7 +137,7 @@ const validateAge = isOfAssessmentAge;
 
 
 
-export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode = "esa", onEditState }: Step2PersonalInfoProps) {
+export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode = "esa", onEditState, showPets = true }: Step2PersonalInfoProps) {
   const stateLocked = !!onEditState;
   const isPSD = mode === "psd";
   const [errors, setErrors] = useState<Record<string, boolean>>({});
@@ -213,12 +237,18 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
     }
     if (!data.state) errs.state = true;
 
-    data.pets.forEach((p, i) => {
-      if (!p.name) errs[`pet_${i}_name`] = true;
-      if (!p.age) errs[`pet_${i}_age`] = true;
-      if (!p.breed) errs[`pet_${i}_breed`] = true;
-      if (!isPSD && !p.type) errs[`pet_${i}_type`] = true;
-    });
+    // Animal validation belongs to whichever step actually collects it. In the
+    // default ESA flow that is Step 1, which will not release the customer to
+    // Step 2 until every card is complete — validating again here would block
+    // on fields this screen no longer shows.
+    if (showPets) {
+      data.pets.forEach((p, i) => {
+        if (!p.name) errs[`pet_${i}_name`] = true;
+        if (!p.age) errs[`pet_${i}_age`] = true;
+        if (!p.breed) errs[`pet_${i}_breed`] = true;
+        if (!isPSD && !p.type) errs[`pet_${i}_type`] = true;
+      });
+    }
 
     setErrors(errs);
     setErrorMessages(msgs);
@@ -410,7 +440,12 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
         <Hud2026UpdateBanner state={data.state} variant="compact" className="mb-5" />
       )}
 
-      {/* Pet Info */}
+      {/* Pet Info — collected HERE only for the PSD flow and the ?step1=v1
+          rollback. The default ESA flow collects each animal in Step 1, one
+          card per screen, together with that animal's support questions
+          (ASSESSMENT-PET-SUPPORT-AND-STEP-STRUCTURE-001), which is why Step 2
+          is bio/contact only. */}
+      {showPets && (
       <div className="bg-white rounded-xl border border-gray-100 p-6">
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between mb-5">
           <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
@@ -446,7 +481,7 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
           <div className="mb-5 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-2">
             <i className="ri-information-line text-amber-500 text-sm flex-shrink-0 mt-0.5"></i>
             <p className="text-xs text-amber-800">
-              <span className="font-bold">Have more than one ESA?</span> Make sure to click <span className="font-bold">&quot;Add Another Pet&quot;</span> above so all your animals are covered on the letter. Additional pets may be requested after submission. Additional charges and provider re-evaluation may apply. Approval is not automatic.
+              <span className="font-bold">Have more than one ESA?</span> Make sure to click <span className="font-bold">&quot;Add Another Pet&quot;</span> above so all your pets are covered on the letter. Additional pets may be requested after submission. Additional charges and provider re-evaluation may apply. Approval is not automatic.
             </p>
           </div>
         )}
@@ -564,6 +599,7 @@ export default function Step2PersonalInfo({ data, onChange, onNext, onBack, mode
           ))}
         </div>
       </div>
+      )}
 
       <div className="mt-6 sm:mt-8 flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3">
         <button

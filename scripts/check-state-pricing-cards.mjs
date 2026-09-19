@@ -162,9 +162,9 @@ async function main() {
   need(intro, ASSESSMENT_INTRO, /buildEsaPlanCards[\s\S]*buildPsdPlanCards/, "assessment intro must consume both canonical three-card builders");
   need(intro, ASSESSMENT_INTRO, /<button[\s\S]*onClick=\{onContinue\}/, "the whole pricing card must be clickable");
   forbid(stripComments(intro), ASSESSMENT_INTRO, /selectedPackage|setSelectedPackage|sessionStorage|localStorage|create-payment-intent|create-checkout-session|stripe/i, "presentation-only intro must not select, persist, or charge a package");
-  need(intro, ASSESSMENT_INTRO, /alignVisibleFeatures[\s\S]*slice\(0, targetCount\)/, "cards must expose an equal number of visible benefit rows");
+  need(intro, ASSESSMENT_INTRO, /targetCount\s*=\s*Math\.min\(5, standardFeatures\.length\)[\s\S]*slice\(0, targetCount\)/, "assessment intro must cap every card at five aligned benefit rows");
   need(intro, ASSESSMENT_INTRO, /sortFeaturesByCanonicalSequence[\s\S]*FEATURE_SEQUENCE/, "matching benefits must keep one canonical sequence across cards");
-  need(intro, ASSESSMENT_INTRO, /items-stretch[\s\S]*h-full[\s\S]*min-h-\[5rem\][\s\S]*min-h-\[8\.75rem\][\s\S]*pb-6[\s\S]*mt-2/, "card rows must align with breathing room above the CTA");
+  need(intro, ASSESSMENT_INTRO, /items-stretch[\s\S]*h-full[\s\S]*lg:min-h-16[\s\S]*lg:min-h-\[6\.5rem\][\s\S]*pb-5[\s\S]*mt-2/, "desktop card rows must stay aligned without the oversized pricing intro");
   for (const signal of ["HIPAA Secure", "Licensed Professionals", "24-Hour Delivery", "Money-Back Guarantee"]) {
     need(intro, ASSESSMENT_INTRO, new RegExp(signal), `missing assessment trust signal: ${signal}`);
   }

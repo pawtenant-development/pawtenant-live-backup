@@ -1,8 +1,8 @@
 // scripts/check-funnel-flow.mjs
 //
-// POST-OTP-DIRECT-CHECKOUT-001 — deterministic funnel-flow guard.
+// TEST-ASSESSMENT-DIRECT-CHECKOUT-NO-OTP-001 — deterministic funnel-flow guard.
 //
-// BLOCKING (exit 1) if the post-OTP → direct-checkout flow regresses. Static
+// BLOCKING (exit 1) if TEST assessment direct checkout or package-change access regresses. Static
 // source assertions over the real files (no runtime, no network). Mirrors the
 // task's 22-point guard; items 21–22 (pricing / route-status / prerender guards)
 // are enforced by their own existing check-*.mjs and run separately in the build.
@@ -50,26 +50,19 @@ async function readAll() {
 
 /** Slice out a `const <name> = (...) => { ... };` body for scoped assertions. */
 function fnBody(src, name) {
-  const m = (src ?? "").match(new RegExp(`const ${name} = \\([^)]*\\) => \\{([\\s\\S]*?)\\n  \\};`));
+  const m = (src ?? "").match(new RegExp(`const ${name} = (?:async\\s+)?\\([^)]*\\) => \\{([\\s\\S]*?)\\n  \\};`));
   return m ? m[1] : "";
 }
 
 // Each check: { id, run(files) -> problem string | null }. A null return = pass.
 const CHECKS = [
-  { id: "C0-assessment-otp-disabled", run: (f) => {
-      for (const key of ["esa", "psd"]) {
-        const src = f[key] ?? "";
-        if (!/const ASSESSMENT_OTP_ENABLED = false;/.test(src)) return `${key.toUpperCase()} assessment must disable the OTP gate`;
-        if (!/\{ASSESSMENT_OTP_ENABLED && (?:currentStep|step) === 3 && checkoutGate === "otp" && \(/.test(src)) return `${key.toUpperCase()} OTP UI must stay behind the disabled assessment-only gate`;
-        if (!/if \(!ASSESSMENT_OTP_ENABLED\) setCheckoutGate\("pay"\);/.test(src)) return `${key.toUpperCase()} personal-info completion must go directly to checkout`;
-      }
-      return null;
-    } },
-  { id: "C1-esa-otp-to-pay", run: (f) => /const target = directCheckout \? "pay" : postOtpGateRef\.current;/.test(f.esa ?? "") ? null : "ESA handleOtpVerified must route verified users to pay in the direct flow" },
-  { id: "C1-psd-otp-to-pay", run: (f) => /const target = directCheckout \? "pay" : postOtpGateRef\.current;/.test(f.psd ?? "") ? null : "PSD handleOtpVerified must route verified users to pay in the direct flow" },
+  { id: "C1-esa-no-otp", run: (f) => !/CustomerOtpStep|checkoutGate\s*===\s*["']otp["']|setCheckoutGate\(\s*["']otp["']\s*\)/.test(f.esa ?? "") ? null : "ESA assessment must not import, mount, or route to OTP on TEST" },
+  { id: "C1-psd-no-otp", run: (f) => !/CustomerOtpStep|checkoutGate\s*===\s*["']otp["']|setCheckoutGate\(\s*["']otp["']\s*\)/.test(f.psd ?? "") ? null : "PSD assessment must not import, mount, or route to OTP on TEST" },
   { id: "C2-flag-default-direct", run: (f) => /return "direct_checkout_v1";/.test(f.flag ?? "") ? null : "flowVersion default must be direct_checkout_v1" },
-  { id: "C3-esa-package-not-mandatory", run: (f) => /else setCheckoutGate\(directCheckout \? "pay" : "package"\);/.test(f.esa ?? "") ? null : "ESA already-verified advance must go to pay (not force the package screen) in the direct flow" },
-  { id: "C3-psd-package-not-mandatory", run: (f) => /else setCheckoutGate\(directCheckout \? "pay" : "package"\);/.test(f.psd ?? "") ? null : "PSD already-verified advance must go to pay (not force the package screen) in the direct flow" },
+  { id: "C3-esa-package-not-mandatory", run: (f) => /setCheckoutGate\("pay"\)/.test(fnBody(f.esa ?? "", "goNext")) ? null : "ESA Personal Details must continue directly to pay" },
+  { id: "C3-psd-package-not-mandatory", run: (f) => /setCheckoutGate\("pay"\)/.test(fnBody(f.psd ?? "", "handleStep2Next")) ? null : "PSD Personal Details must continue directly to pay" },
+  { id: "C3b-esa-lead-deadline", run: (f) => /"get-resume-order\/upsert-lead"[\s\S]{0,500}signal:\s*AbortSignal\.timeout\(8_000\)/.test(f.esa ?? "") ? null : "ESA Personal Details lead save must have an 8-second deadline" },
+  { id: "C3b-psd-lead-deadline", run: (f) => /"get-resume-order\/upsert-psd-lead"[\s\S]{0,500}signal:\s*AbortSignal\.timeout\(8_000\)/.test(f.psd ?? "") ? null : "PSD Personal Details lead save must have an 8-second deadline" },
   { id: "C4-esa-change-reachable", run: (f) => (/onChangePackage=\{\(\) => \{ trackPackageChangeOpened\(confirmationId\.current, "esa"\); setCheckoutGate\("package"\)/.test(f.esa ?? "") && /import PackageSelectionStep/.test(f.esa ?? "")) ? null : "ESA checkout must keep 'Change package' → setCheckoutGate('package') and still import PackageSelectionStep" },
   { id: "C4-psd-change-reachable", run: (f) => (/onChangePackage=\{\(\) => \{ trackPackageChangeOpened\(confirmationId, "psd"\); setCheckoutGate\("package"\)/.test(f.psd ?? "") && /import PackageSelectionStep|PackageSelectionStep/.test(f.psd ?? "")) ? null : "PSD checkout must keep 'Change package' → setCheckoutGate('package') and still render PackageSelectionStep" },
   { id: "C5-esa-standard-default", run: (f) => /get\("package"\) === "esa_ra_bundle"[\s\S]{0,60}"esa_standard"/.test(f.esa ?? "") ? null : "ESA default package must be esa_standard (RA only via explicit ?package)" },
@@ -82,7 +75,7 @@ const CHECKS = [
   { id: "C10-psd-resume-restores-plan", run: (f) => (/setResumedPlan\("subscription"\)/.test(f.psd ?? "") && /initialPlan \?\? "onetime"/.test(f.psdCheckout ?? "")) ? null : "PSD resume must restore billing_plan (resumedPlan → PSDStep3Checkout initialPlan)" },
   { id: "C12-esa-no-order-create-in-checkout", run: (f) => /status:\s*["']lead["']/.test(f.esaCheckout ?? "") ? "ESA checkout component must NOT create a lead/order row" : null },
   { id: "C12-psd-no-order-create-in-checkout", run: (f) => /status:\s*["']lead["']/.test(f.psdCheckout ?? "") ? "PSD checkout component must NOT create a lead/order row" : null },
-  { id: "C13-esa-reuse-pi", run: (f) => /!stripeClientSecret/.test(fnBody(f.esa ?? "", "handleOtpVerified")) ? null : "ESA handleOtpVerified must reuse the existing PaymentIntent (guard on !stripeClientSecret)" },
+  { id: "C13-esa-single-pi", run: (f) => ((fnBody(f.esa ?? "", "goNext").match(/fetchClientSecret\(/g) || []).length === 1) ? null : "ESA Personal Details must mint at most one PaymentIntent before checkout" },
   { id: "C14-esa-change-reprices", run: (f) => /fetchClientSecret\(/.test(fnBody(f.esa ?? "", "handlePackageChange")) ? null : "ESA handlePackageChange must re-price via fetchClientSecret (server re-derivation)" },
   { id: "C15-esa-stale-secret-remount", run: (f) => /key=\{stripeClientSecret/.test(f.esaCheckout ?? "") ? null : "ESA checkout must remount <Elements key={stripeClientSecret}> so a stale secret can't be confirmed" },
   { id: "C18b-esa-checkout-viewed", run: (f) => /trackCheckoutViewed\(confirmationId, \{ funnel_type: "esa", flow_version: flowVersionProp\(\) \}\)/.test(f.esaCheckout ?? "") ? null : "ESA checkout_viewed must fire on render with flow_version (checkout_viewed repair)" },
@@ -116,14 +109,15 @@ function runChecks(files) {
 
 // ── Negative controls: (mutator, expected check id that must trip) ──────────────
 const CONTROLS = [
-  ["0: assessment OTP is re-enabled", (f) => ({ ...f, esa: f.esa.replace("const ASSESSMENT_OTP_ENABLED = false;", "const ASSESSMENT_OTP_ENABLED = true;") }), "C0-assessment-otp-disabled"],
-  ["A: OTP routes to package not pay", (f) => ({ ...f, esa: f.esa.replace('const target = directCheckout ? "pay" : postOtpGateRef.current;', 'const target = directCheckout ? "package" : postOtpGateRef.current;') }), "C1-esa-otp-to-pay"],
+  ["A: OTP is reinserted into the ESA assessment", (f) => ({ ...f, esa: `<CustomerOtpStep />\n${f.esa}` }), "C1-esa-no-otp"],
+  ["A2: ESA lead wait loses its deadline", (f) => ({ ...f, esa: f.esa.replace("signal: AbortSignal.timeout(8_000),", "") }), "C3b-esa-lead-deadline"],
+  ["A3: PSD lead wait loses its deadline", (f) => ({ ...f, psd: f.psd.replace("signal: AbortSignal.timeout(8_000),", "") }), "C3b-psd-lead-deadline"],
   ["B: package unreachable from Change", (f) => ({ ...f, esa: f.esa.replace('trackPackageChangeOpened(confirmationId.current, "esa"); setCheckoutGate("package")', 'trackPackageChangeOpened(confirmationId.current, "esa")') }), "C4-esa-change-reachable"],
   ["C: RA becomes the default", (f) => ({ ...f, esa: f.esa.replace(': "esa_standard";', ': "esa_ra_bundle";') }), "C7-esa-ra-not-autoselected"],
   ["D: annual resets to one-time on package change", (f) => ({ ...f, esa: f.esa.replace("const handlePackageChange = (pkg: string) => {", "const handlePackageChange = (pkg: string) => {\n    setStep3((s) => ({ ...s, plan: \"one-time\" }));") }), "C9-esa-plan-survives-change"],
   ["E: resume loses billing plan", (f) => ({ ...f, esa: f.esa.replace('if (savedBillingPlan === "annual") setStep3((s) => ({ ...s, plan: "subscription" }));', "") }), "C10-esa-resume-restores-plan"],
   ["F: new order created on checkout entry", (f) => ({ ...f, esaCheckout: f.esaCheckout.replace("export default function Step3Checkout", 'const __x = { status: "lead" };\nexport default function Step3Checkout') }), "C12-esa-no-order-create-in-checkout"],
-  ["G: duplicate identical PI minted", (f) => ({ ...f, esa: f.esa.replace("if (target === \"pay\" && !stripeClientSecret) {", "if (target === \"pay\") {") }), "C13-esa-reuse-pi"],
+  ["G: duplicate identical PI minted", (f) => ({ ...f, esa: f.esa.replace("fetchClientSecret(step2, confirmationId.current);", "fetchClientSecret(step2, confirmationId.current);\n      fetchClientSecret(step2, confirmationId.current);") }), "C13-esa-single-pi"],
   ["H: client plan trusted (stale-closure leak)", (f) => ({ ...f, esa: f.esa.replace(/plan: "one-time",(\s*\n\s*packageKey: pkg,)/, "plan: step3.plan,$1") }), "CH-esa-no-plan-leak"],
   ["I: attribution/session reset", (f) => ({ ...f, esa: f.esa.replace(/getSessionId/g, "getNewSession") }), "C16-esa-attribution-preserved"],
   ["J: analytics event carries OTP code", (f) => ({ ...f, otp: f.otp.replace("trackOtpVerified(confirmationId, letterType,", "trackOtpVerified(confirmationId, letterType, { code: fullCode },") }), "C18-no-otp-code-in-events"],
@@ -165,7 +159,7 @@ async function main() {
 
   const problems = runChecks(files);
   if (problems.length === 0) {
-    console.log(`${TAG} OK — post-OTP direct-checkout flow verified: OTP→pay (ESA+PSD), Assurance/Package not auto-shown, package reachable via Change, Standard default, RA not auto-selected, plan preserved (resume + change), PI reused, no order created at checkout, stale secret remounts, attribution intact, all funnel events present, no OTP code in analytics, ESA/PSD separated, portal add-on pricing untouched.`);
+    console.log(`${TAG} OK — TEST direct-checkout flow verified: no assessment OTP (ESA+PSD), Assurance/Package not auto-shown, package reachable via Change, Standard default, RA not auto-selected, plan preserved (resume + change), PI reused, no order created at checkout, stale secret remounts, attribution intact, all funnel events present, no OTP code in analytics, ESA/PSD separated, portal add-on pricing untouched.`);
     return;
   }
   console.error(`${TAG} FAIL — ${problems.length} problem(s):`);

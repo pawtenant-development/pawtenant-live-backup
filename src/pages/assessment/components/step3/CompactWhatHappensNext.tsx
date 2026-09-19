@@ -30,10 +30,9 @@ const STEPS = [
 export default function CompactWhatHappensNext() {
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.03),0_8px_28px_-14px_rgba(15,23,42,0.12)] overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2.5">
+      <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2.5">
         <div
-          className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0"
-          style={{ backgroundColor: BRAND_GREEN_SOFT }}
+          className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0 bg-white ring-1 ring-slate-200"
         >
           <i className="ri-route-line text-sm" style={{ color: BRAND_GREEN }}></i>
         </div>

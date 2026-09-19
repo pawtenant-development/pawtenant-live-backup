@@ -213,12 +213,15 @@ function checkCallers({ step, esa, psd }) {
   const resets = (s.match(/setVerifying\(false\)/g) || []).length;
   ok(resets >= 3, `verify exits the Verifying state on every path (${resets} resets, need >= 3)`);
 
+  // Assessment checkout deliberately bypasses OTP. The reusable component and
+  // hardened backend remain guarded for customer-authentication surfaces, but
+  // neither assessment may import or mount it.
   for (const [name, src] of [["ESA", esa], ["PSD", psd]]) {
     const c = codeOnly(src);
-    const mounts = /<CustomerOtpStep[\s\S]{0,400}?\/>/.exec(c);
-    ok(!!mounts, `${name} assessment mounts CustomerOtpStep`);
-    ok(!!mounts && /phone=\{/.test(mounts[0]),
-      `${name} assessment still passes phone (best-effort SMS stays wired)`);
+    ok(!/\bCustomerOtpStep\b/.test(c),
+      `${name} assessment does not import or mount the OTP step`);
+    ok(!/checkoutGate\s*===\s*["']otp["']|setCheckoutGate\(\s*["']otp["']\s*\)/.test(c),
+      `${name} assessment has no reachable OTP checkout gate`);
   }
 }
 
@@ -259,8 +262,8 @@ if (argv.includes("--self-test")) {
       .replace(/channels === null \?/, "false ?")
       .replace(/r\.message \?\? /, "")
       .replace(/setVerifying\(false\);\s*\n\s*setCode\(""\);\s*\n\s*setError\("Could not verify right now\. Please try again\."\);/, 'setError("Could not verify right now.");'),
-    esa: read(ESA).replace(/phone=\{[^}]*\}/, ""),
-    psd: read(PSD).replace(/phone=\{[^}]*\}/, ""),
+    esa: `<CustomerOtpStep />\n${read(ESA)}`,
+    psd: `<CustomerOtpStep />\n${read(PSD)}`,
   });
 
   const tripped = failures - before;
@@ -282,7 +285,7 @@ console.log("\nSend handler (insert-before-delete, precise deletions, no OTP lea
 checkFunction(read(FN));
 console.log("\nVerify handler (attempt limit, expiry, single use):");
 checkVerify(read(VERIFY));
-console.log("\nCallers (channel-truthful UI, phone stays wired, Verifying always exits):");
+console.log("\nReusable UI plus assessment exclusion (channel truth, no funnel OTP, Verifying always exits):");
 checkCallers({ step: read(STEP), esa: read(ESA), psd: read(PSD) });
 
 console.log("");
@@ -291,4 +294,4 @@ if (failures > 0) {
   console.error(`❌ ${failures} check(s) failed.`);
   process.exit(1);
 }
-console.log("✅ OTP is email-primary: a code survives when either channel delivers, dies only when both fail, and the UI never overclaims.");
+console.log("✅ OTP is email-primary: a code survives when either channel delivers, dies only when both fail, the reusable UI never overclaims, and assessments do not mount OTP.");

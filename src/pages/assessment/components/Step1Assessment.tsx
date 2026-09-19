@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CheckboxGroup, QuestionCard, RadioGroup } from "./step1/primitives";
 import QuestionRouter from "./step1/QuestionRouter";
+import type { PetInfo } from "./Step2PersonalInfo";
 import CrisisSupportPanel from "../../../components/feature/CrisisSupportPanel";
 
 export interface Step1Data {
@@ -13,6 +14,14 @@ export interface Step1Data {
   lifeChangeStress: string;
   challengeDuration: string;
   dailyImpact: string;
+  // ── ASSESSMENT-FUNCTIONAL-IMPACT-DETAIL-002 ─────────────────────────────
+  // Companion to dailyImpact, collected on the SAME screen: WHAT becomes
+  // harder when symptoms interfere. Required (>= 1) alongside the frequency
+  // answer. Orders saved before this task have neither field and must still
+  // load — every reader defaults to empty.
+  functionalImpactAreas: string[];
+  /** ALWAYS optional short example. Never blocks progression or checkout. */
+  functionalImpactNote?: string;
   sleepQuality: string;
   socialFunctioning: string;
   medication: string;
@@ -27,6 +36,18 @@ export interface Step1Data {
   // the existing assessment_answers JSON via {...step1}. Never required, never
   // blocks the flow, no PSD upsell. Replaces the old Step2 button field.
   trainedTaskDescription?: string;
+  // ── ASSESSMENT-PET-SUPPORT-AND-STEP-STRUCTURE-001 (additive) ─────────────
+  // The pet section now runs inside Step 1, immediately after the clinical
+  // questions. These three fields belong to that section and are spread into
+  // orders.assessment_answers with the rest of Step 1. All optional: an order
+  // saved before this task carries none of them and must still load.
+  /** Set when the customer passes the "how many animals" screen. It is a
+   *  CONFIRMATION, not a second copy of the count — the count is pets.length. */
+  petCountConfirmed?: boolean;
+  /** 2+ animals only: do the animals support the customer differently. */
+  petsDifferentiation?: string;
+  /** 2+ animals only, ALWAYS optional: what support would be lost. */
+  petsDifferentiationNote?: string;
   // Legacy fields kept for backward compat with old orders (no longer collected)
   hasESA?: string;
   petSupport?: string[];
@@ -36,6 +57,16 @@ export interface Step1Data {
 interface Step1AssessmentProps {
   data: Step1Data;
   onChange: (data: Step1Data) => void;
+  /**
+   * ASSESSMENT-PET-SUPPORT-AND-STEP-STRUCTURE-001 — the animal list, still
+   * owned by page.tsx as `step2.pets`. Only the SCREEN it is collected on
+   * moved; the stored shape, the order payload and the checkout pet count are
+   * unchanged. Used by the v2 router only — the legacy v1 long form keeps
+   * collecting pets in Step 2, which is what makes ?step1=v1 a complete
+   * rollback rather than a half one.
+   */
+  pets?: PetInfo[];
+  onPetsChange?: (pets: PetInfo[]) => void;
   onNext: () => void;
   /**
    * When true (via `?step1=v2` URL flag on /assessment), render the
@@ -44,6 +75,14 @@ interface Step1AssessmentProps {
    * preserved below — flipping the flag is the kill-switch.
    */
   useStep1V2?: boolean;
+  /**
+   * ASSESSMENT-PROGRESS-CONSISTENCY-001 — canonical current question index
+   * (0-based), owned by page.tsx and threaded to the v2 router so the page
+   * header and the in-flow counter can never disagree. Unused by the legacy
+   * v1 long-form render, which shows every question at once.
+   */
+  currentIndex?: number;
+  onIndexChange?: (index: number) => void;
 }
 
 const CONDITIONS = [
@@ -76,7 +115,16 @@ const FREQUENCY_OPTIONS = [
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function Step1Assessment({ data, onChange, onNext, useStep1V2 = false }: Step1AssessmentProps) {
+export default function Step1Assessment({
+  data,
+  onChange,
+  pets,
+  onPetsChange,
+  onNext,
+  useStep1V2 = false,
+  currentIndex = 0,
+  onIndexChange,
+}: Step1AssessmentProps) {
   // Hooks must run on every render regardless of branch (Rules of Hooks).
   // The v2 short-circuit below ignores this state and renders QuestionRouter.
   const [errors, setErrors] = useState<string[]>([]);
@@ -85,7 +133,17 @@ export default function Step1Assessment({ data, onChange, onNext, useStep1V2 = f
   // Renders the one-question-at-a-time flow. The legacy long-form render
   // below is preserved verbatim as the fallback and is the kill-switch.
   if (useStep1V2) {
-    return <QuestionRouter data={data} onChange={onChange} onNext={onNext} />;
+    return (
+      <QuestionRouter
+        data={data}
+        onChange={onChange}
+        pets={pets ?? []}
+        onPetsChange={onPetsChange ?? (() => {})}
+        onNext={onNext}
+        currentIndex={currentIndex}
+        onIndexChange={onIndexChange ?? (() => {})}
+      />
+    );
   }
 
   const update = (field: keyof Step1Data, val: string | string[]) => {
