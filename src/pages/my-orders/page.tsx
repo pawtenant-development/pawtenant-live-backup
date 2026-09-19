@@ -248,8 +248,11 @@ function OrderCard({
   // inline on the My Documents letter row.
   const showVerify = delivered && !!order.letter_id;
 
-  // ── Main column, TOP: booking → progress → overview → provider → letter →
-  //    Housing Accommodation workflow. (Documents come right after this on mobile.) ──
+  // ── Main column, TOP: booking → mobile documents → progress → overview →
+  //    provider → letter → Housing Accommodation workflow. The customer came
+  //    here primarily to open/download documents, so mobile must not bury the
+  //    document card beneath every operational panel. Desktop keeps Documents
+  //    at the top of its dedicated right-hand column.
   const mainTop = (
     <>
       {isLead && (
@@ -260,6 +263,10 @@ function OrderCard({
           }
         />
       )}
+
+      <div data-portal-mobile-documents className="lg:hidden">
+        <MyDocumentsCard order={order} />
+      </div>
 
       <OrderLifecycle order={order} />
 
@@ -454,7 +461,9 @@ function OrderCard({
   // ── Right column: My Documents → Verification → Need Help ──
   const rightCol = (
     <>
-      <MyDocumentsCard order={order} />
+      <div data-portal-desktop-documents className="hidden lg:block">
+        <MyDocumentsCard order={order} />
+      </div>
 
       {showVerify && (
         <CustomerPortalSection title="Verification" icon="ri-shield-check-line" tone="blue">

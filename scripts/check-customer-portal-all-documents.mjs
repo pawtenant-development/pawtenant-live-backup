@@ -440,12 +440,38 @@ async function runChecks() {
       "providerLabel() must key 'Unassigned' off the assignment fields");
   }
 
+  // ── S5 — documents stay first-class on mobile without duplicating the
+  // visible card on desktop. At sub-lg widths the mobile mount must precede
+  // lifecycle/status content; at lg+ only the right-column mount is visible.
+  {
+    const src = read(FILES.portalPage);
+    const mobile = src.indexOf('data-portal-mobile-documents className="lg:hidden"');
+    const lifecycle = src.indexOf("<OrderLifecycle order={order} />");
+    const desktop = src.indexOf('data-portal-desktop-documents className="hidden lg:block"');
+    add("S5 mobile documents render before lifecycle and operational panels",
+      mobile >= 0 && lifecycle >= 0 && mobile < lifecycle,
+      "the lg:hidden My Documents mount must appear before OrderLifecycle");
+    add("S5 desktop keeps one top-right documents mount",
+      desktop >= 0,
+      "the desktop My Documents mount must remain hidden below lg and visible in the side column");
+    add("S5 exactly two responsive document mounts exist",
+      (src.match(/<MyDocumentsCard order=\{order\} \/>/g) || []).length === 2,
+      "expected one mobile mount and one mutually exclusive desktop mount");
+  }
+
   return results;
 }
 
 // ── Negative controls ───────────────────────────────────────────────────────
 // Each plants ONE real defect and names the check that must go red.
 const PLANTS = [
+  {
+    name: "bury mobile documents below the lifecycle again",
+    file: "portalPage",
+    find: 'data-portal-mobile-documents className="lg:hidden"',
+    replace: 'data-portal-mobile-documents className="hidden"',
+    expect: "S5 mobile documents render before lifecycle and operational panels",
+  },
   {
     name: "group documents by doc_type alone (render one card per type)",
     file: "resolver",
