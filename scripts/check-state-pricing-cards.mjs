@@ -164,6 +164,7 @@ async function main() {
   forbid(stripComments(intro), ASSESSMENT_INTRO, /selectedPackage|setSelectedPackage|sessionStorage|localStorage|create-payment-intent|create-checkout-session|stripe/i, "presentation-only intro must not select, persist, or charge a package");
   need(intro, ASSESSMENT_INTRO, /targetCount\s*=\s*Math\.min\(6, standardFeatures\.length\)[\s\S]*slice\(0, targetCount\)/, "assessment intro must cap every card at six concise benefit rows");
   need(intro, ASSESSMENT_INTRO, /resourceBenefit[\s\S]*Pet Care Planner\|PSD Training Workbook[\s\S]*visibleFeatures\[visibleFeatures\.length - 1\]\s*=\s*resourceBenefit/, "every compact card must preserve its included planner or workbook benefit");
+  need(intro, ASSESSMENT_INTRO, /directFeatureRanks[\s\S]*!directFeatureRanks\.has\(rank\)/, "supplemental rows must not introduce a conflicting duplicate benefit category");
   need(intro, ASSESSMENT_INTRO, /sortFeaturesByCanonicalSequence[\s\S]*FEATURE_SEQUENCE/, "matching benefits must keep one canonical sequence across cards");
   need(intro, ASSESSMENT_INTRO, /items-stretch[\s\S]*lg:h-full[\s\S]*lg:min-h-16[\s\S]*lg:min-h-\[6\.5rem\][\s\S]*lg:flex-1/, "desktop card rows must stay aligned while mobile cards remain content-height");
   forbid(intro, ASSESSMENT_INTRO, /min-h-\[5rem\]|min-h-\[8\.75rem\]|className={`group relative flex h-full/, "mobile pricing cards must not reserve oversized blank rows");

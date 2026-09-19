@@ -56,8 +56,16 @@ function alignVisibleFeatures(cards: PlanCard[]): PlanCard[] {
     const directFeatures = card.features.filter(
       (feature) => !/^Everything in the .+ plan$/i.test(feature),
     );
+    const directFeatureRanks = new Set(
+      directFeatures.map((feature) =>
+        FEATURE_SEQUENCE.findIndex((pattern) => pattern.test(feature)),
+      ),
+    );
     const supplementalFeatures = standardFeatures.filter(
-      (feature) => !directFeatures.includes(feature),
+      (feature) => {
+        const rank = FEATURE_SEQUENCE.findIndex((pattern) => pattern.test(feature));
+        return !directFeatures.includes(feature) && (rank < 0 || !directFeatureRanks.has(rank));
+      },
     );
 
     const resourceBenefit = [...directFeatures, ...standardFeatures].find(
