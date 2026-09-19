@@ -54,8 +54,12 @@ const CANONICAL_HOST = "pawtenant.com";
 const CANONICAL_ORIGIN = `https://${CANONICAL_HOST}`;
 
 // Routes the router explicitly documents as noindex / not-in-sitemap.
+// PAWTENANT-ESA-HOUSING-CRO-RAW-HTML-LEGAL-001 (owner, 2026-09-17): the paid
+// housing landing page /esa-letter-housing is NO LONGER on this list. It is now
+// prerendered, self-canonical, index,follow and listed exactly once in the
+// sitemap. /meta-esa-letter and /consultation-request stay deliberately
+// excluded, and the negative control below now plants /meta-esa-letter.
 const MUST_NOT_BE_IN_SITEMAP = [
-  "/esa-letter-housing",
   "/meta-esa-letter",
   "/consultation-request",
 ];
@@ -225,11 +229,11 @@ async function selfTest() {
       expect: /DUPLICATE in sitemap \(2x\): .*\/blog\/state\/oregon/,
     },
     {
-      name: "non-indexable route added (/esa-letter-housing is noindex)",
+      name: "non-indexable route added (/meta-esa-letter is noindex)",
       sitemap: sitemap.replace(
         oregonLine,
         oregonLine +
-          `\n  <url><loc>${CANONICAL_ORIGIN}/esa-letter-housing</loc><priority>0.8</priority></url>`,
+          `\n  <url><loc>${CANONICAL_ORIGIN}/meta-esa-letter</loc><priority>0.8</priority></url>`,
       ),
       map,
       expect: /noindex route listed in sitemap/,

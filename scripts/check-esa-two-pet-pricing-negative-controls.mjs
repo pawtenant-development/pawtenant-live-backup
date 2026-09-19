@@ -29,7 +29,7 @@ const SERVER = "supabase/functions/_shared/pricingMatrix.ts";
 const CPI = "supabase/functions/create-payment-intent/index.ts";
 const PQ = "supabase/functions/_shared/priceQuote.ts";
 const MIGRATION = "supabase/migrations/20260819120000_esa_two_pet_pricing_quote_pet_count.sql";
-const LP = "src/pages/lp-esa-housing/page.tsx";
+const COST = "src/pages/esa-letter-cost/page.tsx";
 
 /** Run the guard. Returns true when it FAILED (which is what a control wants). */
 function guardFails() {
@@ -93,10 +93,18 @@ const CONTROLS = [
     ],
   },
   {
+    // PAWTENANT-ESA-HOUSING-CRO-RAW-HTML-LEGAL-001 (2026-09-17): this control
+    // used to plant into src/pages/lp-esa-housing/page.tsx. That page no longer
+    // writes ANY dollar amount into its source — every figure is derived from
+    // src/config/pricing.ts at render time — so there is no longer a literal
+    // "$149" sentence there to make stale, and a plant against it would be a
+    // no-op that silently proved nothing. The control moved to the ESA cost
+    // page, which still carries literal ESA copy and is in the same
+    // ESA_COPY_FILES list the guard scans.
     name: "7. leave a stale customer-facing '2-3 pets for $149' claim",
     edits: [
-      [LP, "3 pets covered at a <span className=\"text-slate-900 font-medium\">fixed $149 total</span>",
-        "2 or 3 pets covered at a <span className=\"text-slate-900 font-medium\">fixed $149 total</span>"],
+      [COST, '"Covers up to 2 pets · 3 pets $149 one-time / $135 per year"',
+        '"Covers up to 2 pets · 2 or 3 pets $149 one-time / $135 per year"'],
     ],
   },
   {

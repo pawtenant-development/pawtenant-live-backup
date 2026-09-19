@@ -1,6 +1,8 @@
 // PaymentTrustStrip — a small, accessible payment-method + guarantee strip shown
 // directly below the public pricing cards (CLOSEOUT-005 Phase F4; logos added in
-// STATE-PAGE-PRICING-HOMEPAGE-PARITY-TRUST-STRIP-001).
+// STATE-PAGE-PRICING-HOMEPAGE-PARITY-TRUST-STRIP-001; guarantee linked to the
+// qualification-based terms in ESA-PSD-PRICING-TRUST-LAYOUT-TEST-002).
+import { Link } from "react-router-dom";
 //
 // Card brands render as recognizable, self-contained inline-SVG brand marks
 // (no remote/CDN images, no emoji, no plain-text chips): the Mastercard
@@ -48,7 +50,6 @@ function CardLogos() {
     </ul>
   );
 }
-
 export default function PaymentTrustStrip({ className = "" }: { className?: string }) {
   return (
     <div
@@ -63,10 +64,16 @@ export default function PaymentTrustStrip({ className = "" }: { className?: stri
           <i className="ri-lock-2-line text-emerald-600" aria-hidden="true"></i>
           Secure Checkout
         </span>
-        <span className="inline-flex items-center gap-1.5">
+        {/* The guarantee is qualification-based (refund if a provider does not
+            approve after review), so the item links to the terms page rather
+            than standing as an unconditional claim. */}
+        <Link
+          to="/no-risk-guarantee"
+          className="inline-flex items-center gap-1.5 underline decoration-dotted underline-offset-2 hover:text-gray-700"
+        >
           <i className="ri-refund-2-line text-emerald-600" aria-hidden="true"></i>
           100% Money-Back Guarantee
-        </span>
+        </Link>
       </div>
     </div>
   );

@@ -11,9 +11,9 @@
 //      server-rendered body content, not the ~31.7KB empty app shell.
 //   2. CANONICAL — each is self-referencing and non-www.
 //   3. ROBOTS — each is index,follow in the RAW html.
-//   4. SITEMAP — the four are present; utility/paid-only/unpublished URLs
-//      (/customer-login, /esa-letter-housing, /doctors/michelle-lafferty) and
-//      the non-canonical /esa-letter-cost/ slash form are absent.
+//   4. SITEMAP — the four repaired routes and the now-indexable housing page
+//      are present; utility/unpublished URLs and the non-canonical
+//      /esa-letter-cost/ slash form are absent.
 //   5. REDIRECTS — /esa-letter-cost/ 301s to the slash-free canonical form and
 //      that destination is not itself a redirect source (no chain, no loop).
 //   6. UTILITY NOINDEX — /customer-login carries an X-Robots-Tag noindex header
@@ -69,7 +69,6 @@ const EMPTY_ROOT = /<div id="root">\s*<\/div>/;
 
 const MUST_BE_ABSENT_FROM_SITEMAP = [
   "https://pawtenant.com/customer-login",
-  "https://pawtenant.com/esa-letter-housing",
   "https://pawtenant.com/doctors/michelle-lafferty",
   "https://pawtenant.com/esa-letter-cost/",
 ];
@@ -162,6 +161,8 @@ async function main() {
   for (const r of REPAIRED) {
     check(`${r.path} present in sitemap`, sitemap.includes(`<loc>https://pawtenant.com${r.path}</loc>`));
   }
+  check("/esa-letter-housing present in sitemap",
+    sitemap.includes("<loc>https://pawtenant.com/esa-letter-housing</loc>"));
   for (const loc of MUST_BE_ABSENT_FROM_SITEMAP) {
     check(`${loc} absent from sitemap`, !sitemap.includes(`<loc>${loc}</loc>`));
   }

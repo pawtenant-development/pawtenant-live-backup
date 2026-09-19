@@ -311,7 +311,13 @@ async function run() {
   }
 
   // ── 15 (cont.) · every surface names only its own family's resource ───────
-  const esaSurfaces = [["EsaPricingMini", F.mini], ["/esa-letter-cost", F.cost], ["/esa-letter-for-apartments", F.apartments], ["/how-to-get-esa-letter", F.howEsa], ["homepage", F.home]];
+  // PAWTENANT-ESA-HOUSING-CRO-RAW-HTML-LEGAL-001 (owner, 2026-09-17): the ESA
+  // housing LP was rebuilt as a single-product housing page and no longer
+  // carries a side-by-side ESA + PSD pricing pair, so the two-card block that
+  // used to sit below has gone. The LP joins esaSurfaces instead, which is the
+  // assertion that actually mattered: an ESA surface must never advertise the
+  // PSD workbook or mount the PSD marketing section.
+  const esaSurfaces = [["EsaPricingMini", F.mini], ["/esa-letter-cost", F.cost], ["/esa-letter-for-apartments", F.apartments], ["/how-to-get-esa-letter", F.howEsa], ["homepage", F.home], ["/esa-letter-housing", F.lp]];
   const psdSurfaces = [["PsdPricingMini", F.psdMini], ["/psd-letter-cost", F.psdCost], ["/how-to-get-psd-letter", F.psdHow], ["state PSD template", F.psdState]];
   for (const [label, p] of esaSurfaces) {
     if (!existsSync(p)) continue;
@@ -326,16 +332,11 @@ async function run() {
   }
   ok(/Free PSD Training Workbook/.test(noComments(read(F.psdMini))), "PsdPricingMini no longer lists the PSD workbook");
   ok(/PSD_PLANNER_BENEFIT_LINE/.test(noComments(read(F.psdCost))) && /PSD_PLANNER_INCLUDED_LINE/.test(noComments(read(F.psdCost))), "/psd-letter-cost no longer lists the PSD workbook in its package and inclusion lists");
-  // The housing LP carries BOTH cards: each names only its own resource.
-  const psdCardStart = lpNc.indexOf("PSD Letter — one-time");
-  const psdCardEnd = lpNc.indexOf("</Link>", psdCardStart);
-  ok(psdCardStart > 0 && psdCardEnd > psdCardStart, "could not locate the PSD card on the ESA housing LP");
-  const psdCard = lpNc.slice(psdCardStart, psdCardEnd);
-  ok(/PSD_PLANNER_BENEFIT_SHORT/.test(psdCard) && /PSD_WORKBOOK_PREVIEW_HREF/.test(psdCard) && !/ESA_PLANNER_BENEFIT_SHORT|Pet Care Planner/.test(psdCard), "the ESA housing LP's PSD card no longer lists ONLY the PSD workbook");
-  const esaCardStart = lpNc.indexOf("<PriceFeat>Reviewed by a Licensed Mental Health Practitioner in your state");
-  ok(esaCardStart > 0 && esaCardStart < psdCardStart, "could not locate the ESA card on the ESA housing LP");
-  const esaCard = lpNc.slice(esaCardStart, psdCardStart);
-  ok(/ESA_PLANNER_BENEFIT_SHORT/.test(esaCard) && /<Link to=\{PLANNER_PREVIEW_HREF\}/.test(esaCard) && !/PSD_PLANNER_BENEFIT_SHORT/.test(esaCard), "the ESA housing LP's ESA card no longer lists ONLY the free planner with its preview link");
+  // The housing LP must never name the OTHER family's resource anywhere in the
+  // page, in any casing — the esaSurfaces loop above covers the workbook by
+  // name, and this covers the shared constants a future edit might import.
+  ok(!/PSD_PLANNER_BENEFIT|PSD_PLANNER_INCLUDED|PSD_WORKBOOK_PREVIEW_HREF|PSD_WORKBOOK_NAME/.test(lpNc),
+    "the ESA housing LP imports a PSD workbook constant — an ESA surface names only the Pet Care Planner");
 
   // ── 16 (cont.) · Stripe / charge paths untouched by planner modules ───────
   for (const [label, p] of [["create-payment-intent", F.cpi], ["create-checkout-session", F.ccs], ["_shared/pricingMatrix", F.matrix], ["config/pricing", F.pricing]]) {

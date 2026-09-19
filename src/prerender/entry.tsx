@@ -113,6 +113,7 @@ import Pg_esa_laws from "@/pages/esa-laws/page";
 import Pg_esa_letter_cost from "@/pages/esa-letter-cost/page";
 import Pg_esa_letter_for_apartments from "@/pages/esa-letter-for-apartments/page";
 import Pg_esa_letter_for_landlord from "@/pages/esa-letter-for-landlord/page";
+import Pg_esa_letter_housing from "@/pages/lp-esa-housing/page";
 import Pg_esa_letter_verification_id from "@/pages/esa-letter-verification-id/page";
 import Pg_esa_letter_verification from "@/pages/esa-letter-verification/page";
 import Pg_esa_letter_vs_pet_policy from "@/pages/esa-letter-vs-pet-policy/page";
@@ -221,6 +222,7 @@ const ROUTE_ELEMENTS: { path: string; element: React.ReactNode; source: string }
   { path: "/esa-letter-cost", element: <Pg_esa_letter_cost />, source: "src/pages/esa-letter-cost/page.tsx" },
   { path: "/esa-letter-for-apartments", element: <Pg_esa_letter_for_apartments />, source: "src/pages/esa-letter-for-apartments/page.tsx" },
   { path: "/esa-letter-for-landlord", element: <Pg_esa_letter_for_landlord />, source: "src/pages/esa-letter-for-landlord/page.tsx" },
+  { path: "/esa-letter-housing", element: <Pg_esa_letter_housing />, source: "src/pages/lp-esa-housing/page.tsx" },
   { path: "/esa-letter-verification", element: <Pg_esa_letter_verification />, source: "src/pages/esa-letter-verification/page.tsx" },
   { path: "/esa-letter-verification-id", element: <Pg_esa_letter_verification_id />, source: "src/pages/esa-letter-verification-id/page.tsx" },
   { path: "/esa-letter-vs-pet-policy", element: <Pg_esa_letter_vs_pet_policy />, source: "src/pages/esa-letter-vs-pet-policy/page.tsx" },

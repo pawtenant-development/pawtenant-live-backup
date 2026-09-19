@@ -9,7 +9,7 @@
 // canonical pricing reuse, the complete three-variable calculator, verification
 // presence, sample-letter readability, landlord-page differentiation, centered
 // heroes, navigation, the homepage AI assistant, the unsupported-claim bans,
-// the /esa-letter-housing noindex policy, and the deferral of site search.
+// the /esa-letter-housing indexability contract, and the deferral of site search.
 //
 // Exit 1 on any failure. `--self-test` runs planted negative controls proving
 // each family of checks actually catches a violation.
@@ -246,15 +246,16 @@ async function main(selfTest) {
   check("RA is not claimed as automatically included",
     /not\s*<\/strong>?\s*automatically included|not automatically included/i.test(srcs[VERIFY]));
 
-  // ── 10) /esa-letter-housing noindex policy is untouched ────────────────────
+  // ── 10) /esa-letter-housing is a real indexable landing page ────────────────
   const sitemapXml = await rd("public/sitemap.xml");
-  check("/esa-letter-housing NOT in sitemap",
-    !/<loc>https:\/\/pawtenant\.com\/esa-letter-housing<\/loc>/.test(sitemapXml));
+  check("/esa-letter-housing is in sitemap exactly once",
+    (sitemapXml.match(/<loc>https:\/\/pawtenant\.com\/esa-letter-housing<\/loc>/g) || []).length === 1);
   // NOTE: the /esa-letter-housing ROUTE is served by src/pages/lp-esa-housing/.
   const housing = await rd("src/pages/lp-esa-housing/page.tsx");
-  check("/esa-letter-housing keeps noindex, nofollow", /noindex,\s*nofollow/.test(housing));
-  check("/esa-letter-housing is not prerendered as indexable",
-    !/"\/esa-letter-housing"/.test(await rd("src/prerender/entry.tsx")));
+  check("/esa-letter-housing does not write a noindex meta",
+    !/<meta[^>]+content=["'][^"']*noindex/i.test(housing));
+  check("/esa-letter-housing is prerendered as indexable",
+    /"\/esa-letter-housing"/.test(await rd("src/prerender/entry.tsx")));
 
   // ── 11) Site-wide search stays DEFERRED (docs only) ────────────────────────
   const searchRuntime = [

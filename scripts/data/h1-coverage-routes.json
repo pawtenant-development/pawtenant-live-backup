@@ -1,7 +1,7 @@
 {
  "source": "Pawtenant_15-Sep-2026_H1 tag missing or empty.xlsx (Semrush crawl, 2026-09-15)",
- "note": "Every row was HTTP 200, Is indexable page = True, No. of H1 = 0. Each must now render exactly one non-empty, visible <h1> in RAW prerendered HTML.",
- "count": 270,
+ "note": "Every row was HTTP 200, Is indexable page = True, No. of H1 = 0. Each must now render exactly one non-empty, visible <h1> in RAW prerendered HTML. /esa-letter-housing was NOT in the Semrush crawl (it had no prerendered file at all, so it was served the app shell); it was added by PAWTENANT-ESA-HOUSING-CRO-RAW-HTML-LEGAL-001 on 2026-09-17 when the route joined the prerender contract.",
+ "count": 271,
  "routes": [
   {
    "path": "/about-us",
@@ -827,6 +827,11 @@
    "path": "/esa-laws",
    "title": "ESA Laws & ESA Letter Requirements Explained | PawTenant",
    "template": "src/pages/esa-laws/page.tsx"
+  },
+  {
+   "path": "/esa-letter-housing",
+   "title": "ESA Letter for Housing | Licensed Professional Review | PawTenant",
+   "template": "src/pages/lp-esa-housing/page.tsx"
   },
   {
    "path": "/esa-letter-verification",

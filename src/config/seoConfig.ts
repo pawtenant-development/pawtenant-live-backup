@@ -71,6 +71,11 @@ export const CORE_PAGE_META: Record<string, SEOEntry> = {
     description:
       "Understand your housing rights with an emotional support animal. Learn how the Fair Housing Act protects ESA owners and keeps you and your pet together.",
   },
+  "/esa-letter-housing": {
+    title: "ESA Letter for Housing | Licensed Professional Review | PawTenant",
+    description:
+      "Housing-focused ESA documentation after a confidential online assessment reviewed by a professional licensed in your state. Issued only if clinically appropriate; refund if you don't qualify.",
+  },
   "/esa-letter-cost": {
     title: `ESA Letter Cost: ${ESA_COST_ANNUAL}/Year or ${ESA_COST_ONETIME} One-Time | PawTenant`,
     description:
