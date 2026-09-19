@@ -178,6 +178,7 @@ export default function AssessmentPricingIntro({
           >
             <span className={`mb-3 items-center ${card.badge ? "flex" : "hidden lg:flex lg:h-7"}`}>
               <span
+                aria-hidden={!card.badge}
                 className={`w-fit rounded-full px-3 py-1 text-[11px] font-extrabold uppercase tracking-wide text-white ${
                   isPsd ? "bg-amber-600" : "bg-[#1A5C4F]"
                 } ${card.badge ? "" : "invisible"}`}
